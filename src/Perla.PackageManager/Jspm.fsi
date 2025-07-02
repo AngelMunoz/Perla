@@ -23,7 +23,7 @@ type InstallResponse = {
   dynamicDeps: seq<string>
 
   /// the resulting import map from the install request to the generator endpoint
-  map: Perla.PackageManager.Types.ImportMap
+  map: Types.ImportMap
 
   /// A dependency graph describing how each dependency is pulling each file
   graph: DependencyGraph option

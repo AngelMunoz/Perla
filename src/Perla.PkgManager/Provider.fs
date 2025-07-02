@@ -1,10 +1,10 @@
-namespace Medusa
+namespace Perla.PkgManager
 
 open System
 open System.Text.RegularExpressions
+open Microsoft.Extensions.Logging
 
-module Provider =
-  open Microsoft.Extensions.Logging
+module ProviderOps =
 
   let private jspmRegex = lazy Regex "npm:((?:@[^/]+/)?[^@/]+@[^/]+)"
   let private esmRegex = lazy Regex "\*((?:@[^/]+/)?[^@/]+@[^/]+)"

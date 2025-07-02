@@ -1,4 +1,4 @@
-namespace Medusa
+namespace Perla.PkgManager
 
 open System
 open System.Collections.Generic

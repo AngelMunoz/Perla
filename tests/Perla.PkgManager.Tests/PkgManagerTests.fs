@@ -1,13 +1,13 @@
-namespace Medusa.Tests
+namespace Perla.PkgManager.Tests
 
 open System
 open System.Threading.Tasks
 open Microsoft.Extensions.Logging
-open Microsoft.VisualStudio.TestTools.UnitTesting
+open Serilog
+open Xunit
 open IcedTasks
-open Medusa
-open Medusa.Types
-open Medusa.RequestHandler
+open Perla.PkgManager
+open Perla.PkgManager.RequestHandler
 
 /// Fake implementation of JspmService for testing
 type FakeJspmService
@@ -23,13 +23,10 @@ type FakeJspmService
     dynamicDeps = [||]
     map = {
       imports =
-        Some(
-          Map.ofList [
-            ("react", "https://ga.jspm.io/npm:react@18.2.0/index.js")
-          ]
-        )
-      scopes = None
-      integrity = None
+        Map.ofList [ ("react", "https://ga.jspm.io/npm:react@18.2.0/index.js") ]
+
+      scopes = Map.empty
+      integrity = Map.empty
     }
   }
 
@@ -38,14 +35,14 @@ type FakeJspmService
     dynamicDeps = [||]
     map = {
       imports =
-        Some(
-          Map.ofList [
-            ("react", "https://ga.jspm.io/npm:react@18.2.0/index.js")
-            ("vue", "https://ga.jspm.io/npm:vue@3.5.17/dist/vue.esm-browser.js")
-          ]
-        )
-      scopes = None
-      integrity = None
+
+        Map.ofList [
+          ("react", "https://ga.jspm.io/npm:react@18.2.0/index.js")
+          ("vue", "https://ga.jspm.io/npm:vue@3.5.17/dist/vue.esm-browser.js")
+        ]
+
+      scopes = Map.empty
+      integrity = Map.empty
     }
   }
 
@@ -54,13 +51,9 @@ type FakeJspmService
     dynamicDeps = [||]
     map = {
       imports =
-        Some(
-          Map.ofList [
-            ("react", "https://ga.jspm.io/npm:react@18.2.0/index.js")
-          ]
-        )
-      scopes = None
-      integrity = None
+        Map.ofList [ ("react", "https://ga.jspm.io/npm:react@18.2.0/index.js") ]
+      scopes = Map.empty
+      integrity = Map.empty
     }
   }
 
@@ -88,15 +81,17 @@ type FakeJspmService
     member _.Download(packages, options, ?cancellationToken) =
       Task.FromResult(defaultArg downloadResponse defaultDownloadResponse)
 
-[<TestClass>]
-type ImportMapTests() =
+module ImportMapTests =
 
   let createLogger() =
     let loggerFactory =
       LoggerFactory.Create(fun builder ->
-        builder.AddConsole().SetMinimumLevel(LogLevel.Debug) |> ignore)
+        builder
+          .AddSerilog(Log.Logger, dispose = true)
+          .SetMinimumLevel(LogLevel.Debug)
+        |> ignore)
 
-    loggerFactory.CreateLogger(nameof ImportMapTests)
+    loggerFactory.CreateLogger("ImportMapTests")
 
   let createImportMapService(fakeJspmService: JspmService option) =
     let logger = createLogger()
@@ -104,32 +99,31 @@ type ImportMapTests() =
     let jspmService =
       defaultArg fakeJspmService (FakeJspmService() :> JspmService)
 
-    let dependencies = {
-      ImportMap.ImportMapServiceArgs.reqHandler = jspmService
-      ImportMap.ImportMapServiceArgs.logger = logger
+    let dependencies: PkgManagerServiceArgs = {
+      reqHandler = jspmService
+      logger = logger
+      config = failwith ""
     }
 
-    ImportMapService.create dependencies
+    PkgManager.create dependencies
 
-  [<TestMethod>]
-  member _.``install should create proper request with packages``() = taskUnit {
+  [<Fact>]
+  let ``install should create proper request with packages``() = taskUnit {
     // Arrange
-    let packages = [ "react"; "vue" ]
+    let packages: string list = [ "react"; "vue" ]
     let service = createImportMapService(None)
 
     // Act
     let! result = service.Install(packages)
 
     // Assert
-    Assert.IsNotNull(result)
-    Assert.AreEqual<int>(1, result.staticDeps.Length)
-    Assert.AreEqual<string>("react", result.staticDeps[0])
-    Assert.IsTrue(result.map.imports.IsSome)
-    Assert.IsTrue(result.map.imports.Value.ContainsKey("react"))
+    Assert.Equal<int>(1, result.staticDeps.Length)
+    Assert.Equal<string>("react", result.staticDeps[0])
+    Assert.True(result.map.imports.ContainsKey("react"))
   }
 
-  [<TestMethod>]
-  member _.``update should accept ImportMap and packages``() = taskUnit {
+  [<Fact>]
+  let ``update should accept ImportMap and packages``() = taskUnit {
     // Arrange
     let importMap: ImportMap = {
       imports = Map.ofList [ ("react", "https://example.com/react.js") ]
@@ -144,15 +138,13 @@ type ImportMapTests() =
     let! result = service.Update(importMap, packages)
 
     // Assert
-    Assert.IsNotNull(result)
-    Assert.AreEqual<int>(2, result.staticDeps.Length)
-    Assert.IsTrue(result.map.imports.IsSome)
-    Assert.IsTrue(result.map.imports.Value.ContainsKey("react"))
-    Assert.IsTrue(result.map.imports.Value.ContainsKey("vue"))
+    Assert.Equal<int>(2, result.staticDeps.Length)
+    Assert.True(result.map.imports.ContainsKey("react"))
+    Assert.True(result.map.imports.ContainsKey("vue"))
   }
 
-  [<TestMethod>]
-  member _.``uninstall should accept ImportMap and packages``() = taskUnit {
+  [<Fact>]
+  let ``uninstall should accept ImportMap and packages``() = taskUnit {
     // Arrange
     let importMap: ImportMap = {
       imports =
@@ -171,15 +163,13 @@ type ImportMapTests() =
     let! result = service.Uninstall(importMap, packages)
 
     // Assert
-    Assert.IsNotNull(result)
-    Assert.AreEqual<int>(1, result.staticDeps.Length)
-    Assert.AreEqual<string>("react", result.staticDeps[0])
-    Assert.IsTrue(result.map.imports.IsSome)
-    Assert.IsTrue(result.map.imports.Value.ContainsKey("react"))
+    Assert.Equal<int>(1, result.staticDeps.Length)
+    Assert.Equal<string>("react", result.staticDeps[0])
+    Assert.True(result.map.imports.ContainsKey("react"))
   }
 
-  [<TestMethod>]
-  member _.``goOffline should accept ImportMap and options``() = taskUnit {
+  [<Fact>]
+  let ``goOffline should accept ImportMap and options``() = taskUnit {
     // Arrange
     let importMap: ImportMap = {
       imports =
@@ -194,14 +184,13 @@ type ImportMapTests() =
     let! result = service.GoOffline(importMap)
 
     // Assert
-    Assert.IsNotNull(result)
-    Assert.IsTrue(result.imports.ContainsKey("react"))
+    Assert.True(result.imports.ContainsKey("react"))
     // The URL should be converted to a local path starting with /node_modules
-    Assert.IsTrue(result.imports["react"].StartsWith("/node_modules"))
+    Assert.True(result.imports["react"].StartsWith("/node_modules"))
   }
 
-  [<TestMethod>]
-  member _.``ImportMap creation should work with empty maps``() =
+  [<Fact>]
+  let ``ImportMap creation should work with empty maps``() =
     // Arrange & Act
     let importMap: ImportMap = {
       imports = Map.empty
@@ -210,12 +199,12 @@ type ImportMapTests() =
     }
 
     // Assert
-    Assert.AreEqual<int>(0, importMap.imports.Count)
-    Assert.AreEqual<int>(0, importMap.scopes.Count)
-    Assert.AreEqual<int>(0, importMap.integrity.Count)
+    Assert.Equal<int>(0, importMap.imports.Count)
+    Assert.Equal<int>(0, importMap.scopes.Count)
+    Assert.Equal<int>(0, importMap.integrity.Count)
 
-  [<TestMethod>]
-  member _.``ImportMap creation should work with populated maps``() =
+  [<Fact>]
+  let ``ImportMap creation should work with populated maps``() =
     // Arrange & Act
     let imports =
       Map.ofList [
@@ -237,18 +226,18 @@ type ImportMapTests() =
     }
 
     // Assert
-    Assert.AreEqual<int>(2, importMap.imports.Count)
-    Assert.AreEqual<int>(1, importMap.scopes.Count)
-    Assert.AreEqual<int>(1, importMap.integrity.Count)
+    Assert.Equal<int>(2, importMap.imports.Count)
+    Assert.Equal<int>(1, importMap.scopes.Count)
+    Assert.Equal<int>(1, importMap.integrity.Count)
 
-    Assert.AreEqual<string>(
+    Assert.Equal<string>(
       "https://example.com/react.js",
       importMap.imports["react"]
     )
 
-    Assert.AreEqual<string>(
+    Assert.Equal<string>(
       "https://example.com/lodash.js",
       importMap.scopes["scope1"]["lodash"]
     )
 
-    Assert.AreEqual<string>("sha384-abc123", importMap.integrity["react"])
+    Assert.Equal<string>("sha384-abc123", importMap.integrity["react"])

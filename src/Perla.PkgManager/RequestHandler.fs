@@ -1,4 +1,4 @@
-module Medusa.RequestHandler
+module Perla.PkgManager.RequestHandler
 
 
 open System.Collections.Generic
@@ -8,7 +8,7 @@ open System.Threading.Tasks
 open FsHttp
 open Thoth.Json.Net
 
-open Medusa
+open Perla.PkgManager
 
 type JspmService =
   abstract member Install:

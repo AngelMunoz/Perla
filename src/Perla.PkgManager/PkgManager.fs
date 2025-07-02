@@ -1,4 +1,4 @@
-namespace Medusa
+namespace Perla.PkgManager
 
 open System
 open System.IO
@@ -60,7 +60,7 @@ module PkgManager =
       for value in [| yield! imports; yield! scopeImports |] do
         let uri = Uri(value)
 
-        match Provider.extractFromUri uri with
+        match ProviderOps.extractFromUri uri with
         | Ok package -> package
         | Error _ -> ()
     ]
@@ -353,7 +353,7 @@ module PkgManager =
         | None -> importUrl
         | Some key ->
           let uri = Uri importUrl
-          let filePath = Provider.extractFilePath logger uri
+          let filePath = ProviderOps.extractFilePath logger uri
           // If extractFilePath returned the original URL (couldn't extract), keep it as is
           if filePath = importUrl then
             importUrl
