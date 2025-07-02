@@ -60,20 +60,17 @@ type TransformAsync = FileTransform -> Async<FileTransform>
 /// </remarks>
 type TransformAction = FileTransform -> ValueTask<FileTransform>
 
-[<Struct>]
 type PluginFunctions =
   | ShouldProcessFile of shouldProcessFile: FilePredicate
   | Transform of transform: TransformAction
   | ShouldLoad of shouldLoad: FilePredicate
 
-[<Struct>]
 type PluginInfo = {
   name: string
   shouldProcessFile: FilePredicate voption
   transform: TransformAction voption
 }
 
-[<Struct>]
 type RunnablePlugin = {
   plugin: PluginInfo
   shouldTransform: FilePredicate
