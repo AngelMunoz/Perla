@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+    <Description>
+        A Library under the Perla umbrella.
+        This package provides a small Package Manager API to interact with the JSPM API to produce ImportMaps and and take them offline.
+        It also powers the package management and importmap features of the Perla Dev Server.
+    </Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Types.fs" />
+    <Compile Include="Provider.fs" />
+    <Compile Include="RequestHandler.fs" />
+    <Compile Include="PkgManager.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FsHttp" />
+    <PackageReference Include="IcedTasks" />
+    <PackageReference Include="Thoth.Json.Net" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+</Project>

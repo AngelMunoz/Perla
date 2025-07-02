@@ -1,4 +1,6 @@
-﻿namespace Perla.PackageManager
+namespace Perla.PackageManager
+
+open System
 
 open System.Runtime.CompilerServices
 open System.Runtime.InteropServices
@@ -174,5 +176,6 @@ module PackageManager =
         | Error err -> return Error err
       }
 
-[<assembly: Extension>]
+[<assembly: Extension;
+  Obsolete("This module is deprecated, use Perla.PkgManager instead")>]
 do ()

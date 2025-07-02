@@ -23,12 +23,14 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Flan/Flan.vbproj" />
+    <Project Path="src/Perla.PkgManager/Perla.PkgManager.fsproj" />
     <Project Path="src/Perla.Logger/Perla.Logger.fsproj" />
     <Project Path="src/Perla.PackageManager/Perla.PackageManager.fsproj" />
     <Project Path="src/Perla.Plugins/Perla.Plugins.fsproj" />
     <Project Path="src/Perla/Perla.fsproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Perla.PkgManager.Tests/Perla.PkgManager.Tests.fsproj" />
     <Project Path="tests/Perla.Plugins.Tests/Perla.Plugins.Tests.fsproj" />
     <Project Path="tests/Perla.Tests/Perla.Tests.fsproj" />
   </Folder>
