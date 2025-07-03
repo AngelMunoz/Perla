@@ -3,54 +3,61 @@ namespace Perla.Tests
 open System
 open Xunit
 open Xunit.Sdk
+open Perla
+open Perla.Units
+open FSharp.UMX
 
 
-type Env() =
-  do
-    Environment.SetEnvironmentVariable("PERLA_currentEnv", "tests")
-    Environment.SetEnvironmentVariable("PERLA_IAmSet", "yes")
-    Environment.SetEnvironmentVariable("PERLA-NotAvailable", "not-available")
 
-    Environment.SetEnvironmentVariable(
-      "OtherNotAvailable",
-      "other-not-available"
-    )
+type PlatformOps() =
+    [<Fact>]
+    member _.``GetEnvContent provides EnvVars with "PERLA_" prefix``() =
+        let platformOps = Env.Create({
+            GetEnvVars = fun () -> [("PERLA_currentEnv", "tests"); ("PERLA_IAmSet", "yes")]
+            ReadFile = fun _ -> [||]
+        })
+        let actual = platformOps.GetEnvContent()
 
-  [<Fact>]
-  member _.``GetEnvContent provides EnvVars with "PERLA_" prefix``() =
-    let actual = Perla.Env.GetEnvContent()
+        match actual with
+        | Some actual ->
+            let expected = "export const IAmSet = \"yes\";"
+            Assert.True(actual.Contains(expected))
 
-    match actual with
-    | Some actual ->
-      let expected = "export const IAmSet = \"yes\";"
+            let expected = "export const currentEnv = \"tests\";"
+            Assert.True(actual.Contains(expected))
+        | None -> raise(XunitException("Content is Empty when It should have data"))
 
-      Assert.True(actual.Contains(expected))
+    [<Fact>]
+    member _.``GetEnvContent doesn't provide EnvVars without "PERLA_" prefix``() =
+        let platformOps = Env.Create({
+            GetEnvVars = fun () -> [("PERLA-NotAvailable", "not-available"); ("OtherNotAvailable", "other-not-available")]
+            ReadFile = fun _ -> [||]
+        })
+        let actual = platformOps.GetEnvContent()
 
-      let expected = "export const currentEnv = \"tests\";"
+        match actual with
+        | Some actual ->
+            let expected = "export const NotAvailable = \"not-available\";"
+            Assert.False(actual.Contains(expected))
 
-      Assert.True(actual.Contains(expected))
-    | None -> raise(XunitException("Content is Empty when It should have data"))
+            let expected = "export const OtherNotAvailable = \"not-available\";"
+            Assert.False(actual.Contains(expected))
+        | None -> Assert.True(true) //This is expected
 
-  [<Fact>]
-  member _.``GetEnvContent doesn't provide EnvVars without "PERLA_" prefix``() =
-    let actual = Perla.Env.GetEnvContent()
+    [<Fact>]
+    member _.``LoadEnvFiles loads variables correctly``() =
+        let platformOps = Env.Create({
+            GetEnvVars = fun () -> []
+            ReadFile = fun (path: string<SystemPath>) ->
+                match UMX.untag path with
+                | "a.env" -> [| "PERLA_VAR1=A"; "VAR2=B" |]
+                | _ -> [||]
+        })
 
-    match actual with
-    | Some actual ->
-      let expected = "export const NotAvailable = \"not-available\";"
+        platformOps.LoadEnvFiles([UMX.tag "a.env"])
 
-      Assert.False(actual.Contains(expected))
+        let var1 = Environment.GetEnvironmentVariable("PERLA_VAR1")
+        let var2 = Environment.GetEnvironmentVariable("PERLA_VAR2")
 
-      let expected = "export const OtherNotAvailable = \"not-available\";"
-
-      Assert.False(actual.Contains(expected))
-    | None -> raise(XunitException("Content is Empty when It should have data"))
-
-  [<Fact>]
-  member _.``getPerlaEnvVars provides a correct (varName, varValue) list``() =
-    let values = Perla.Env.getPerlaEnvVars()
-
-
-    values |> List.contains("IAmSet", "yes") |> Assert.True
-
-    values |> List.contains("currentEnv", "tests") |> Assert.True
+        Assert.Equal("A", var1)
+        Assert.Equal("B", var2)
