@@ -3,7 +3,7 @@ namespace Perla.PkgManager.Tests
 open System
 open System.Threading.Tasks
 open Microsoft.Extensions.Logging
-open Serilog
+open Perla.Logger
 open Xunit
 open IcedTasks
 open Perla.PkgManager
@@ -86,10 +86,7 @@ module ImportMapTests =
   let createLogger() =
     let loggerFactory =
       LoggerFactory.Create(fun builder ->
-        builder
-          .AddSerilog(Log.Logger, dispose = true)
-          .SetMinimumLevel(LogLevel.Debug)
-        |> ignore)
+        builder.AddPerlaLogger().SetMinimumLevel(LogLevel.Debug) |> ignore)
 
     loggerFactory.CreateLogger("ImportMapTests")
 
@@ -99,10 +96,17 @@ module ImportMapTests =
     let jspmService =
       defaultArg fakeJspmService (FakeJspmService() :> JspmService)
 
+    let path = IO.Directory.CreateTempSubdirectory("importmaptests").FullName
+
+    let pkgManagerConfig = {
+      GlobalCachePath = path
+      cwd = Environment.CurrentDirectory
+    }
+
     let dependencies: PkgManagerServiceArgs = {
       reqHandler = jspmService
       logger = logger
-      config = failwith ""
+      config = pkgManagerConfig
     }
 
     PkgManager.create dependencies

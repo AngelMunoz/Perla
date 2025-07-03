@@ -5,15 +5,13 @@ open Xunit
 open Microsoft.Extensions.Logging
 open Serilog
 
+open Perla.Logger
 open Perla.PkgManager
 
 module Logger =
   let lf =
     LoggerFactory.Create(fun builder ->
-      builder
-        .AddSerilog(Log.Logger, dispose = true)
-        .SetMinimumLevel(LogLevel.Debug)
-      |> ignore)
+      builder.AddPerlaLogger().SetMinimumLevel(LogLevel.Debug) |> ignore)
 
 let logger = Logger.lf.CreateLogger("ProviderTests")
 

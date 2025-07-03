@@ -20,6 +20,7 @@
     <PackageReference Include="coverlet.collector" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Perla.Logger\Perla.Logger.fsproj" />
     <ProjectReference Include="..\..\src\Perla.PkgManager\Perla.PkgManager.fsproj" />
   </ItemGroup>
 

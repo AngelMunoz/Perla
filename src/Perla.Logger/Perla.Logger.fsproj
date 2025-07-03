@@ -12,5 +12,7 @@
     <PackageReference Include="FSharp.Core" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Extensions.Logging" />
   </ItemGroup>
 </Project>

@@ -2,9 +2,13 @@
 
 open System.Threading.Tasks
 open Spectre.Console
+open Spectre.Console.Extensions
 open System
-open Microsoft.Extensions.Logging
 open System.Runtime.InteropServices
+open Serilog
+open Serilog.Core
+open Serilog.Events
+
 
 [<Struct>]
 type PrefixKind =
@@ -185,6 +189,7 @@ type Logger =
     )
 
 module Logger =
+  open Microsoft.Extensions.Logging
 
   let getPerlaLogger() =
     { new ILogger with
@@ -199,3 +204,214 @@ module Logger =
               member _.Dispose() = ()
           }
     }
+
+// Enricher to add prefix information to log events
+type PerlaPrefixEnricher(prefixes: PrefixKind Set) =
+  interface ILogEventEnricher with
+    member _.Enrich(logEvent, propertyFactory) =
+      for prefix in prefixes do
+        match prefix with
+        | Log ->
+          propertyFactory.CreateProperty($"PlLog", Constants.LogPrefix)
+          |> logEvent.AddPropertyIfAbsent
+        | Scaffold ->
+          propertyFactory.CreateProperty(
+            $"PlScaffold",
+            Constants.ScaffoldPrefix
+          )
+          |> logEvent.AddPropertyIfAbsent
+        | Build ->
+          propertyFactory.CreateProperty($"PlBuild", Constants.BuildPrefix)
+          |> logEvent.AddPropertyIfAbsent
+        | Serve ->
+          propertyFactory.CreateProperty($"PlServe", Constants.ServePrefix)
+          |> logEvent.AddPropertyIfAbsent
+        | Esbuild ->
+          propertyFactory.CreateProperty($"PlEsbuild", Constants.EsbuildPrefix)
+          |> logEvent.AddPropertyIfAbsent
+        | Browser ->
+          propertyFactory.CreateProperty($"PlBrowser", Constants.BrowserPrefix)
+          |> logEvent.AddPropertyIfAbsent
+
+// Custom sink to write to Spectre.Console
+type SpectreSink() =
+  interface ILogEventSink with
+    member _.Emit(logEvent: LogEvent) =
+      let timestamp = logEvent.Timestamp.ToString("HH:mm:ss")
+
+      let levelString =
+        match logEvent.Level with
+        | LogEventLevel.Verbose -> "VRB"
+        | LogEventLevel.Debug -> "DBG"
+        | LogEventLevel.Information -> "INF"
+        | LogEventLevel.Warning -> "WRN"
+        | LogEventLevel.Error -> "ERR"
+        | LogEventLevel.Fatal -> "FTL"
+        | _ -> "???"
+
+      let levelColor =
+        match logEvent.Level with
+        | LogEventLevel.Verbose
+        | LogEventLevel.Debug -> "grey"
+        | LogEventLevel.Information -> "blue"
+        | LogEventLevel.Warning -> "yellow"
+        | LogEventLevel.Error
+        | LogEventLevel.Fatal -> "red"
+        | _ -> "white"
+
+      let prefix =
+        logEvent.Properties
+        |> Seq.filter(fun kvp -> kvp.Key.StartsWith "Pl")
+        |> Seq.map(fun kvp ->
+          let color =
+            match kvp.Key with
+            | "PlLog" -> "teal"
+            | "PlScaffold" -> "deepskyblue4"
+            | "PlBuild" -> "green"
+            | "PlServe" -> "purple3"
+            | "PlEsbuild" -> "dodgerblue3"
+            | "PlBrowser" -> "darkgoldenrod"
+            | _ -> "white"
+
+          let prefixText = kvp.Value.ToString().Trim('"')
+          $"[{color}]{prefixText}[/]")
+        |> String.concat ""
+
+      let message = logEvent.RenderMessage()
+
+      AnsiConsole.MarkupLine
+        $"[[grey]{timestamp}[/] [{levelColor}]{levelString}[/] {prefix}]  {message}"
+
+      match logEvent.Exception with
+      | null -> ()
+      | ex -> AnsiConsole.WriteException ex
+
+[<AutoOpen>]
+module SerilogExtensions =
+  open Serilog.Configuration
+
+
+  type LoggerSinkConfiguration with
+    member this.Spectre() = this.Sink(SpectreSink())
+
+  type LoggerEnrichmentConfiguration with
+    member this.WithPerlaPrefix(prefixes: PrefixKind Set) =
+      this.With(PerlaPrefixEnricher prefixes)
+
+[<RequireQualifiedAccess>]
+module PerlaSeriLogger =
+  let create(prefixes: PrefixKind Set) =
+    LoggerConfiguration()
+      .Enrich.WithPerlaPrefix(prefixes)
+      .Enrich.FromLogContext()
+      .WriteTo.Spectre()
+      .CreateLogger()
+
+  let createFromConfig(config: LoggerConfiguration) = config.CreateLogger()
+
+open Microsoft.Extensions.Logging
+open Serilog.Extensions.Logging
+
+[<AutoOpen>]
+module ILoggerExtensions =
+  open Serilog.Context
+
+  type Microsoft.Extensions.Logging.ILogger with
+    member _.Spinner<'Operation>
+      (title: string, task: Task<'Operation>)
+      : Task<'Operation> =
+      let status = AnsiConsole.Status()
+      status.Spinner <- Spinner.Known.Dots
+      status.StartAsync(title, (fun _ -> task))
+
+    member _.Spinner<'Operation>
+      (title: string, task: Async<'Operation>)
+      : Task<'Operation> =
+      let status = AnsiConsole.Status()
+      status.Spinner <- Spinner.Known.Dots
+      status.StartAsync(title, (fun _ -> task |> Async.StartAsTask))
+
+    member inline _.Spinner<'Operation>
+      (
+        title: string,
+        [<InlineIfLambda>] operation: StatusContext -> Task<'Operation>,
+        ?target: PrefixKind
+      ) : Task<'Operation> =
+      let prefix =
+        defaultArg target Log
+        |> function
+          | Log -> [ Log ]
+          | Scaffold -> [ Log; Scaffold ]
+          | Build -> [ Log; Build ]
+          | Serve -> [ Log; Serve ]
+          | Esbuild -> [ Log; Esbuild ]
+          | Browser -> [ Log; Browser ]
+
+      let title = Internals.format prefix title
+      let status = AnsiConsole.Status()
+      status.Spinner <- Spinner.Known.Dots
+      status.StartAsync(title.ToString(), operation)
+
+    member inline _.Spinner<'Operation>
+      (
+        title: string,
+        [<InlineIfLambda>] operation: StatusContext -> Async<'Operation>,
+        ?target: PrefixKind
+      ) : Task<'Operation> =
+      let prefix =
+        defaultArg target Log
+        |> function
+          | Log -> [ Log ]
+          | Scaffold -> [ Log; Scaffold ]
+          | Build -> [ Log; Build ]
+          | Serve -> [ Log; Serve ]
+          | Esbuild -> [ Log; Esbuild ]
+          | Browser -> [ Log; Browser ]
+
+      let title = Internals.format prefix title
+      let status = AnsiConsole.Status()
+      status.Spinner <- Spinner.Known.Dots
+
+      status.StartAsync(
+        title.ToString(),
+        (fun ctx -> operation ctx |> Async.StartAsTask)
+      )
+
+    member inline this.LogScaffold
+      (message: string, logLevel: LogLevel, [<ParamArray>] args: obj[])
+      =
+      use _ = LogContext.PushProperty("PlScaffold", Constants.ScaffoldPrefix)
+
+      this.Log(logLevel, message, args)
+
+    member inline this.LogBuild
+      (message: string, logLevel: LogLevel, [<ParamArray>] args: obj[])
+      =
+      use _ = LogContext.PushProperty("PlBuild", Constants.BuildPrefix)
+      this.Log(logLevel, message, args)
+
+    member inline this.LogServe
+      (message: string, logLevel: LogLevel, [<ParamArray>] args: obj[])
+      =
+      use _ = LogContext.PushProperty("PlServe", Constants.ServePrefix)
+      this.Log(logLevel, message, args)
+
+    member inline this.LogEsbuild
+      (message: string, logLevel: LogLevel, [<ParamArray>] args: obj[])
+      =
+      use _ = LogContext.PushProperty("PlEsbuild", Constants.EsbuildPrefix)
+
+      this.Log(logLevel, message, args)
+
+    member inline this.LogBrowser
+      (message: string, logLevel: LogLevel, [<ParamArray>] args: obj[])
+      =
+      use _ = LogContext.PushProperty("PlBrowser", Constants.BrowserPrefix)
+
+      this.Log(logLevel, message, args)
+
+  type ILoggingBuilder with
+    member this.AddPerlaLogger(?prefixes: PrefixKind list) =
+      let prefixes = defaultArg prefixes [ Log ]
+      let serilogLogger = PerlaSeriLogger.create(Set.ofList prefixes)
+      this.AddProvider(new SerilogLoggerProvider(serilogLogger))
