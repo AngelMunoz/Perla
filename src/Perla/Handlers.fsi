@@ -1,13 +1,11 @@
 ﻿namespace Perla.Handlers
 
-open System.Threading
-open System.Threading.Tasks
-
+open IcedTasks
 open FSharp.UMX
 
 open Perla.Units
 open Perla.Types
-open Perla.PackageManager.Types
+
 
 [<Struct; RequireQualifiedAccess>]
 type ListFormat =
@@ -98,45 +96,22 @@ type PathsOptions = { operation: PathOperation }
 
 module Handlers =
 
-  val runSetup:
-    options: SetupOptions * cancellationToken: CancellationToken -> Task<int>
+  val runSetup: options: SetupOptions -> CancellableTask<int>
 
-  val runNew:
-    options: ProjectOptions * cancellationToken: CancellationToken -> Task<int>
+  val runNew: options: ProjectOptions -> CancellableTask<int>
 
-  val runTemplate:
-    options: TemplateRepositoryOptions * cancellationToken: CancellationToken ->
-      Task<int>
+  val runTemplate: options: TemplateRepositoryOptions -> CancellableTask<int>
 
-  val runBuild:
-    options: BuildOptions * cancellationToken: CancellationToken -> Task<int>
+  val runBuild: options: BuildOptions -> CancellableTask<int>
 
-  val runServe:
-    options: ServeOptions * cancellationToken: CancellationToken -> Task<int>
+  val runServe: options: ServeOptions -> CancellableTask<int>
 
-  val runTesting:
-    options: TestingOptions * cancellationToken: CancellationToken -> Task<int>
+  val runTesting: options: TestingOptions -> CancellableTask<int>
 
-  val runSearchPackage:
-    options: SearchOptions * cancellationToken: CancellationToken -> Task<int>
+  val runAddPackage: options: AddPackageOptions -> CancellableTask<int>
 
-  val runShowPackage:
-    options: ShowPackageOptions * cancellationToken: CancellationToken ->
-      Task<int>
+  val runRemovePackage: options: RemovePackageOptions -> CancellableTask<int>
 
-  val runAddResolution: options: PathsOptions -> Task<int>
+  val runListPackages: options: ListPackagesOptions -> CancellableTask<int>
 
-  val runAddPackage:
-    options: AddPackageOptions * cancellationToken: CancellationToken ->
-      Task<int>
-
-  val runRemovePackage:
-    options: RemovePackageOptions * cancellationToken: CancellationToken ->
-      Task<int>
-
-  val runListPackages: options: ListPackagesOptions -> Task<int>
-
-  val runRestoreImportMap:
-    options: RestoreOptions * cancellationToken: CancellationToken -> Task<int>
-
-  val runDescribePerla: options: DescribeOptions -> Task<int>
+  val runDescribePerla: options: DescribeOptions -> CancellableTask<int>

@@ -152,16 +152,20 @@ module ImportMap =
 
   let Encoder: Encoder<ImportMap> =
     fun map ->
+
       Encode.object [
-        "imports",
-        map.imports |> Map.map(fun _ v -> Encode.string v) |> Encode.dict
-        "scopes",
-        map.scopes
-        |> Map.map(fun _ v ->
-          v |> Map.map(fun _ v -> Encode.string v) |> Encode.dict)
-        |> Encode.dict
-        "integrity",
-        map.integrity |> Map.map(fun _ v -> Encode.string v) |> Encode.dict
+        if map.imports |> Map.isEmpty |> not then
+          "imports",
+          map.imports |> Map.map(fun _ v -> Encode.string v) |> Encode.dict
+        if map.scopes |> Map.isEmpty |> not then
+          "scopes",
+          map.scopes
+          |> Map.map(fun _ v ->
+            v |> Map.map(fun _ v -> Encode.string v) |> Encode.dict)
+          |> Encode.dict
+        if map.integrity |> Map.isEmpty |> not then
+          "integrity",
+          map.integrity |> Map.map(fun _ v -> Encode.string v) |> Encode.dict
       ]
 
 module GeneratorResponse =

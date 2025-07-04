@@ -379,19 +379,21 @@ module Commands =
 
   let Build =
 
-    let buildArgs
+    let handleCommand
       (
         context: InvocationContext,
         enablePreloads: bool option,
         rebuildImportMap: bool option,
         enablePreview: bool option
       ) =
-      {
+
+      let options = {
         enablePreloads = defaultArg enablePreloads true
         rebuildImportMap = defaultArg rebuildImportMap false
         enablePreview = defaultArg enablePreview false
-      },
-      context.GetCancellationToken()
+      }
+
+      Handlers.runBuild options (context.GetCancellationToken())
 
     command "build" {
       description "Builds the SPA application for distribution"
@@ -404,18 +406,19 @@ module Commands =
         BuildInputs.preview
       )
 
-      setHandler(buildArgs >> Handlers.runBuild)
+      setHandler handleCommand
     }
 
   let Serve =
-    let buildArgs
+    let handleCommand
       (
         context: InvocationContext,
         port: int option,
         host: string option,
         ssl: bool option
       ) =
-      { port = port; host = host; ssl = ssl }, context.GetCancellationToken()
+      let options = { port = port; host = host; ssl = ssl }
+      Handlers.runServe options (context.GetCancellationToken())
 
     let desc =
       "Starts the development server and if fable projects are present it also takes care of it."
@@ -431,21 +434,22 @@ module Commands =
         ServeInputs.ssl
       )
 
-      setHandler(buildArgs >> Handlers.runServe)
+      setHandler handleCommand
     }
 
   let Setup =
-    let buildArgs
+    let handleCommand
       (
         ctx: InvocationContext,
         installTemplates: bool option,
         skipPrompts: bool option
-      ) : SetupOptions * CancellationToken =
-      {
+      ) =
+      let options = {
         installTemplates = defaultArg installTemplates true
         skipPrompts = defaultArg skipPrompts false
-      },
-      ctx.GetCancellationToken()
+      }
+
+      Handlers.runSetup options (ctx.GetCancellationToken())
 
 
     command "setup" {
@@ -457,81 +461,42 @@ module Commands =
         SetupInputs.skipPrompts
       )
 
-      setHandler(buildArgs >> Handlers.runSetup)
+      setHandler handleCommand
     }
-
-  let SearchPackage =
-
-    let buildArgs
-      (ctx: InvocationContext, package: string, page: int option)
-      : SearchOptions * CancellationToken =
-      {
-        package = package
-        page = page |> Option.defaultValue 1
-      },
-      ctx.GetCancellationToken()
-
-    let cmd = command "search" {
-      description
-        "Search a package name in the Skypack api, this will bring potential results"
-
-      inputs(Input.Context(), PackageInputs.package, PackageInputs.currentPage)
-
-      setHandler(buildArgs >> Handlers.runSearchPackage)
-    }
-
-    cmd.IsHidden <- true
-    cmd
-
-  let ShowPackage =
-
-    let buildArgs
-      (ctx: InvocationContext, package: string)
-      : ShowPackageOptions * CancellationToken =
-      { package = package }, ctx.GetCancellationToken()
-
-    let cmd = command "show" {
-      description
-        "Shows information about a package if the name matches an existing one"
-
-      inputs(Input.Context(), PackageInputs.package)
-      setHandler(buildArgs >> Handlers.runShowPackage)
-    }
-
-    cmd.IsHidden <- true
-    cmd
 
   let RemovePackage =
 
-    let buildArgs
+    let handleCommand
       (ctx: InvocationContext, package: string, alias: string option)
-      : RemovePackageOptions * CancellationToken =
-      { package = package; alias = alias }, ctx.GetCancellationToken()
+      =
+      let options = { package = package; alias = alias }
+      Handlers.runRemovePackage options (ctx.GetCancellationToken())
 
     command "remove" {
       description "removes a package from the "
 
       inputs(Input.Context(), PackageInputs.package, PackageInputs.alias)
-      setHandler(buildArgs >> Handlers.runRemovePackage)
+      setHandler handleCommand
     }
 
   let AddPackage =
 
-    let buildArgs
+    let handleCommand
       (
         ctx: InvocationContext,
         source: PkgManager.DownloadProvider voption,
         package: string,
         version: string option,
         alias: string option
-      ) : AddPackageOptions * CancellationToken =
-      {
+      ) =
+      let options = {
         package = package
         version = version
         source = source |> Option.ofValueOption
         alias = alias
-      },
-      ctx.GetCancellationToken()
+      }
+
+      Handlers.runAddPackage options (ctx.GetCancellationToken())
 
     command "add" {
       description
@@ -547,65 +512,24 @@ module Commands =
         PackageInputs.alias
       )
 
-      setHandler(buildArgs >> Handlers.runAddPackage)
+      setHandler handleCommand
     }
-
-  let AddResolution =
-
-    let buildArgs(import: string, resolution: string option, remove: bool) =
-      match resolution with
-      | Some resolution -> {
-          operation = AddOrUpdate(UMX.tag import, UMX.tag resolution)
-        }
-      | None ->
-        if remove then
-          { operation = Remove import }
-        else
-          failwith "This should not have happened"
-
-    let cmd = command "resolution" {
-      addAlias "custom-path"
-
-      description
-        $"Saves a manual resolution in the {Constants.PerlaConfigName} file that will be included in the import map for this application."
-
-      inputs(
-        PackageInputs.import,
-        PackageInputs.resolution,
-        PackageInputs.removeResolution
-      )
-
-      setHandler(buildArgs >> Handlers.runAddResolution)
-    }
-
-    cmd.AddValidator(fun cmdResult ->
-      let resolution = PackageInputs.resolution.GetValue cmdResult
-
-      let remove = PackageInputs.removeResolution.GetValue cmdResult
-
-      match resolution, remove with
-      | Some _, true ->
-        cmdResult.ErrorMessage <-
-          "A resolution has been provided together with the '--remove' option, if you intend to add it, remove the flag otherwise remove the resolution and just use the flag."
-      | None, false ->
-        cmdResult.ErrorMessage <-
-          "You have to provide the '--remove' option to remove this import when the resolution is not present."
-      | _, _ -> ())
-
-    cmd
 
   let ListPackages =
 
-    let buildArgs(asNpm: bool option) : ListPackagesOptions = {
-      format =
-        asNpm
-        |> Option.map(fun asNpm ->
-          if asNpm then
-            ListFormat.TextOnly
-          else
-            ListFormat.HumanReadable)
-        |> Option.defaultValue ListFormat.HumanReadable
-    }
+    let handleCommand(ctx: InvocationContext, asNpm: bool option) =
+      let args = {
+        format =
+          asNpm
+          |> Option.map(fun asNpm ->
+            if asNpm then
+              ListFormat.TextOnly
+            else
+              ListFormat.HumanReadable)
+          |> Option.defaultValue ListFormat.HumanReadable
+      }
+
+      Handlers.runListPackages args (ctx.GetCancellationToken())
 
     command "list" {
       addAlias "ls"
@@ -613,33 +537,13 @@ module Commands =
       description
         "Lists the current dependencies in a table or an npm style json string"
 
-      inputs PackageInputs.showAsNpm
-      setHandler(buildArgs >> Handlers.runListPackages)
-    }
-
-  let RestoreImportMap =
-
-    let buildArgs
-      (ctx: InvocationContext, source: PkgManager.DownloadProvider voption)
-      : RestoreOptions * CancellationToken =
-      {
-        source = source |> Option.ofValueOption
-      },
-      ctx.GetCancellationToken()
-
-    command "regenerate" {
-      addAlias "restore"
-
-      description
-        "Restore the import map based on the selected mode, defaults to production"
-
-      inputs(Input.Context(), SharedInputs.source)
-      setHandler(buildArgs >> Handlers.runRestoreImportMap)
+      inputs(Input.Context(), PackageInputs.showAsNpm)
+      setHandler handleCommand
     }
 
   let Template =
 
-    let buildArgs
+    let handleCommand
       (
         ctx: InvocationContext,
         name: string option,
@@ -647,7 +551,7 @@ module Commands =
         update: bool option,
         remove: bool option,
         format: ListFormat
-      ) : TemplateRepositoryOptions * CancellationToken =
+      ) =
       let operation =
         let remove =
           remove
@@ -677,11 +581,12 @@ module Commands =
         |> Option.orElse add
         |> Option.defaultValue format
 
-      {
+      let options = {
         fullRepositoryName = name
         operation = operation
-      },
-      ctx.GetCancellationToken()
+      }
+
+      Handlers.runTemplate options (ctx.GetCancellationToken())
 
     let template = command "templates" {
       addAlias "t"
@@ -698,26 +603,27 @@ module Commands =
         TemplateInputs.displayMode
       )
 
-      setHandler(buildArgs >> Handlers.runTemplate)
+      setHandler handleCommand
     }
 
     template
 
   let NewProject =
 
-    let buildArgs
+    let handleCommand
       (
         ctx: InvocationContext,
         name: string,
         byId: string option,
         byShortName: string option
-      ) : ProjectOptions * CancellationToken =
-      {
+      ) =
+      let options = {
         projectName = name
         byId = byId
         byShortName = byShortName
-      },
-      ctx.GetCancellationToken()
+      }
+
+      Handlers.runNew options (ctx.GetCancellationToken())
 
     command "new" {
       addAliases [ "n"; "create"; "generate" ]
@@ -732,12 +638,12 @@ module Commands =
         ProjectInputs.byShortName
       )
 
-      setHandler(buildArgs >> Handlers.runNew)
+      setHandler handleCommand
     }
 
   let Test =
 
-    let buildArgs
+    let handleCommand
       (
         ctx: InvocationContext,
         browsers: Browser array,
@@ -746,8 +652,8 @@ module Commands =
         headless: bool option,
         watch: bool option,
         sequential: bool option
-      ) : TestingOptions * CancellationToken =
-      {
+      ) =
+      let options = {
         browsers = if Array.isEmpty browsers then None else Some browsers
         files = if files |> Array.isEmpty then None else Some files
         skip = if skips |> Array.isEmpty then None else Some skips
@@ -758,8 +664,9 @@ module Commands =
           |> Option.map(fun sequential ->
             if sequential then Some BrowserMode.Sequential else None)
           |> Option.flatten
-      },
-      ctx.GetCancellationToken()
+      }
+
+      Handlers.runTesting options (ctx.GetCancellationToken())
 
     let cmd = command "test" {
       description "Runs client side tests in a headless browser"
@@ -774,7 +681,7 @@ module Commands =
         TestingInputs.sequential
       )
 
-      setHandler(buildArgs >> Handlers.runTesting)
+      setHandler handleCommand
     }
 
     cmd.IsHidden <- true
@@ -782,10 +689,15 @@ module Commands =
 
   let Describe =
 
-    let buildArgs(properties: string[] option, current: bool) = {
-      properties = properties
-      current = current
-    }
+    let handleCommand
+      (ctx: InvocationContext, properties: string[] option, current: bool)
+      =
+      let args = {
+        properties = properties
+        current = current
+      }
+
+      Handlers.runDescribePerla args (ctx.GetCancellationToken())
 
     command "describe" {
       addAlias "ds"
@@ -793,6 +705,11 @@ module Commands =
       description
         "Describes the perla.json file or it's properties as requested"
 
-      inputs(DescribeInputs.perlaProperties, DescribeInputs.describeCurrent)
-      setHandler(buildArgs >> Handlers.runDescribePerla)
+      inputs(
+        Input.Context(),
+        DescribeInputs.perlaProperties,
+        DescribeInputs.describeCurrent
+      )
+
+      setHandler handleCommand
     }

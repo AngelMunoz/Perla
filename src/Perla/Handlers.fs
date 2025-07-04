@@ -17,6 +17,8 @@ open Zio
 open FSharp.Control
 open FSharp.Control.Reactive
 
+open IcedTasks
+
 open FSharp.UMX
 open FsToolkit.ErrorHandling
 
@@ -487,9 +489,9 @@ module Testing =
 [<RequireQualifiedAccess>]
 module Handlers =
   open Perla.Database
-  open Perla.Extensibility
 
-  let runSetup(options: SetupOptions, cancellationToken: CancellationToken) = task {
+  let runSetup(options: SetupOptions) = cancellableTask {
+    let! token = CancellableTask.getCancellationToken()
     Logger.log "Perla will set up the following resources:"
     Logger.log "- Esbuild"
     Logger.log "- Default Templates"
@@ -497,11 +499,7 @@ module Handlers =
     Logger.log
       "After that you should be able to run perla commands without extra effort."
 
-    do!
-      FileSystem.SetupEsbuild(
-        UMX.tag Constants.Esbuild_Version,
-        cancellationToken
-      )
+    do! FileSystem.SetupEsbuild(UMX.tag Constants.Esbuild_Version, token)
 
     Checks.SaveEsbuildBinPresent(UMX.tag Constants.Esbuild_Version) |> ignore
 
@@ -553,13 +551,10 @@ module Handlers =
       Logger.log "Skip installing templates"
       Checks.SaveSetup() |> ignore
       return 0
-
-
   }
 
-  let runNew
-    (options: ProjectOptions, cancellationToken: CancellationToken)
-    : Task<int> =
+  let runNew(options: ProjectOptions) = cancellableTask {
+    let! cancellationToken = CancellableTask.getCancellationToken()
     Logger.log "Creating new project..."
     let mutable mentionQuickCommand = false
 
@@ -675,147 +670,143 @@ module Handlers =
         else
           Task.FromResult None
 
-    task {
-      let! item = selectedItem
+    let! item = selectedItem
 
-      match item with
-      | Some item ->
-        let scriptContent =
-          Templates.GetTemplateScriptContent(TemplateScriptKind.Template item)
-          |> Option.orElseWith(fun () -> option {
-            let! repo = Templates.FindOne(TemplateSearchKind.Id item.parent)
+    match item with
+    | Some item ->
+      let scriptContent =
+        Templates.GetTemplateScriptContent(TemplateScriptKind.Template item)
+        |> Option.orElseWith(fun () -> option {
+          let! repo = Templates.FindOne(TemplateSearchKind.Id item.parent)
 
-            return!
-              TemplateScriptKind.Repository repo
-              |> Templates.GetTemplateScriptContent
-          })
+          return!
+            TemplateScriptKind.Repository repo
+            |> Templates.GetTemplateScriptContent
+        })
 
-        let targetPath =
-          $"./{options.projectName}" |> Path.GetFullPath |> UMX.tag<UserPath>
+      let targetPath =
+        $"./{options.projectName}" |> Path.GetFullPath |> UMX.tag<UserPath>
 
-        FileSystem.WriteTplRepositoryToDisk(
-          item.fullPath,
-          targetPath,
-          ?payload = scriptContent
-        )
+      FileSystem.WriteTplRepositoryToDisk(
+        item.fullPath,
+        targetPath,
+        ?payload = scriptContent
+      )
 
 
-        if mentionQuickCommand then
-          let ffCmd =
-            $"perla new [blue]<my-project-name>[/] [yellow]-t {item.shortName}[/]"
+      if mentionQuickCommand then
+        let ffCmd =
+          $"perla new [blue]<my-project-name>[/] [yellow]-t {item.shortName}[/]"
 
-          let groupCmd =
-            $"perla new [blue]<my-project-name>[/] [yellow]-id {item.group}[/]"
-
-          Logger.log(
-            $"You can run this template directly with:\n{ffCmd}\n{groupCmd}",
-            escape = false
-          )
-
-        let chdir = $"cd ./{options.projectName}"
-        let serve = "perla serve"
+        let groupCmd =
+          $"perla new [blue]<my-project-name>[/] [yellow]-id {item.group}[/]"
 
         Logger.log(
-          $"Project [green]{options.projectName}[/] created!, to get started run:\n{chdir}\n{serve}",
+          $"You can run this template directly with:\n{ffCmd}\n{groupCmd}",
           escape = false
         )
 
-        return 0
+      let chdir = $"cd ./{options.projectName}"
+      let serve = "perla serve"
 
-      | None ->
-        Logger.log "No selection was available..."
+      Logger.log(
+        $"Project [green]{options.projectName}[/] created!, to get started run:\n{chdir}\n{serve}",
+        escape = false
+      )
 
-        Logger.log
-          "please check for typos or run 'perla new <my-project-name>' to run the templating wizard"
+      return 0
+
+    | None ->
+      Logger.log "No selection was available..."
+
+      Logger.log
+        "please check for typos or run 'perla new <my-project-name>' to run the templating wizard"
+
+      return 1
+  }
+
+  let runTemplate(options: TemplateRepositoryOptions) = cancellableTask {
+    let template = voption {
+      let! username, repository, _ =
+        parseFullRepositoryName options.fullRepositoryName
+
+      return!
+        TemplateSearchKind.FullName(username, repository) |> Templates.FindOne
+    }
+
+    let updateRepo() = cancellableTask {
+      match template with
+      | ValueSome template ->
+        Logger.log $"Template {template.ToFullNameWithBranch} already exists."
+
+        match!
+          Templates.AddOrUpdate(Templates.TemplateOperation.Update template)
+        with
+        | Ok() -> return 0
+        | Error err ->
+          Logger.log(err, escape = false)
+          return 1
+      | ValueNone ->
+        Logger.log "We were unable to parse the repository name."
+
+        Logger.log(
+          "please ensure that the repository name is in the format: [bold blue]username/repository:branch[/]",
+          escape = false
+        )
 
         return 1
     }
 
-  let runTemplate
-    (options: TemplateRepositoryOptions, cancellationToken: CancellationToken)
-    =
-    task {
-      let template = voption {
-        let! username, repository, _ =
-          parseFullRepositoryName options.fullRepositoryName
-
-        return!
-          TemplateSearchKind.FullName(username, repository) |> Templates.FindOne
-      }
-
-      let updateRepo() = task {
-        match template with
-        | ValueSome template ->
-          Logger.log $"Template {template.ToFullNameWithBranch} already exists."
-
-          match!
-            Templates.AddOrUpdate(Templates.TemplateOperation.Update template)
-          with
-          | Ok() -> return 0
-          | Error err ->
-            Logger.log(err, escape = false)
-            return 1
-        | ValueNone ->
-          Logger.log "We were unable to parse the repository name."
-
-          Logger.log(
-            "please ensure that the repository name is in the format: [bold blue]username/repository:branch[/]",
-            escape = false
-          )
-
+    match options.operation with
+    | RunTemplateOperation.List listFormat ->
+      return Templates.List { format = listFormat }
+    | RunTemplateOperation.Add ->
+      match parseFullRepositoryName options.fullRepositoryName with
+      | ValueSome template ->
+        match!
+          Templates.AddOrUpdate(Templates.TemplateOperation.Add template)
+        with
+        | Ok() -> return 0
+        | Error err ->
+          Logger.log(err, escape = false)
           return 1
-      }
+      | ValueNone ->
+        Logger.log "We were unable to parse the repository name."
 
-      match options.operation with
-      | RunTemplateOperation.List listFormat ->
-        return Templates.List { format = listFormat }
-      | RunTemplateOperation.Add ->
-        match parseFullRepositoryName options.fullRepositoryName with
-        | ValueSome template ->
-          match!
-            Templates.AddOrUpdate(Templates.TemplateOperation.Add template)
-          with
-          | Ok() -> return 0
-          | Error err ->
-            Logger.log(err, escape = false)
-            return 1
-        | ValueNone ->
-          Logger.log "We were unable to parse the repository name."
+        Logger.log(
+          "please ensure that the repository name is in the format: [bold blue]username/repository:branch[/]",
+          escape = false
+        )
 
-          Logger.log(
-            "please ensure that the repository name is in the format: [bold blue]username/repository:branch[/]",
-            escape = false
-          )
+        return 1
+    | RunTemplateOperation.Update -> return! updateRepo()
+    | RunTemplateOperation.Update
+    | RunTemplateOperation.Add when template.IsSome -> return! updateRepo()
+    | RunTemplateOperation.Remove ->
+      match template with
+      | ValueSome template ->
+        Logger.log $"Removing template '{template.ToFullNameWithBranch}'..."
 
+        match Templates.Remove(template) with
+        | Ok() ->
+          Logger.log "Template removed successfully."
+          return 0
+        | Error err ->
+          Logger.log(err, escape = false)
           return 1
-      | RunTemplateOperation.Update -> return! updateRepo()
-      | RunTemplateOperation.Update
-      | RunTemplateOperation.Add when template.IsSome -> return! updateRepo()
-      | RunTemplateOperation.Remove ->
-        match template with
-        | ValueSome template ->
-          Logger.log $"Removing template '{template.ToFullNameWithBranch}'..."
+      | ValueNone ->
+        Logger.log "We were unable to parse the repository name."
 
-          match Templates.Remove(template) with
-          | Ok() ->
-            Logger.log "Template removed successfully."
-            return 0
-          | Error err ->
-            Logger.log(err, escape = false)
-            return 1
-        | ValueNone ->
-          Logger.log "We were unable to parse the repository name."
+        Logger.log(
+          "please ensure that the repository name is in the format: [bold blue]username/repository:branch[/]",
+          escape = false
+        )
 
-          Logger.log(
-            "please ensure that the repository name is in the format: [bold blue]username/repository:branch[/]",
-            escape = false
-          )
+        return 1
+  }
 
-          return 1
-    }
-
-  let runBuild(options: BuildOptions, cancellationToken: CancellationToken) = task {
-
+  let runBuild(options: BuildOptions) = cancellableTask {
+    let! cancellationToken = CancellableTask.getCancellationToken()
     let config = ConfigurationManager.CurrentConfig
 
     do! Fable.StartFable(config, cancellationToken)
@@ -938,7 +929,8 @@ module Handlers =
     return 0
   }
 
-  let runServe(options: ServeOptions, cancellationToken: CancellationToken) = task {
+  let runServe(options: ServeOptions) = cancellableTask {
+    let! cancellationToken = CancellableTask.getCancellationToken()
 
     let cliArgs = [
       match options.port with
@@ -1031,207 +1023,196 @@ module Handlers =
     return 0
   }
 
-  let runTesting
-    (options: TestingOptions, cancellationToken: CancellationToken)
-    =
-    task {
+  let runTesting(options: TestingOptions) = cancellableTask {
+    let! cancellationToken = CancellableTask.getCancellationToken()
 
-      ConfigurationManager.UpdateFromCliArgs(
-        testingOptions = [
-          match options.browsers with
-          | Some value -> TestingField.Browsers value
-          | None -> ()
-          match options.files with
-          | Some value -> TestingField.Includes value
-          | None -> ()
-          match options.skip with
-          | Some value -> TestingField.Excludes value
-          | None -> ()
-          match options.watch with
-          | Some value -> TestingField.Watch value
-          | None -> ()
-          match options.headless with
-          | Some value -> TestingField.Headless value
-          | None -> ()
-          match options.browserMode with
-          | Some value -> TestingField.BrowserMode value
-          | None -> ()
-        ]
+    ConfigurationManager.UpdateFromCliArgs(
+      testingOptions = [
+        match options.browsers with
+        | Some value -> TestingField.Browsers value
+        | None -> ()
+        match options.files with
+        | Some value -> TestingField.Includes value
+        | None -> ()
+        match options.skip with
+        | Some value -> TestingField.Excludes value
+        | None -> ()
+        match options.watch with
+        | Some value -> TestingField.Watch value
+        | None -> ()
+        match options.headless with
+        | Some value -> TestingField.Headless value
+        | None -> ()
+        match options.browserMode with
+        | Some value -> TestingField.BrowserMode value
+        | None -> ()
+      ]
+    )
+
+    let config = {
+      ConfigurationManager.CurrentConfig with
+          mountDirectories =
+            ConfigurationManager.CurrentConfig.mountDirectories
+            |> Map.add
+              (UMX.tag<ServerUrl> "/tests")
+              (UMX.tag<UserPath> "./tests")
+    }
+
+    let isWatch = config.testing.watch
+
+    let fableEvents =
+      match config.testing.fable with
+      | Some fable -> Fable.Observe(fable, isWatch)
+      | None -> Observable.single FableEvent.WaitingForChanges
+
+    fableEvents
+    |> Observable.add(fun events ->
+      match events with
+      | FableEvent.Log msg -> Logger.log(msg.EscapeMarkup())
+      | FableEvent.ErrLog msg ->
+        Logger.log $"[bold red]{msg.EscapeMarkup()}[/]"
+      | FableEvent.WaitingForChanges -> ())
+
+    do! FsMonitor.FirstCompileDone isWatch fableEvents
+
+    match PluginLoader.Load<FileSystem, Esbuild>(config.esbuild) with
+    | Ok plugins -> Logger.log $"Loaded {plugins.Length} plugins"
+    | Error err ->
+      for err in err do
+        match err with
+        | NoPluginFound name -> Logger.log($"Plugin {name} not found")
+        | EvaluationFailed(ex) ->
+          Logger.log($"Failed to evaluate plugin", ex = ex)
+        | SessionExists
+        | BoundValueMissing -> Logger.log "Failed to load plugins"
+        | AlreadyLoaded name -> Logger.log($"Plugin {name} already loaded")
+
+    do! VirtualFileSystem.Mount config
+
+    let perlaChanges =
+      FileSystem.ObservePerlaFiles(UMX.untag config.index, cancellationToken)
+
+    let fileChanges =
+      FsMonitor.FileChanges(
+        UMX.untag config.index,
+        config.mountDirectories,
+        perlaChanges,
+        config.plugins
+      )
+    // TODO: Grab these from esbuild
+    let compilerErrors = Observable.empty
+
+    let config = {
+      config with
+          devServer = {
+            config.devServer with
+                liveReload = isWatch
+          }
+    }
+
+    let events = Subject<TestEvent>.broadcast
+
+    let! dependencies =
+      Dependencies.GetMapAndDependencies Seq.empty
+      |> TaskResult.map(fun (deps, map) ->
+        let map = map.AddResolutions(config.paths).AddEnvResolution config
+        deps, map)
+      |> TaskResult.defaultValue(
+        Seq.empty,
+        FileSystem.GetImportMap().AddResolutions(config.paths).AddEnvResolution
+          config
       )
 
-      let config = {
-        ConfigurationManager.CurrentConfig with
-            mountDirectories =
-              ConfigurationManager.CurrentConfig.mountDirectories
-              |> Map.add
-                (UMX.tag<ServerUrl> "/tests")
-                (UMX.tag<UserPath> "./tests")
-      }
+    let mutable app =
+      Server.GetTestingApp(
+        config,
+        dependencies,
+        events,
+        fileChanges,
+        compilerErrors,
+        config.testing.includes
+      )
+    // Keep this before initializing the server
+    // otherwise it will always say that the port is occupied
+    let http, _ =
+      Server.GetServerURLs
+        config.devServer.host
+        config.devServer.port
+        config.devServer.useSSL
 
-      let isWatch = config.testing.watch
+    do! app.StartAsync(cancellationToken)
 
-      let fableEvents =
-        match config.testing.fable with
-        | Some fable -> Fable.Observe(fable, isWatch)
-        | None -> Observable.single FableEvent.WaitingForChanges
+    perlaChanges
+    |> Observable.choose (function
+      | PerlaFileChange.PerlaConfig -> Some()
+      | _ -> None)
+    |> Observable.map(fun _ -> app.StopAsync() |> Async.AwaitTask)
+    |> Observable.switchAsync
+    |> Observable.map(fun _ ->
+      ConfigurationManager.UpdateFromFile()
+      app <- Server.GetServerApp(config, fileChanges, compilerErrors)
+      app.StartAsync(cancellationToken) |> Async.AwaitTask)
+    |> Observable.switchAsync
+    |> Observable.add ignore
 
-      fableEvents
-      |> Observable.add(fun events ->
-        match events with
-        | FableEvent.Log msg -> Logger.log(msg.EscapeMarkup())
-        | FableEvent.ErrLog msg ->
-          Logger.log $"[bold red]{msg.EscapeMarkup()}[/]"
-        | FableEvent.WaitingForChanges -> ())
+    use! pl = Playwright.CreateAsync()
 
-      do! FsMonitor.FirstCompileDone isWatch fableEvents
+    let testConfig = config.testing
 
-      match PluginLoader.Load<FileSystem, Esbuild>(config.esbuild) with
-      | Ok plugins -> Logger.log $"Loaded {plugins.Length} plugins"
-      | Error err ->
-        for err in err do
-          match err with
-          | NoPluginFound name -> Logger.log($"Plugin {name} not found")
-          | EvaluationFailed(ex) ->
-            Logger.log($"Failed to evaluate plugin", ex = ex)
-          | SessionExists
-          | BoundValueMissing -> Logger.log "Failed to load plugins"
-          | AlreadyLoaded name -> Logger.log($"Plugin {name} already loaded")
-
-      do! VirtualFileSystem.Mount config
-
-      let perlaChanges =
-        FileSystem.ObservePerlaFiles(UMX.untag config.index, cancellationToken)
-
-      let fileChanges =
-        FsMonitor.FileChanges(
-          UMX.untag config.index,
-          config.mountDirectories,
-          perlaChanges,
-          config.plugins
-        )
-      // TODO: Grab these from esbuild
-      let compilerErrors = Observable.empty
-
-      let config = {
-        config with
-            devServer = {
-              config.devServer with
-                  liveReload = isWatch
-            }
-      }
-
-      let events = Subject<TestEvent>.broadcast
-
-      let! dependencies =
-        Dependencies.GetMapAndDependencies Seq.empty
-        |> TaskResult.map(fun (deps, map) ->
-          let map = map.AddResolutions(config.paths).AddEnvResolution config
-          deps, map)
-        |> TaskResult.defaultValue(
-          Seq.empty,
-          FileSystem
-            .GetImportMap()
-            .AddResolutions(config.paths)
-            .AddEnvResolution
-            config
+    if not isWatch then
+      do!
+        Testing.RunOnce(
+          pl,
+          testConfig.browserMode,
+          testConfig.browsers,
+          testConfig.headless,
+          http
         )
 
-      let mutable app =
-        Server.GetTestingApp(
-          config,
-          dependencies,
-          events,
+      events.OnCompleted()
+
+      events
+      |> Observable.toEnumerable
+      |> Seq.toList
+      |> Testing.BuildReport
+      |> Print.Report
+
+      return 0
+    else
+      let browser = config.testing.browsers |> Seq.head
+      let fileChanges = fileChanges |> Observable.map ignore
+
+      do!
+        Testing.LiveRun(
+          pl,
+          browser,
+          testConfig.headless,
+          http,
           fileChanges,
-          compilerErrors,
-          config.testing.includes
+          events,
+          cancellationToken
         )
-      // Keep this before initializing the server
-      // otherwise it will always say that the port is occupied
-      let http, _ =
-        Server.GetServerURLs
-          config.devServer.host
-          config.devServer.port
-          config.devServer.useSSL
 
-      do! app.StartAsync(cancellationToken)
+      events.OnCompleted()
 
-      perlaChanges
-      |> Observable.choose (function
-        | PerlaFileChange.PerlaConfig -> Some()
-        | _ -> None)
-      |> Observable.map(fun _ -> app.StopAsync() |> Async.AwaitTask)
-      |> Observable.switchAsync
-      |> Observable.map(fun _ ->
-        ConfigurationManager.UpdateFromFile()
-        app <- Server.GetServerApp(config, fileChanges, compilerErrors)
-        app.StartAsync(cancellationToken) |> Async.AwaitTask)
-      |> Observable.switchAsync
-      |> Observable.add ignore
+      events
+      |> Observable.toEnumerable
+      |> Seq.toList
+      |> Testing.BuildReport
+      |> Print.Report
 
-      use! pl = Playwright.CreateAsync()
-
-      let testConfig = config.testing
-
-      if not isWatch then
-        do!
-          Testing.RunOnce(
-            pl,
-            testConfig.browserMode,
-            testConfig.browsers,
-            testConfig.headless,
-            http
-          )
-
-        events.OnCompleted()
-
-        events
-        |> Observable.toEnumerable
-        |> Seq.toList
-        |> Testing.BuildReport
-        |> Print.Report
-
-        return 0
-      else
-        let browser = config.testing.browsers |> Seq.head
-        let fileChanges = fileChanges |> Observable.map ignore
-
-        do!
-          Testing.LiveRun(
-            pl,
-            browser,
-            testConfig.headless,
-            http,
-            fileChanges,
-            events,
-            cancellationToken
-          )
-
-        events.OnCompleted()
-
-        events
-        |> Observable.toEnumerable
-        |> Seq.toList
-        |> Testing.BuildReport
-        |> Print.Report
-
-        return 0
-    }
-
-  let runSearchPackage
-    (options: SearchOptions, cancellationToken: CancellationToken)
-    =
-    task {
-      do! Dependencies.Search(options.package, options.page)
       return 0
-    }
+  }
 
-  let runShowPackage
-    (options: ShowPackageOptions, cancellationToken: CancellationToken)
-    =
-    task {
-      do! Dependencies.Show(options.package)
-      return 0
-    }
+  let runSearchPackage(options: SearchOptions) = cancellableTask {
+    do! Dependencies.Search(options.package, options.page)
+    return 0
+  }
+
+  let runShowPackage(options: ShowPackageOptions) = cancellableTask {
+    do! Dependencies.Show(options.package)
+    return 0
+  }
 
   let runAddResolution(options: PathsOptions) =
     let config = ConfigurationManager.CurrentConfig
@@ -1254,143 +1235,136 @@ module Handlers =
     // add the updated custom resolutions to the import map
     FileSystem.WriteImportMap(importMap.AddResolutions(updatedPaths)) |> ignore
 
-    Task.FromResult 0
+    CancellableTask.singleton 0
 
-  let runAddPackage
-    (options: AddPackageOptions, cancellationToken: CancellationToken)
-    =
-    task {
-      ConfigurationManager.UpdateFromCliArgs(?provider = options.source)
+  let runAddPackage(options: AddPackageOptions) = cancellableTask {
+    ConfigurationManager.UpdateFromCliArgs(?provider = options.source)
 
-      let config = ConfigurationManager.CurrentConfig
-      let package, packageVersion = parsePackageName options.package
+    let config = ConfigurationManager.CurrentConfig
+    let package, packageVersion = parsePackageName options.package
 
-      let version =
-        match packageVersion with
-        | Some version -> $"@{version}"
-        | None -> ""
+    let version =
+      match packageVersion with
+      | Some version -> $"@{version}"
+      | None -> ""
 
-      let looksLikeCustomResolution =
-        package
-        |> Seq.filter(fun c -> c = '/')
-        // This should account for packages like:
-        // - @shoelace-style/shoelace/dist/components/button/button.js
-        // - lit/directives/join.js
-        |> Seq.length > 1
+    let looksLikeCustomResolution =
+      package
+      |> Seq.filter(fun c -> c = '/')
+      // This should account for packages like:
+      // - @shoelace-style/shoelace/dist/components/button/button.js
+      // - lit/directives/join.js
+      |> Seq.length > 1
 
-      let addAsResolution =
-        if options.alias.IsSome then
+    let addAsResolution =
+      if options.alias.IsSome then
+        true
+      else
+        looksLikeCustomResolution
+        && AnsiConsole.Confirm(
+          $"[bold yellow]{package}[/] looks like a nested or a custom import. Do you want to add it as a custom path?",
           true
-        else
-          looksLikeCustomResolution
-          && AnsiConsole.Confirm(
-            $"[bold yellow]{package}[/] looks like a nested or a custom import. Do you want to add it as a custom path?",
-            true
-          )
-
-      let importMap = FileSystem.GetImportMap().RemoveResolutions(config.paths)
-
-      Logger.log "Updating Import Map..."
-
-      let! map =
-        Logger.spinner(
-          $"Adding: [bold yellow]{package}{version}[/]",
-          Dependencies.Add($"{package}{version}", importMap)
         )
 
-      match map, addAsResolution with
-      | Ok map, true ->
-        match map.imports |> Map.tryFind package with
-        | Some resolution ->
-          let name = defaultArg options.alias package
+    let importMap = FileSystem.GetImportMap().RemoveResolutions(config.paths)
 
-          let deps, devDeps =
-            Dependencies.LocateDependenciesFromMapAndConfig(map, config)
+    Logger.log "Updating Import Map..."
 
-          ConfigurationManager.WriteFieldsToFile [
-            PerlaWritableField.Dependencies deps
-          ]
+    let! map =
+      Logger.spinner(
+        $"Adding: [bold yellow]{package}{version}[/]",
+        Dependencies.Add($"{package}{version}", importMap)
+      )
 
-          return!
-            runAddResolution {
-              operation =
-                AddOrUpdate(
-                  UMX.tag<BareImport> name,
-                  UMX.tag<ResolutionUrl> resolution
-                )
-            }
-        | None ->
-          Logger.log
-            "We were unable to find the package in the import map. This is likely a bug, please report it."
+    match map, addAsResolution with
+    | Ok map, true ->
+      match map.imports |> Map.tryFind package with
+      | Some resolution ->
+        let name = defaultArg options.alias package
 
-          return 1
-      | Ok map, false ->
-        let newDep = {
-          package = package
-          version =
-            packageVersion |> Option.defaultValue "0.0.0" |> UMX.tag<Semver>
+        let deps, devDeps =
+          Dependencies.LocateDependenciesFromMapAndConfig(map, config)
+
+        ConfigurationManager.WriteFieldsToFile [
+          PerlaWritableField.Dependencies deps
+        ]
+
+        return!
+          runAddResolution {
+            operation =
+              AddOrUpdate(
+                UMX.tag<BareImport> name,
+                UMX.tag<ResolutionUrl> resolution
+              )
+          }
+      | None ->
+        Logger.log
+          "We were unable to find the package in the import map. This is likely a bug, please report it."
+
+        return 1
+    | Ok map, false ->
+      let newDep = {
+        package = package
+        version =
+          packageVersion |> Option.defaultValue "0.0.0" |> UMX.tag<Semver>
+      }
+
+      let dependencies =
+        let config = {
+          config with
+              dependencies = [ yield! config.dependencies; newDep ] |> Set
         }
 
-        let dependencies =
-          let config = {
+        let deps, _ =
+          Dependencies.LocateDependenciesFromMapAndConfig(map, config)
+
+        PerlaWritableField.Dependencies deps
+
+      ConfigurationManager.WriteFieldsToFile [ dependencies ]
+
+      FileSystem.WriteImportMap(map.AddResolutions(config.paths)) |> ignore
+
+      return 0
+    | Error err, _ ->
+      Logger.log($"[bold red]{err}[/]", escape = false)
+      return 1
+  }
+
+  let runRemovePackage(options: RemovePackageOptions) = cancellableTask {
+    let name = options.package
+    Logger.log($"Removing: [red]{name}[/]", escape = false)
+    let config = ConfigurationManager.CurrentConfig
+
+    let map = FileSystem.GetImportMap().RemoveResolutions(config.paths)
+
+    let dependencies, _ =
+      let deps, devDeps =
+        Dependencies.LocateDependenciesFromMapAndConfig(
+          map,
+          {
             config with
-                dependencies = [ yield! config.dependencies; newDep ] |> Set
+                dependencies =
+                  config.dependencies |> Set.filter(fun d -> d.package <> name)
           }
+        )
 
-          let deps, _ =
-            Dependencies.LocateDependenciesFromMapAndConfig(map, config)
+      deps, devDeps
 
-          PerlaWritableField.Dependencies deps
+    ConfigurationManager.WriteFieldsToFile [
+      PerlaWritableField.Dependencies dependencies
+    ]
 
-        ConfigurationManager.WriteFieldsToFile [ dependencies ]
+    match! Dependencies.Restore(dependencies |> Seq.map _.package) with
+    | Ok map ->
+      FileSystem.WriteImportMap(map.AddResolutions(config.paths)) |> ignore
 
-        FileSystem.WriteImportMap(map.AddResolutions(config.paths)) |> ignore
+      return 0
+    | Error err ->
+      Logger.log $"[bold red]{err}[/]"
+      return 1
+  }
 
-        return 0
-      | Error err, _ ->
-        Logger.log($"[bold red]{err}[/]", escape = false)
-        return 1
-    }
-
-  let runRemovePackage
-    (options: RemovePackageOptions, cancellationToken: CancellationToken)
-    =
-    task {
-      let name = options.package
-      Logger.log($"Removing: [red]{name}[/]", escape = false)
-      let config = ConfigurationManager.CurrentConfig
-
-      let map = FileSystem.GetImportMap().RemoveResolutions(config.paths)
-
-      let dependencies, _ =
-        let deps, devDeps =
-          Dependencies.LocateDependenciesFromMapAndConfig(
-            map,
-            {
-              config with
-                  dependencies =
-                    config.dependencies
-                    |> Set.filter(fun d -> d.package <> name)
-            }
-          )
-
-        deps, devDeps
-
-      ConfigurationManager.WriteFieldsToFile [
-        PerlaWritableField.Dependencies dependencies
-      ]
-
-      match! Dependencies.Restore(dependencies |> Seq.map _.package) with
-      | Ok map ->
-        FileSystem.WriteImportMap(map.AddResolutions(config.paths)) |> ignore
-
-        return 0
-      | Error err ->
-        Logger.log $"[bold red]{err}[/]"
-        return 1
-    }
-
-  let runListPackages(options: ListPackagesOptions) = task {
+  let runListPackages(options: ListPackagesOptions) = cancellableTask {
     let config = ConfigurationManager.CurrentConfig
 
     match options.format with
@@ -1413,39 +1387,35 @@ module Handlers =
     return 0
   }
 
-  let runRestoreImportMap
-    (options: RestoreOptions, cancellationToken: CancellationToken)
-    =
-    task {
-      ConfigurationManager.UpdateFromCliArgs(?provider = options.source)
+  let runRestoreImportMap(options: RestoreOptions) = cancellableTask {
+    ConfigurationManager.UpdateFromCliArgs(?provider = options.source)
 
-      let config = ConfigurationManager.CurrentConfig
+    let config = ConfigurationManager.CurrentConfig
 
-      Logger.log "Regenerating import map..."
+    Logger.log "Regenerating import map..."
 
-      match!
-        Logger.spinner(
-          "Fetching dependencies...",
-          Dependencies.Restore(config.dependencies |> Seq.map _.package)
-        )
-      with
-      | Ok response ->
+    match!
+      Logger.spinner(
+        "Fetching dependencies...",
+        Dependencies.Restore(config.dependencies |> Seq.map _.package)
+      )
+    with
+    | Ok response ->
 
-        FileSystem.WriteImportMap(response.AddResolutions(config.paths))
-        |> ignore
+      FileSystem.WriteImportMap(response.AddResolutions(config.paths)) |> ignore
 
-        return 0
-      | Error err ->
-        Logger.log(
-          $"[bold red]An error happened restoring the import map:[/]",
-          escape = false
-        )
+      return 0
+    | Error err ->
+      Logger.log(
+        $"[bold red]An error happened restoring the import map:[/]",
+        escape = false
+      )
 
-        Logger.log err
-        return 1
-    }
+      Logger.log err
+      return 1
+  }
 
-  let runDescribePerla(options: DescribeOptions) = task {
+  let runDescribePerla(options: DescribeOptions) = cancellableTask {
     let {
           properties = props
           current = current
