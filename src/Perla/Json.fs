@@ -19,8 +19,7 @@ type PerlaConfigSection =
   | Fable of fable: FableConfig option
   | DevServer of devServer: DevServerConfig option
   | Build of build: BuildConfig option
-  | Dependencies of dependencies: Dependency seq option
-  | DevDependencies of devDependencies: Dependency seq option
+  | Dependencies of dependencies: PkgDependency Set option
 
 let DefaultJsonOptions() =
   JsonSerializerOptions(
@@ -129,8 +128,7 @@ module ConfigDecoders =
 
   type DecodedPerlaConfig = {
     index: string<SystemPath> option
-    runConfiguration: RunConfiguration option
-    provider: Provider option
+    provider: PkgManager.DownloadProvider option
     plugins: string list option
     build: DecodedBuild option
     devServer: DecodedDevServer option
@@ -141,8 +139,7 @@ module ConfigDecoders =
     enableEnv: bool option
     envPath: string<ServerUrl> option
     paths: Map<string<BareImport>, string<ResolutionUrl>> option
-    dependencies: Dependency seq option
-    devDependencies: Dependency seq option
+    dependencies: PkgDependency Set option
   }
 
   let FableFileDecoder: Decoder<DecodedFableConfig> =
@@ -204,13 +201,6 @@ module ConfigDecoders =
       emitEnvFile = get.Optional.Field "emitEnvFile" Decode.bool
     })
 
-  let DependencyDecoder: Decoder<Dependency> =
-    Decode.object(fun get -> {
-      name = get.Required.Field "name" Decode.string
-      version = get.Optional.Field "version" Decode.string
-      alias = get.Optional.Field "alias" Decode.string
-    })
-
   let BrowserDecoder: Decoder<Browser> =
     Decode.string
     |> Decode.andThen(fun value -> Browser.FromString value |> Decode.succeed)
@@ -239,23 +229,12 @@ module ConfigDecoders =
 
   let PerlaDecoder: Decoder<DecodedPerlaConfig> =
     Decode.object(fun get ->
-      let runConfigDecoder =
-        Decode.string
-        |> Decode.andThen (function
-          | "dev"
-          | "development" -> Decode.succeed RunConfiguration.Development
-          | "prod"
-          | "production" -> Decode.succeed RunConfiguration.Production
-          | value -> Decode.fail $"{value} is not a valid run configuration")
-
       let providerDecoder =
         Decode.string
         |> Decode.andThen (function
-          | "jspm" -> Decode.succeed Provider.Jspm
-          | "skypack" -> Decode.succeed Provider.Skypack
-          | "unpkg" -> Decode.succeed Provider.Unpkg
-          | "jsdelivr" -> Decode.succeed Provider.Jsdelivr
-          | "jspm.system" -> Decode.succeed Provider.JspmSystem
+          | "jspm" -> Decode.succeed PkgManager.DownloadProvider.JspmIo
+          | "unpkg" -> Decode.succeed PkgManager.DownloadProvider.Unpkg
+          | "jsdelivr" -> Decode.succeed PkgManager.DownloadProvider.JsDelivr
           | value -> Decode.fail $"{value} is not a valid run configuration")
 
       let directoriesDecoder =
@@ -275,12 +254,21 @@ module ConfigDecoders =
             UMX.tag<BareImport> k, UMX.tag<ResolutionUrl> v)
           |> Map.ofSeq)
 
+      let dependencyDecoder =
+        Decode.dict Decode.string
+        |> Decode.map(fun depMap ->
+          depMap
+          |> Map.toSeq
+          |> Seq.map(fun (k, v) -> {
+            package = k
+            version = UMX.tag<Semver> v
+          })
+          |> Set.ofSeq)
+
       {
         index =
           get.Optional.Field "index" Decode.string
           |> Option.map UMX.tag<SystemPath>
-        runConfiguration =
-          get.Optional.Field "runConfiguration" runConfigDecoder
         provider = get.Optional.Field "provider" providerDecoder
         plugins = get.Optional.Field "plugins" (Decode.list Decode.string)
         build = get.Optional.Field "build" BuildDecoder
@@ -292,12 +280,7 @@ module ConfigDecoders =
         envPath =
           get.Optional.Field "envPath" Decode.string
           |> Option.map UMX.tag<ServerUrl>
-        dependencies =
-          get.Optional.Field "dependencies" (Decode.list DependencyDecoder)
-          |> Option.map Seq.ofList
-        devDependencies =
-          get.Optional.Field "devDependencies" (Decode.list DependencyDecoder)
-          |> Option.map Seq.ofList
+        dependencies = get.Optional.Field "dependencies" dependencyDecoder
         mountDirectories = directoriesDecoder
         paths = pathsDecoder
       })

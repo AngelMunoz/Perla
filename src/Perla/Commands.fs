@@ -46,14 +46,15 @@ type PerlaOptions =
       Arity = ArgumentArity.ZeroOrOne
     )
 
-  static member PackageSource: Option<Provider voption> =
+  static member PackageSource: Option<PkgManager.DownloadProvider voption> =
     let parser(result: ArgumentResult) =
       match result.Tokens |> Seq.tryHead with
-      | Some token -> Provider.FromString token.Value |> ValueSome
+      | Some token ->
+        PkgManager.DownloadProvider.fromString token.Value |> ValueSome
       | None -> ValueNone
 
     let opt =
-      Option<Provider voption>(
+      Option<PkgManager.DownloadProvider voption>(
         [| "--source"; "-s" |],
         parseArgument = parser,
         description = "Version of the package to install",
@@ -72,24 +73,6 @@ type PerlaOptions =
       |]
     )
     |> ignore
-
-    opt
-
-  static member RunConfiguration: Option<RunConfiguration voption> =
-    let parser(result: ArgumentResult) =
-      match result.Tokens |> Seq.tryHead with
-      | Some token -> RunConfiguration.FromString token.Value |> ValueSome
-      | None -> ValueNone
-
-    let opt =
-      Option<RunConfiguration voption>(
-        [| "--mode"; "-m" |],
-        parseArgument = parser,
-        description = "Version of the package to install",
-        IsRequired = false
-      )
-
-    opt.FromAmong([| "dev"; "development"; "prod"; "production" |]) |> ignore
 
     opt
 
@@ -169,17 +152,9 @@ type PerlaArguments =
 
 [<RequireQualifiedAccess>]
 module SharedInputs =
-  let asDev: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "--development"; "-d"; "--dev" ],
-      "Use the dev mode configuration"
-    )
 
-  let source: HandlerInput<Provider voption> =
+  let source: HandlerInput<Perla.PkgManager.DownloadProvider voption> =
     PerlaOptions.PackageSource |> Input.OfOption
-
-  let mode: HandlerInput<RunConfiguration voption> =
-    PerlaOptions.RunConfiguration |> Input.OfOption
 
 [<RequireQualifiedAccess>]
 module DescribeInputs =
@@ -407,18 +382,11 @@ module Commands =
     let buildArgs
       (
         context: InvocationContext,
-        runAsDev: bool option,
         enablePreloads: bool option,
         rebuildImportMap: bool option,
         enablePreview: bool option
       ) =
       {
-        mode =
-          runAsDev
-          |> Option.map(fun runAsDev ->
-            match runAsDev with
-            | true -> RunConfiguration.Development
-            | false -> RunConfiguration.Production)
         enablePreloads = defaultArg enablePreloads true
         rebuildImportMap = defaultArg rebuildImportMap false
         enablePreview = defaultArg enablePreview false
@@ -431,7 +399,6 @@ module Commands =
 
       inputs(
         Input.Context(),
-        SharedInputs.asDev,
         BuildInputs.enablePreloads,
         BuildInputs.rebuildImportMap,
         BuildInputs.preview
@@ -444,23 +411,11 @@ module Commands =
     let buildArgs
       (
         context: InvocationContext,
-        mode: bool option,
         port: int option,
         host: string option,
         ssl: bool option
       ) =
-      {
-        mode =
-          mode
-          |> Option.map(fun runAsDev ->
-            match runAsDev with
-            | true -> RunConfiguration.Development
-            | false -> RunConfiguration.Production)
-        port = port
-        host = host
-        ssl = ssl
-      },
-      context.GetCancellationToken()
+      { port = port; host = host; ssl = ssl }, context.GetCancellationToken()
 
     let desc =
       "Starts the development server and if fable projects are present it also takes care of it."
@@ -471,7 +426,6 @@ module Commands =
 
       inputs(
         Input.Context(),
-        SharedInputs.asDev,
         ServeInputs.port,
         ServeInputs.host,
         ServeInputs.ssl
@@ -566,8 +520,7 @@ module Commands =
     let buildArgs
       (
         ctx: InvocationContext,
-        source: Provider voption,
-        dev: bool option,
+        source: PkgManager.DownloadProvider voption,
         package: string,
         version: string option,
         alias: string option
@@ -576,13 +529,6 @@ module Commands =
         package = package
         version = version
         source = source |> Option.ofValueOption
-        mode =
-          dev
-          |> Option.map(fun dev ->
-            if dev then
-              RunConfiguration.Development
-            else
-              RunConfiguration.Production)
         alias = alias
       },
       ctx.GetCancellationToken()
@@ -596,7 +542,6 @@ module Commands =
       inputs(
         Input.Context(),
         SharedInputs.source,
-        SharedInputs.asDev,
         PackageInputs.package,
         PackageInputs.version,
         PackageInputs.alias
@@ -675,14 +620,10 @@ module Commands =
   let RestoreImportMap =
 
     let buildArgs
-      (
-        ctx: InvocationContext,
-        source: Provider voption,
-        mode: RunConfiguration voption
-      ) : RestoreOptions * CancellationToken =
+      (ctx: InvocationContext, source: PkgManager.DownloadProvider voption)
+      : RestoreOptions * CancellationToken =
       {
         source = source |> Option.ofValueOption
-        mode = mode |> Option.ofValueOption
       },
       ctx.GetCancellationToken()
 
@@ -692,7 +633,7 @@ module Commands =
       description
         "Restore the import map based on the selected mode, defaults to production"
 
-      inputs(Input.Context(), SharedInputs.source, SharedInputs.mode)
+      inputs(Input.Context(), SharedInputs.source)
       setHandler(buildArgs >> Handlers.runRestoreImportMap)
     }
 

@@ -34,10 +34,8 @@ module Types =
 
   [<RequireQualifiedAccess>]
   type PerlaWritableField =
-    | Configuration of RunConfiguration
-    | Provider of Provider
-    | Dependencies of Dependency seq
-    | DevDependencies of Dependency seq
+    | Provider of PkgManager.DownloadProvider
+    | Dependencies of PkgDependency Set
     | Fable of FableField seq
     | Paths of Map<string<BareImport>, string<ResolutionUrl>>
 
@@ -77,7 +75,7 @@ module internal ConfigExtraction =
     val GetServerFields:
       DevServerConfig * DevServerField seq option -> DevServerField seq
 
-    val GetMinify: RunConfiguration * DevServerField seq -> bool
+    val GetMinify: DevServerField seq -> bool
 
     val GetDevServerOptions:
       DevServerConfig * DevServerField seq -> DevServerConfig
@@ -87,8 +85,7 @@ module internal ConfigExtraction =
   val FromEnv: config: PerlaConfig -> PerlaConfig
 
   val FromCli:
-    runConfig: RunConfiguration option ->
-    provider: Provider option ->
+    provider: PkgManager.DownloadProvider option ->
     serverOptions: DevServerField seq option ->
     testingOptions: TestingField seq option ->
     config: PerlaConfig ->
@@ -118,8 +115,7 @@ type ConfigurationManager =
   member CurrentConfig: PerlaConfig
 
   member UpdateFromCliArgs:
-    [<Optional>] ?runConfig: RunConfiguration *
-    [<Optional>] ?provider: Provider *
+    [<Optional>] ?provider: PkgManager.DownloadProvider *
     [<Optional>] ?serverOptions: seq<DevServerField> *
     [<Optional>] ?testingOptions: seq<TestingField> ->
       unit

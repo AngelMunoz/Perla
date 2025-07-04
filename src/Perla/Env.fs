@@ -12,8 +12,10 @@ open Perla.Logger
 open FsToolkit.ErrorHandling
 open System.Text.RegularExpressions
 
+[<Obsolete("Use PlatformOps instead")>]
 let IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
 
+[<Obsolete("Use PlatformOps instead")>]
 let PlatformString =
   if RuntimeInformation.IsOSPlatform(OSPlatform.Windows) then
     "win32"
@@ -26,6 +28,7 @@ let PlatformString =
   else
     failwith "Unsupported OS"
 
+[<Obsolete("Use PlatformOps instead")>]
 let ArchString =
   match RuntimeInformation.OSArchitecture with
   | Architecture.Arm -> "arm"
@@ -37,6 +40,7 @@ let ArchString =
 [<Literal>]
 let PerlaEnvPrefix = "PERLA_"
 
+[<Obsolete("Use PlatformOps instead")>]
 let internal getPerlaEnvVars() =
   let env = Environment.GetEnvironmentVariables()
 
@@ -50,6 +54,7 @@ let internal getPerlaEnvVars() =
         (key.Replace(PerlaEnvPrefix, String.Empty), value)
   ]
 
+[<Obsolete("Use PlatformOps instead")>]
 let GetEnvContent() = option {
   let env = getPerlaEnvVars()
   let sb = StringBuilder()
@@ -95,6 +100,7 @@ let (|NotPerlaPrefixed|_|) line =
     ValueSome(key, value)
   | _ -> ValueNone
 
+[<Obsolete("Use PlatformOps instead")>]
 let LoadEnvFiles(files: string<SystemPath> seq) =
   let readLinesFromFile(file: string<SystemPath>) =
     let file = UMX.untag file

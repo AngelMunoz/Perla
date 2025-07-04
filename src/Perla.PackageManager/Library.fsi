@@ -1,11 +1,12 @@
 ﻿namespace Perla.PackageManager
 
+open System
 open System.Threading.Tasks
 open Perla.PackageManager.Types
 open Perla.PackageManager.Jspm
 open System.Runtime.InteropServices
 
-[<AutoOpen>]
+[<AutoOpen; Obsolete>]
 module PackageManager =
 
   /// When installing a package use this option

@@ -10,8 +10,7 @@ open Perla.PackageManager.Types
 
 [<Class; Sealed>]
 type PerlaOptions =
-  static member PackageSource: Option<Provider voption>
-  static member RunConfiguration: Option<RunConfiguration voption>
+  static member PackageSource: Option<Perla.PkgManager.DownloadProvider voption>
   static member Browsers: Option<Browser array>
   static member DisplayMode: Option<ListFormat>
 
@@ -24,9 +23,8 @@ type PerlaArguments =
 
 [<RequireQualifiedAccess>]
 module SharedInputs =
-  val asDev: HandlerInput<bool option>
-  val source: HandlerInput<Provider voption>
-  val mode: HandlerInput<RunConfiguration voption>
+  val source: HandlerInput<Perla.PkgManager.DownloadProvider voption>
+
 
 [<RequireQualifiedAccess>]
 module DescribeInputs =

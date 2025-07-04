@@ -51,12 +51,10 @@ type ListFormat =
 type ServeOptions = {
   port: int option
   host: string option
-  mode: RunConfiguration option
   ssl: bool option
 }
 
 type BuildOptions = {
-  mode: RunConfiguration option
   enablePreview: bool
   enablePreloads: bool
   rebuildImportMap: bool
@@ -76,8 +74,7 @@ type ListTemplatesOptions = { format: ListFormat }
 type AddPackageOptions = {
   package: string
   version: string option
-  source: Provider option
-  mode: RunConfiguration option
+  source: PkgManager.DownloadProvider option
   alias: string option
 }
 
@@ -107,8 +104,7 @@ type ProjectOptions = {
 }
 
 type RestoreOptions = {
-  source: Provider option
-  mode: RunConfiguration option
+  source: PkgManager.DownloadProvider option
 }
 
 type TestingOptions = {
@@ -820,7 +816,6 @@ module Handlers =
 
   let runBuild(options: BuildOptions, cancellationToken: CancellationToken) = task {
 
-    ConfigurationManager.UpdateFromCliArgs(?runConfig = options.mode)
     let config = ConfigurationManager.CurrentConfig
 
     do! Fable.StartFable(config, cancellationToken)
@@ -959,10 +954,7 @@ module Handlers =
       DevServerField.MinifySources false
     ]
 
-    ConfigurationManager.UpdateFromCliArgs(
-      ?runConfig = options.mode,
-      serverOptions = cliArgs
-    )
+    ConfigurationManager.UpdateFromCliArgs(serverOptions = cliArgs)
 
 
     let config = ConfigurationManager.CurrentConfig
@@ -1069,7 +1061,6 @@ module Handlers =
 
       let config = {
         ConfigurationManager.CurrentConfig with
-            runConfiguration = RunConfiguration.Development
             mountDirectories =
               ConfigurationManager.CurrentConfig.mountDirectories
               |> Map.add
@@ -1132,20 +1123,17 @@ module Handlers =
       let events = Subject<TestEvent>.broadcast
 
       let! dependencies =
-        Dependencies.GetMapAndDependencies(
-          Seq.empty,
-          config.provider,
-          config.runConfiguration
-        )
+        Dependencies.GetMapAndDependencies Seq.empty
         |> TaskResult.map(fun (deps, map) ->
-          let map = map.AddResolutions(config.paths).AddEnvResolution(config)
+          let map = map.AddResolutions(config.paths).AddEnvResolution config
           deps, map)
         |> TaskResult.defaultValue(
           Seq.empty,
           FileSystem
             .GetImportMap()
             .AddResolutions(config.paths)
-            .AddEnvResolution(config)
+            .AddEnvResolution
+            config
         )
 
       let mutable app =
@@ -1272,10 +1260,7 @@ module Handlers =
     (options: AddPackageOptions, cancellationToken: CancellationToken)
     =
     task {
-      ConfigurationManager.UpdateFromCliArgs(
-        ?runConfig = options.mode,
-        ?provider = options.source
-      )
+      ConfigurationManager.UpdateFromCliArgs(?provider = options.source)
 
       let config = ConfigurationManager.CurrentConfig
       let package, packageVersion = parsePackageName options.package
@@ -1310,12 +1295,7 @@ module Handlers =
       let! map =
         Logger.spinner(
           $"Adding: [bold yellow]{package}{version}[/]",
-          Dependencies.Add(
-            $"{package}{version}",
-            importMap,
-            provider = config.provider,
-            runConfig = config.runConfiguration
-          )
+          Dependencies.Add($"{package}{version}", importMap)
         )
 
       match map, addAsResolution with
@@ -1327,15 +1307,9 @@ module Handlers =
           let deps, devDeps =
             Dependencies.LocateDependenciesFromMapAndConfig(map, config)
 
-          let exceptWithResolution =
-            Seq.filter(fun (value: Dependency) -> value.name <> package)
-
-          ConfigurationManager.WriteFieldsToFile(
-            [
-              PerlaWritableField.Dependencies(exceptWithResolution deps)
-              PerlaWritableField.DevDependencies(exceptWithResolution devDeps)
-            ]
-          )
+          ConfigurationManager.WriteFieldsToFile [
+            PerlaWritableField.Dependencies deps
+          ]
 
           return!
             runAddResolution {
@@ -1352,33 +1326,23 @@ module Handlers =
           return 1
       | Ok map, false ->
         let newDep = {
-          name = package
-          version = packageVersion
-          alias = None
+          package = package
+          version =
+            packageVersion |> Option.defaultValue "0.0.0" |> UMX.tag<Semver>
         }
 
-        let dependencies, devDependencies =
-          let config =
-            match config.runConfiguration with
-            | RunConfiguration.Development -> {
-                config with
-                    devDependencies = [ yield! config.devDependencies; newDep ]
-              }
-            | RunConfiguration.Production ->
-                {
-                  config with
-                      dependencies = [ yield! config.dependencies; newDep ]
-                }
+        let dependencies =
+          let config = {
+            config with
+                dependencies = [ yield! config.dependencies; newDep ] |> Set
+          }
 
-          let deps, devDeps =
+          let deps, _ =
             Dependencies.LocateDependenciesFromMapAndConfig(map, config)
 
-          PerlaWritableField.Dependencies deps,
-          PerlaWritableField.DevDependencies devDeps
+          PerlaWritableField.Dependencies deps
 
-        ConfigurationManager.WriteFieldsToFile(
-          [ dependencies; devDependencies ]
-        )
+        ConfigurationManager.WriteFieldsToFile [ dependencies ]
 
         FileSystem.WriteImportMap(map.AddResolutions(config.paths)) |> ignore
 
@@ -1398,44 +1362,25 @@ module Handlers =
 
       let map = FileSystem.GetImportMap().RemoveResolutions(config.paths)
 
-      let dependencies, devDependencies =
+      let dependencies, _ =
         let deps, devDeps =
           Dependencies.LocateDependenciesFromMapAndConfig(
             map,
             {
               config with
                   dependencies =
-                    config.dependencies |> Seq.filter(fun d -> d.name <> name)
-                  devDependencies =
-                    config.devDependencies
-                    |> Seq.filter(fun d -> d.name <> name)
+                    config.dependencies
+                    |> Set.filter(fun d -> d.package <> name)
             }
           )
 
         deps, devDeps
 
-      ConfigurationManager.WriteFieldsToFile(
-        [
-          PerlaWritableField.Dependencies dependencies
-          PerlaWritableField.DevDependencies devDependencies
-        ]
-      )
+      ConfigurationManager.WriteFieldsToFile [
+        PerlaWritableField.Dependencies dependencies
+      ]
 
-      let packages =
-        match config.runConfiguration with
-        | RunConfiguration.Production ->
-          dependencies |> Seq.map(fun f -> f.AsVersionedString)
-        | RunConfiguration.Development ->
-          [ yield! dependencies; yield! devDependencies ]
-          |> Seq.map(fun f -> f.AsVersionedString)
-
-      match!
-        Dependencies.Restore(
-          packages,
-          Provider.Jspm,
-          runConfig = config.runConfiguration
-        )
-      with
+      match! Dependencies.Restore(dependencies |> Seq.map _.package) with
       | Ok map ->
         FileSystem.WriteImportMap(map.AddResolutions(config.paths)) |> ignore
 
@@ -1458,33 +1403,12 @@ module Handlers =
       let prodTable =
         dependencyTable(config.dependencies, "Production Dependencies")
 
-      let devTable =
-        dependencyTable(config.devDependencies, "Development Dependencies")
-
-      AnsiConsole.Write(prodTable)
+      AnsiConsole.Write prodTable
       AnsiConsole.WriteLine()
-      AnsiConsole.Write(devTable)
 
     | ListFormat.TextOnly ->
-      let inline aliasDependency(dep: Dependency) =
-        let name =
-          match dep.alias with
-          | Some alias -> $"{alias}:{dep.name}"
-          | None -> dep.name
 
-        name, dep.version
-
-      let depsMap = config.dependencies |> Seq.map aliasDependency |> Map.ofSeq
-
-      let devDepsMap =
-        config.devDependencies |> Seq.map aliasDependency |> Map.ofSeq
-
-      {|
-        dependencies = depsMap
-        devDependencies = devDepsMap
-      |}
-      |> Json.ToText
-      |> AnsiConsole.Write
+      config.dependencies |> Json.ToText |> AnsiConsole.Write
 
     return 0
   }
@@ -1493,34 +1417,16 @@ module Handlers =
     (options: RestoreOptions, cancellationToken: CancellationToken)
     =
     task {
-      ConfigurationManager.UpdateFromCliArgs(
-        ?runConfig = options.mode,
-        ?provider = options.source
-      )
+      ConfigurationManager.UpdateFromCliArgs(?provider = options.source)
 
       let config = ConfigurationManager.CurrentConfig
 
       Logger.log "Regenerating import map..."
 
-      let packages =
-        [
-          yield! config.dependencies
-          match config.runConfiguration with
-          | RunConfiguration.Development -> yield! config.devDependencies
-          | RunConfiguration.Production -> ()
-        ]
-        |> List.map(fun d -> d.AsVersionedString)
-        // deduplicate repeated strings
-        |> set
-
       match!
         Logger.spinner(
           "Fetching dependencies...",
-          Dependencies.Restore(
-            packages,
-            provider = config.provider,
-            runConfig = config.runConfiguration
-          )
+          Dependencies.Restore(config.dependencies |> Seq.map _.package)
         )
       with
       | Ok response ->

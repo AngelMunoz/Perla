@@ -3,6 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <LangVersion>preview</LangVersion>
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>perla</ToolCommandName>
@@ -81,12 +82,14 @@
   <ItemGroup>
     <ProjectReference Include="..\Perla.Logger\Perla.Logger.fsproj" />
     <ProjectReference Include="..\Perla.PackageManager\Perla.PackageManager.fsproj" />
+    <ProjectReference Include="..\Perla.PkgManager\Perla.PkgManager.fsproj" />
     <ProjectReference Include="..\Perla.Plugins\Perla.Plugins.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
     <PackageReference Include="FSharp.Compiler.Service" />
     <PackageReference Include="FSharp.Control.AsyncSeq" />
+    <PackageReference Include="FSharp.Control.TaskSeq" />
     <PackageReference Include="FSharp.Control.Reactive" />
     <PackageReference Include="FSharp.SystemCommandLine" />
     <PackageReference Include="FsToolkit.ErrorHandling" />

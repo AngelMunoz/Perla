@@ -35,10 +35,8 @@ module Types =
 
   [<RequireQualifiedAccess>]
   type PerlaWritableField =
-    | Configuration of RunConfiguration
-    | Provider of Provider
-    | Dependencies of Dependency seq
-    | DevDependencies of Dependency seq
+    | Provider of PkgManager.DownloadProvider
+    | Dependencies of PkgDependency Set
     | Fable of FableField seq
     | Paths of Map<string<BareImport>, string<ResolutionUrl>>
 
@@ -107,8 +105,7 @@ module Defaults =
 
   let PerlaConfig = {
     index = UMX.tag Constants.IndexFile
-    runConfiguration = RunConfiguration.Production
-    provider = Provider.Jspm
+    provider = PkgManager.DownloadProvider.JspmIo
     plugins = [ Constants.PerlaEsbuildPluginName ]
     build = BuildConfig
     devServer = DevServerConfig
@@ -120,8 +117,7 @@ module Defaults =
     enableEnv = true
     envPath = UMX.tag Constants.EnvPath
     paths = Map.empty
-    dependencies = Seq.empty
-    devDependencies = Seq.empty
+    dependencies = Set.empty
   }
 
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
@@ -141,13 +137,6 @@ module internal Json =
     (jsonContents: byref<JsonObject option>)
     (fields: PerlaWritableField seq)
     : unit =
-    let configuration =
-      fields
-      |> Seq.tryPick(fun f ->
-        match f with
-        | PerlaWritableField.Configuration config -> Some config
-        | _ -> None)
-      |> Option.map(fun f -> f.AsString)
 
     let provider =
       fields
@@ -155,20 +144,13 @@ module internal Json =
         match f with
         | PerlaWritableField.Provider config -> Some config
         | _ -> None)
-      |> Option.map(fun f -> f.AsString)
+      |> Option.map PkgManager.DownloadProvider.asString
 
     let dependencies =
       fields
       |> Seq.tryPick(fun f ->
         match f with
         | PerlaWritableField.Dependencies deps -> Some deps
-        | _ -> None)
-
-    let devDependencies =
-      fields
-      |> Seq.tryPick(fun f ->
-        match f with
-        | PerlaWritableField.DevDependencies deps -> Some deps
         | _ -> None)
 
     let paths =
@@ -206,13 +188,6 @@ module internal Json =
           Some f
         | _ -> None)
 
-    let addConfig(content: JsonObject) =
-      match configuration with
-      | Some config -> content["runConfiguration"] <- Json.ToNode(config)
-      | None -> ()
-
-      content
-
     let addProvider(content: JsonObject) =
       match provider with
       | Some config -> content["provider"] <- Json.ToNode(config)
@@ -222,14 +197,11 @@ module internal Json =
 
     let addDeps(content: JsonObject) =
       match dependencies with
-      | Some deps -> content["dependencies"] <- Json.ToNode(deps)
-      | None -> ()
+      | Some deps ->
+        let dependencies =
+          deps |> Seq.map(fun dep -> dep.package, dep.version) |> Map.ofSeq
 
-      content
-
-    let addDevDeps(content: JsonObject) =
-      match devDependencies with
-      | Some deps -> content["devDependencies"] <- Json.ToNode(deps)
+        content["dependencies"] <- Json.ToNode(dependencies)
       | None -> ()
 
       content
@@ -266,14 +238,7 @@ module internal Json =
     | None -> content["$schema"] <- Json.ToNode(Constants.JsonSchemaUrl)
 
     jsonContents <-
-      content
-      |> addConfig
-      |> addProvider
-      |> addDeps
-      |> addDevDeps
-      |> addFable
-      |> addPaths
-      |> Some
+      content |> addProvider |> addDeps |> addFable |> addPaths |> Some
 
 module internal ConfigExtraction =
 
@@ -381,16 +346,13 @@ module internal ConfigExtraction =
 
       if Seq.isEmpty options then getDefaults() else options
 
-    let GetMinify(config: RunConfiguration, serverOptions: DevServerField seq) =
+    let GetMinify(serverOptions: DevServerField seq) =
       serverOptions
       |> Seq.tryPick(fun opt ->
         match opt with
         | MinifySources minify -> Some minify
         | _ -> None)
-      |> Option.defaultWith(fun _ ->
-        match config with
-        | RunConfiguration.Production -> true
-        | RunConfiguration.Development -> false)
+      |> Option.defaultWith(fun _ -> true)
 
     let GetDevServerOptions
       (config: DevServerConfig, serverOptions: DevServerField seq)
@@ -427,14 +389,11 @@ module internal ConfigExtraction =
   let FromEnv(config: PerlaConfig) : PerlaConfig = config
 
   let FromCli
-    (runConfig: RunConfiguration option)
-    (provider: Provider option)
+    (provider: PkgManager.DownloadProvider option)
     (serverOptions: DevServerField seq option)
     (testingOptions: TestingField seq option)
     (config: PerlaConfig)
     : PerlaConfig =
-    let configuration =
-      defaultArg runConfig Defaults.PerlaConfig.runConfiguration
 
     let provider = defaultArg provider Defaults.PerlaConfig.provider
 
@@ -448,13 +407,12 @@ module internal ConfigExtraction =
 
     let esbuild = {
       config.esbuild with
-          minify = FromFields.GetMinify(configuration, serverOptions)
+          minify = FromFields.GetMinify serverOptions
     }
 
     {
       config with
           provider = provider
-          runConfiguration = configuration
           devServer = devServer
           esbuild = esbuild
           testing = testing
@@ -504,8 +462,6 @@ module internal ConfigExtraction =
       return {
         config with
             index = defaultArg userConfig.index config.index
-            runConfiguration =
-              defaultArg userConfig.runConfiguration config.runConfiguration
             provider = defaultArg userConfig.provider config.provider
             plugins = plugins
             build = build
@@ -520,8 +476,6 @@ module internal ConfigExtraction =
             paths = defaultArg userConfig.paths config.paths
             dependencies =
               defaultArg userConfig.dependencies config.dependencies
-            devDependencies =
-              defaultArg userConfig.devDependencies config.devDependencies
       }
     }
     |> Option.defaultValue Defaults.PerlaConfig
@@ -550,11 +504,7 @@ type ConfigurationManager
     Defaults.PerlaConfig
     |> ConfigExtraction.FromEnv
     |> ConfigExtraction.FromFile _fileConfig
-    |> ConfigExtraction.FromCli
-      _runConfig
-      _provider
-      _serverOptions
-      _testingOptions
+    |> ConfigExtraction.FromCli _provider _serverOptions _testingOptions
 
 
   let runPipeline() =
@@ -562,22 +512,16 @@ type ConfigurationManager
       Defaults.PerlaConfig
       |> ConfigExtraction.FromEnv
       |> ConfigExtraction.FromFile _fileConfig
-      |> ConfigExtraction.FromCli
-        _runConfig
-        _provider
-        _serverOptions
-        _testingOptions
+      |> ConfigExtraction.FromCli _provider _serverOptions _testingOptions
 
   member _.CurrentConfig = _configContents
 
   member _.UpdateFromCliArgs
     (
-      [<Optional>] ?runConfig: RunConfiguration,
-      [<Optional>] ?provider: Provider,
+      [<Optional>] ?provider: PkgManager.DownloadProvider,
       [<Optional>] ?serverOptions: DevServerField seq,
       [<Optional>] ?testingOptions: TestingField seq
     ) =
-    _runConfig <- runConfig
     _serverOptions <- serverOptions
     _provider <- provider
     _testingOptions <- testingOptions

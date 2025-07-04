@@ -119,18 +119,11 @@ type Build =
     cssBundles, htmlBundles, standaloneBundles
 
   static member GetExternals(config: PerlaConfig) =
-    let dependencies =
-      match config.runConfiguration with
-      | RunConfiguration.Production -> config.dependencies
-      | RunConfiguration.Development ->
-          [ yield! config.dependencies; yield! config.devDependencies ]
+    let dependencies = config.dependencies
 
     seq {
       for dependency in dependencies do
-        dependency.name
-
-        if dependency.alias.IsSome then
-          dependency.alias.Value
+        dependency.package
 
       if config.enableEnv && config.build.emitEnvFile then
         UMX.untag config.envPath

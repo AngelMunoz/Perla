@@ -86,8 +86,7 @@ module ConfigDecoders =
 
   type DecodedPerlaConfig = {
     index: string<SystemPath> option
-    runConfiguration: RunConfiguration option
-    provider: Provider option
+    provider: PkgManager.DownloadProvider option
     plugins: string list option
     build: DecodedBuild option
     devServer: DecodedDevServer option
@@ -98,8 +97,7 @@ module ConfigDecoders =
     enableEnv: bool option
     envPath: string<ServerUrl> option
     paths: Map<string<BareImport>, string<ResolutionUrl>> option
-    dependencies: Dependency seq option
-    devDependencies: Dependency seq option
+    dependencies: PkgDependency Set option
   }
 
   val PerlaDecoder: Decoder<DecodedPerlaConfig>
@@ -133,8 +131,7 @@ type PerlaConfigSection =
   | Fable of fable: FableConfig option
   | DevServer of devServer: DevServerConfig option
   | Build of build: BuildConfig option
-  | Dependencies of dependencies: Dependency seq option
-  | DevDependencies of devDependencies: Dependency seq option
+  | Dependencies of dependencies: PkgDependency Set option
 
 val DefaultJsonOptions: unit -> JsonSerializerOptions
 val DefaultJsonNodeOptions: unit -> JsonNodeOptions

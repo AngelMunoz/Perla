@@ -7,7 +7,6 @@ open System.Text.Json.Nodes
 open System.Threading
 open System.Threading.Tasks
 open FSharp.UMX
-open Perla.Types
 open Perla.Units
 open Perla.PackageManager.Types
 open Perla.Json

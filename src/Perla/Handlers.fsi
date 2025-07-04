@@ -17,12 +17,10 @@ type ListFormat =
 type ServeOptions = {
   port: int option
   host: string option
-  mode: RunConfiguration option
   ssl: bool option
 }
 
 type BuildOptions = {
-  mode: RunConfiguration option
   enablePreview: bool
   enablePreloads: bool
   rebuildImportMap: bool
@@ -42,8 +40,7 @@ type ListTemplatesOptions = { format: ListFormat }
 type AddPackageOptions = {
   package: string
   version: string option
-  source: Provider option
-  mode: RunConfiguration option
+  source: Perla.PkgManager.DownloadProvider option
   alias: string option
 }
 
@@ -73,8 +70,7 @@ type ProjectOptions = {
 }
 
 type RestoreOptions = {
-  source: Provider option
-  mode: RunConfiguration option
+  source: Perla.PkgManager.DownloadProvider option
 }
 
 type TestingOptions = {

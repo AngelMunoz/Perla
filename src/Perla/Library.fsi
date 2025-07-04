@@ -25,7 +25,7 @@ module Lib =
   val internal getTemplateAndChild:
     templateName: string -> string option * string * string option
 
-  val internal dependencyTable: deps: seq<Dependency> * title: string -> Table
+  val internal dependencyTable: deps: PkgDependency Set * title: string -> Table
 
   val internal (|ScopedPackage|Package|):
     package: string -> Choice<string, string>

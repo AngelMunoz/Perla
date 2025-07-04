@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "https://json-schema.org/draft-07/schema",
   "title": "Perla",
   "description": "A Node'less dev server for frontend developers",
   "type": "object",
@@ -8,23 +8,9 @@
       "description": "The main index file to be processed by perla, this file should be outside of the static mounted paths.",
       "type": "string"
     },
-    "runConfiguration": {
-      "description": "Whether perla runs in production or dev mode, production is (and should be) the default",
-      "type": "string",
-      "enum": [
-        "production",
-        "development"
-      ]
-    },
     "provider": {
       "type": "string",
-      "enum": [
-        "jspm",
-        "skypack",
-        "unpkg",
-        "jsdelivr",
-        "jspmSystem"
-      ]
+      "enum": ["jspm", "unpkg", "jsdelivr"]
     },
     "plugins": {
       "description": "The list of plugins to use by perla, if the list is not specified, the default esbuild plugin will be used",
@@ -36,16 +22,9 @@
       },
       "contains": {
         "type": "string",
-        "enum": [
-          "perla-esbuild-plugin"
-        ]
+        "enum": ["perla-esbuild-plugin"]
       },
-      "examples": [
-        [
-          "perla-esbuild-plugin",
-          "markdown-plugin"
-        ]
-      ]
+      "examples": [["perla-esbuild-plugin", "markdown-plugin"]]
     },
     "mountDirectories": {
       "description": "A key/value object that mounts the physical path specified by the key on the route specified by the value.",
@@ -72,27 +51,15 @@
       "description": "Select the rooted url where to serve the env vars for perla e.g /my-api/env.js",
       "type": "string",
       "default": "/env.js",
-      "examples": [
-        "/env.js",
-        "/my-api/env.js",
-        "/api/env.js"
-      ]
+      "examples": ["/env.js", "/my-api/env.js", "/api/env.js"]
     },
     "dependencies": {
-      "description": "An array of dependencies of this ",
-      "type": "array",
-      "items": {
-        "type": "object",
-        "$ref": "#/$defs/perlaDependency"
-      }
-    },
-    "devDependencies": {
-      "description": "The main index file to be processed by perla, this file should be outside of the static mounted paths.",
-      "type": "array",
-      "items": {
-        "type": "object",
-        "$ref": "#/$defs/perlaDependency"
-      }
+      "description": "A Record of dependencies of this project, the key is the package name and the value is the version of the package, this is used to generate an import map for the browser",
+      "type": "object",
+      "examples": [
+        { "@preact/signals": "1.1.2" },
+        { "lit": "2.0.0", "preact": "10.5.15" }
+      ]
     },
     "fable": {
       "$ref": "#/$defs/fable"
@@ -108,6 +75,21 @@
     },
     "testing": {
       "$ref": "#/$defs/testing"
+    },
+    "runConfiguration": {
+      "deprecated": true,
+      "description": "Whether perla runs in production or dev mode, production is (and should be) the default",
+      "type": "string",
+      "enum": ["production", "development"]
+    },
+    "devDependencies": {
+      "deprecated": true,
+      "description": "The main index file to be processed by perla, this file should be outside of the static mounted paths.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "$ref": "#/$defs/perlaDependency"
+      }
     },
     "packages": {
       "deprecated": true,
@@ -138,10 +120,7 @@
           "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
         }
       },
-      "required": [
-        "name",
-        "version"
-      ],
+      "required": ["name", "version"],
       "examples": [
         {
           "name": "@preact/signals",
@@ -158,24 +137,10 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": [
-              "chromium",
-              "webkit",
-              "firefox",
-              "edge",
-              "chrome"
-            ]
+            "enum": ["chromium", "webkit", "firefox", "edge", "chrome"]
           },
           "minItems": 1,
-          "examples": [
-            [
-              "chromium"
-            ],
-            [
-              "chromium",
-              "webkit"
-            ]
-          ]
+          "examples": [["chromium"], ["chromium", "webkit"]]
         },
         "includes": {
           "description": "A relative path or globbing pattern to include test files",
@@ -183,10 +148,7 @@
           "items": {
             "type": "string"
           },
-          "examples": [
-            "**/featureA/*.spec.js",
-            "**/*.test.js"
-          ]
+          "examples": ["**/featureA/*.spec.js", "**/*.test.js"]
         },
         "excludes": {
           "description": "A relative path or globbing pattern to exclude test files",
@@ -194,10 +156,7 @@
           "items": {
             "type": "string"
           },
-          "examples": [
-            "**/feature-b/*.spec.js",
-            "**/*.e2e.js"
-          ]
+          "examples": ["**/feature-b/*.spec.js", "**/*.e2e.js"]
         },
         "watch": {
           "description": "Run the tests in watch mode (re-run on change)",
@@ -212,10 +171,7 @@
         "browserMode": {
           "description": "How should the test suites run with several browsers",
           "type": "string",
-          "enum": [
-            "parallel",
-            "sequential"
-          ]
+          "enum": ["parallel", "sequential"]
         },
         "fable": {
           "$ref": "#/$defs/fable"
@@ -226,12 +182,6 @@
       "description": "Fable Compiler configuration options (optional)",
       "type": "object",
       "properties": {
-        "autoStart": {
-          "description": "Enable/Disable the Fable compilation at the start of the dev server",
-          "type": "boolean",
-          "default": true,
-          "deprecated": true
-        },
         "project": {
           "description": "A relative path to the Fable project to compile",
           "type": "string",
@@ -249,6 +199,12 @@
         "outDir": {
           "description": "A relative path that tells to output the js files",
           "type": "string"
+        },
+        "autoStart": {
+          "description": "Enable/Disable the Fable compilation at the start of the dev server",
+          "type": "boolean",
+          "default": true,
+          "deprecated": true
         }
       }
     },
@@ -322,11 +278,7 @@
           "description": "Select the rooted url where to serve the env vars for perla e.g /my-api/env.js",
           "type": "string",
           "default": "/env.js",
-          "examples": [
-            "/env.js",
-            "/my-api/env.js",
-            "/api/env.js"
-          ],
+          "examples": ["/env.js", "/my-api/env.js", "/api/env.js"],
           "deprecated": true
         },
         "watchConfig": {
@@ -336,17 +288,12 @@
             "extensions": {
               "description": "A list of extensions to watch for changes",
               "type": "array",
-              "default": [
-                "*.js",
-                "*.css"
-              ]
+              "default": ["*.js", "*.css"]
             },
             "directories": {
               "description": "A list of directories to watch for changes",
               "type": "array",
-              "default": [
-                "./src"
-              ]
+              "default": ["./src"]
             }
           },
           "deprecated": true
@@ -379,24 +326,12 @@
         "injects": {
           "description": "A list of files to inject at the transformation phase, this is injected only at build time",
           "type": "array",
-          "examples": [
-            [
-              "./LICENSE.js"
-            ],
-            [
-              "./VERSION.js"
-            ]
-          ]
+          "examples": [["./LICENSE.js"], ["./VERSION.js"]]
         },
         "externals": {
           "description": "Third party libraries that you want esbuild to ignore (i.e. bare specifiers), eg. excluding lit from the bundle from \"import { LitElement from 'lit'\" by default perla excludes all of the specifiers that are in the packages map.",
           "type": "array",
-          "examples": [
-            [
-              "my-undeclared-dependency",
-              "@undeclared/dep"
-            ]
-          ]
+          "examples": [["my-undeclared-dependency", "@undeclared/dep"]]
         },
         "fileLoaders": {
           "description": "An object with file extensions and the kind of loaders you want for them see https://esbuild.github.io/content-types  providing these options will override the defaults, please ensure your options are covered when building for the first time",
@@ -415,10 +350,7 @@
         "jsxImportSource": {
           "description": "Tells esbuild to set the source of the jsx helper imports e.g. Do not set it if you're using react",
           "type": "string",
-          "examples": [
-            "preact",
-            "inferno"
-          ]
+          "examples": ["preact", "inferno"]
         }
       }
     },
@@ -437,10 +369,7 @@
           "items": {
             "type": "string"
           },
-          "examples": [
-            "**/**/*.html",
-            "./assets/**/*.png"
-          ]
+          "examples": ["**/**/*.html", "./assets/**/*.png"]
         },
         "excludes": {
           "type": "array",
@@ -448,9 +377,7 @@
           "items": {
             "type": "string"
           },
-          "examples": [
-            "**/*.exclude-me.*"
-          ]
+          "examples": ["**/*.exclude-me.*"]
         },
         "emitEnvFile": {
           "type": "boolean",
@@ -464,7 +391,7 @@
         "esbuildVersion": {
           "description": "A Semantic versioning  *version* of an esbuild release, this must match a package in the npm js registry",
           "type": "string",
-          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+          "pattern": "^(0|[1-9]d*).(0|[1-9]d*).(0|[1-9]d*)(?:-((?:0|[1-9]d*|d*[a-zA-Z-][0-9a-zA-Z-]*)(?:.(?:0|[1-9]d*|d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:+([0-9a-zA-Z-]+(?:.[0-9a-zA-Z-]+)*))?$",
           "default": "0.12.28",
           "deprecated": true
         },
@@ -476,10 +403,7 @@
             "includes": {
               "type": "array",
               "description": "Files/directories to include in the out directory",
-              "examples": [
-                "./src/sample.png",
-                "./public/data.bin"
-              ]
+              "examples": ["./src/sample.png", "./public/data.bin"]
             },
             "excludes": {
               "type": "array",
@@ -539,25 +463,13 @@
           "deprecated": true,
           "description": "Third party libraries that you want esbuild to ignore (i.e. bare specifiers), eg. excluding lit from the bundle from \"import { LitElement from 'lit'\" by default perla excludes all of the specifiers that are in the packages map.",
           "type": "array",
-          "examples": [
-            [
-              "my-undeclared-dependency",
-              "@undeclared/dep"
-            ]
-          ]
+          "examples": [["my-undeclared-dependency", "@undeclared/dep"]]
         },
         "injects": {
           "deprecated": true,
           "description": "A list of files to inject at the transformation phase, i.e import React from 'react' or import { h, Fragment } from 'preact', so you don't have to do it by hand on every file",
           "type": "array",
-          "examples": [
-            [
-              "./react-shim.js"
-            ],
-            [
-              "./preact-shim.js"
-            ]
-          ]
+          "examples": [["./react-shim.js"], ["./preact-shim.js"]]
         },
         "fileLoaders": {
           "deprecated": true,

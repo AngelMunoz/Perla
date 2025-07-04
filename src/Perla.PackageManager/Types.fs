@@ -1,5 +1,6 @@
 ﻿namespace Perla.PackageManager
 
+open System
 open System.Runtime.InteropServices
 open System.Collections.Generic
 open System.Runtime.CompilerServices
@@ -17,6 +18,7 @@ type DictionaryExtensions =
 
 module Types =
 
+  [<Obsolete("Use PkgManager.ImportMap instead")>]
   type ImportMap = {
     imports: Map<string, string>
     scopes: Map<string, Map<string, string>> option

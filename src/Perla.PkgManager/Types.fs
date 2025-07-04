@@ -77,6 +77,21 @@ type DownloadProvider =
   | JsDelivr
   | Unpkg
 
+module DownloadProvider =
+
+  let asString(provider: DownloadProvider) =
+    match provider with
+    | JspmIo -> "jspm.io"
+    | JsDelivr -> "jsdelivr"
+    | Unpkg -> "unpkg"
+
+  let fromString(value: string) =
+    match value.ToLowerInvariant() with
+    | "jspm.io" -> JspmIo
+    | "jsdelivr" -> JsDelivr
+    | "unpkg" -> Unpkg
+    | _ -> JspmIo // Default to JspmIo if the value is not recognized
+
 type ExcludeOption =
   | Unused
   | Types

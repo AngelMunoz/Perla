@@ -1,5 +1,6 @@
 ﻿namespace Perla.PackageManager
 
+open System
 open System.Collections.Generic
 open System.Runtime.CompilerServices
 
@@ -17,6 +18,7 @@ module Types =
   /// a list of mappings between javascript imports and where they are located,
   /// the scopes refer to the resources that are available under certain dependency trees
   /// </summary>
+  [<Obsolete("Use PkgManager.ImportMap instead")>]
   type ImportMap = {
     imports: Map<string, string>
     scopes: Map<string, Map<string, string>> option

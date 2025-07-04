@@ -3,6 +3,7 @@
 open System
 open System.Runtime.InteropServices
 open Spectre.Console
+open FSharp.UMX
 
 open Perla.Logger
 open Perla.PackageManager
@@ -10,7 +11,8 @@ open Perla.PackageManager.Types
 open Perla.PackageManager.Skypack
 
 open FsToolkit.ErrorHandling
-open Types
+open Perla.Types
+open Perla.Units
 
 
 module Dependencies =
@@ -162,97 +164,45 @@ module Dependencies =
 
 type Dependencies =
 
-  static member Add
-    (
-      package: string,
-      map: ImportMap,
-      provider: Provider,
-      [<Optional>] ?runConfig: RunConfiguration
-    ) =
-    taskResult {
-      let! resultMap =
-        PackageManager.AddJspm(
-          package,
-          [
-            GeneratorEnv.Browser
-            GeneratorEnv.Module
-            match runConfig with
-            | Some RunConfiguration.Production
-            | None -> GeneratorEnv.Production
-            | Some RunConfiguration.Development -> GeneratorEnv.Development
-          ],
-          map,
-          provider
-        )
+  static member Add(package: string, map: ImportMap) = taskResult {
+    let! resultMap =
+      PackageManager.AddJspm(
+        package,
+        [ GeneratorEnv.Browser; GeneratorEnv.Module ],
+        map,
+        provider = Provider.Jspm
+      )
 
-      let packages = map.imports |> Map.toList
+    let packages = map.imports |> Map.toList
 
-      let allPackages = Dependencies.consolidateResolutions(packages, resultMap)
+    let allPackages = Dependencies.consolidateResolutions(packages, resultMap)
 
-      return { resultMap with imports = allPackages }
-    }
+    return { resultMap with imports = allPackages }
+  }
 
-  static member Restore
-    (
-      package: string,
-      [<Optional>] ?provider: Provider,
-      [<Optional>] ?runConfig: RunConfiguration
-    ) =
+  static member Restore(package: string) =
     PackageManager.AddJspm(
       package,
-      [
-        GeneratorEnv.Browser
-        GeneratorEnv.Module
-        match runConfig with
-        | Some RunConfiguration.Production
-        | None -> GeneratorEnv.Production
-        | Some RunConfiguration.Development -> GeneratorEnv.Development
-      ],
-      ?provider = provider
+      [ GeneratorEnv.Browser; GeneratorEnv.Module ],
+      provider = Provider.Jspm
     )
 
-  static member Restore
-    (packages: string seq, ?provider: Provider, ?runConfig: RunConfiguration)
-    =
+  static member Restore(packages: string seq) =
     PackageManager.AddJspm(
       packages,
-      [
-        GeneratorEnv.Browser
-        GeneratorEnv.Module
-        match runConfig with
-        | Some RunConfiguration.Production
-        | None -> GeneratorEnv.Production
-        | Some RunConfiguration.Development -> GeneratorEnv.Development
-      ],
-      ?provider = provider
+      [ GeneratorEnv.Browser; GeneratorEnv.Module ],
+      provider = Provider.Jspm
     )
 
-  static member GetMapAndDependencies
-    (
-      packages: string seq,
-      [<Optional>] ?provider: Provider,
-      [<Optional>] ?runConfig: RunConfiguration
-    ) =
+  static member GetMapAndDependencies(packages: string seq) =
     PackageManager.Regenerate(
       packages,
-      [
-        GeneratorEnv.Browser
-        GeneratorEnv.Module
-        match runConfig with
-        | Some RunConfiguration.Production
-        | None -> GeneratorEnv.Production
-        | Some RunConfiguration.Development -> GeneratorEnv.Development
-      ],
-      ?provider = provider
+      [ GeneratorEnv.Browser; GeneratorEnv.Module ],
+      provider = Provider.Jspm
     )
     |> TaskResult.map(fun result -> result.staticDeps, result.map)
 
-  static member GetMapAndDependencies
-    (
-      map: ImportMap,
-      [<Optional>] ?provider: Provider,
-      [<Optional>] ?runConfig: RunConfiguration
-    ) =
+  static member GetMapAndDependencies(map: ImportMap) =
     let packages = map.imports |> Map.toList
 
     let parsablePackages =
@@ -264,101 +214,66 @@ type Dependencies =
 
     PackageManager.Regenerate(
       parsablePackages,
-      [
-        GeneratorEnv.Browser
-        GeneratorEnv.Module
-        match runConfig with
-        | Some RunConfiguration.Production
-        | None -> GeneratorEnv.Production
-        | Some RunConfiguration.Development -> GeneratorEnv.Development
-      ],
+      [ GeneratorEnv.Browser; GeneratorEnv.Module ],
       importMap = map,
-      ?provider = provider
+      provider = Provider.Jspm
     )
     |> TaskResult.map(fun result -> result.staticDeps, result.map)
 
-  static member Remove
-    (
-      package: string,
-      map: ImportMap,
-      provider: Provider,
-      [<Optional>] ?runConfig: RunConfiguration
-    ) =
-    taskResult {
-      let packages =
-        map.imports
-        |> Map.filter(fun existing _ -> existing <> package)
-        |> Map.toList
+  static member Remove(package: string, map: ImportMap) = taskResult {
+    let packages =
+      map.imports
+      |> Map.filter(fun existing _ -> existing <> package)
+      |> Map.toList
 
-      let parsablePackages =
-        packages
-        |> List.choose(
-          snd >> ExtractDependencyInfoFromUrl >> Option.ofValueOption
-        )
-        |> List.map(fun (_, name, version) -> $"{name}@{version}")
+    let parsablePackages =
+      packages
+      |> List.choose(
+        snd >> ExtractDependencyInfoFromUrl >> Option.ofValueOption
+      )
+      |> List.map(fun (_, name, version) -> $"{name}@{version}")
 
-      let! resultMap =
-        PackageManager.AddJspm(
-          parsablePackages,
-          [
-            GeneratorEnv.Browser
-            GeneratorEnv.Module
-            match runConfig with
-            | Some RunConfiguration.Production
-            | None -> GeneratorEnv.Production
-            | Some RunConfiguration.Development -> GeneratorEnv.Development
-          ],
-          map,
-          provider
-        )
+    let! resultMap =
+      PackageManager.AddJspm(
+        parsablePackages,
+        [ GeneratorEnv.Browser; GeneratorEnv.Module ],
+        map,
+        Provider.Jspm
+      )
 
-      let allPackages = Dependencies.consolidateResolutions(packages, resultMap)
+    let allPackages = Dependencies.consolidateResolutions(packages, resultMap)
 
-      return { resultMap with imports = allPackages }
-    }
+    return { resultMap with imports = allPackages }
+  }
 
-  static member SwitchProvider
-    (
-      map: ImportMap,
-      provider: Provider,
-      [<Optional>] ?runConfig: RunConfiguration
-    ) =
-    taskResult {
-      let packages = map.imports |> Map.toList
+  static member SwitchProvider(map: ImportMap) = taskResult {
+    let packages = map.imports |> Map.toList
 
-      let parsablePackages =
-        packages
-        |> List.choose(
-          snd >> ExtractDependencyInfoFromUrl >> Option.ofValueOption
-        )
-        |> List.map(fun (_, name, version) -> $"{name}@{version}")
+    let parsablePackages =
+      packages
+      |> List.choose(
+        snd >> ExtractDependencyInfoFromUrl >> Option.ofValueOption
+      )
+      |> List.map(fun (_, name, version) -> $"{name}@{version}")
 
-      let! resultMap =
-        PackageManager.AddJspm(
-          parsablePackages,
-          [
-            GeneratorEnv.Browser
-            GeneratorEnv.Module
-            match runConfig with
-            | Some RunConfiguration.Production
-            | None -> GeneratorEnv.Production
-            | Some RunConfiguration.Development -> GeneratorEnv.Development
-          ],
-          provider = provider
-        )
+    let! resultMap =
+      PackageManager.AddJspm(
+        parsablePackages,
+        [ GeneratorEnv.Browser; GeneratorEnv.Module ],
+        provider = Provider.Jspm
+      )
 
-      let allPackages = Dependencies.consolidateResolutions(packages, resultMap)
+    let allPackages = Dependencies.consolidateResolutions(packages, resultMap)
 
-      return { resultMap with imports = allPackages }
-    }
+    return { resultMap with imports = allPackages }
+  }
 
   static member LocateDependenciesFromMapAndConfig
     (importMap: ImportMap, config: PerlaConfig)
     =
-    let devDependencies =
-      config.devDependencies |> Seq.map(fun f -> f.name) |> set
+    let devDependencies = Set.empty
 
-    let dependencies = config.dependencies |> Seq.map(fun f -> f.name) |> set
+    let dependencies = config.dependencies |> Seq.map(fun f -> f.package) |> set
 
     let allTogether = set dependencies |> Set.union(set devDependencies)
 
@@ -374,25 +289,9 @@ type Dependencies =
             None
         | ValueNone -> None)
       |> List.map(fun (_, name, version) -> {
-        name = name
-        version = Some version
-        alias = None
+        package = name
+        version = UMX.tag<Semver> version
       })
+      |> Set.ofList
 
-    let deps, devDeps =
-      fromImportMap
-      |> List.fold
-        (fun (current: Set<Dependency> * Set<Dependency>) (next: Dependency) ->
-          let deps, devDeps = current
-
-          if dependencies |> Set.contains next.name then
-            (deps |> Set.add next, devDeps)
-          elif devDependencies |> Set.contains next.name then
-            (deps, devDeps |> Set.add next)
-          else
-            match config.runConfiguration with
-            | RunConfiguration.Production -> (deps |> Set.add next, devDeps)
-            | RunConfiguration.Development -> (deps, devDeps |> Set.add next))
-        (Set.empty<Dependency>, Set.empty<Dependency>)
-
-    seq deps, seq devDeps
+    fromImportMap, Set.empty<PkgDependency>

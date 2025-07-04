@@ -1,10 +1,11 @@
 ﻿namespace Perla
 
+open System
 open System.Threading.Tasks
 open Perla.Types
 open Perla.PackageManager.Types
-open System.Runtime.InteropServices
 
+[<Obsolete>]
 module Dependencies =
   val Search: name: string * page: int -> Task<unit>
   val Show: name: string -> Task<unit>
@@ -12,49 +13,25 @@ module Dependencies =
 [<Class>]
 type Dependencies =
   static member Add:
-    package: string *
-    map: ImportMap *
-    provider: Provider *
-    [<Optional>] ?runConfig: RunConfiguration ->
-      Task<Result<ImportMap, string>>
+    package: string * map: ImportMap -> Task<Result<ImportMap, string>>
+
+  static member Restore: package: string -> Task<Result<ImportMap, string>>
 
   static member Restore:
-    package: string *
-    ?provider: Provider *
-    [<Optional>] ?runConfig: RunConfiguration ->
-      Task<Result<ImportMap, string>>
-
-  static member Restore:
-    packages: seq<string> *
-    [<Optional>] ?provider: Provider *
-    [<Optional>] ?runConfig: RunConfiguration ->
-      Task<Result<ImportMap, string>>
+    packages: seq<string> -> Task<Result<ImportMap, string>>
 
   static member GetMapAndDependencies:
-    packages: seq<string> *
-    [<Optional>] ?provider: Provider *
-    [<Optional>] ?runConfig: RunConfiguration ->
-      Task<Result<string seq * ImportMap, string>>
+    packages: seq<string> -> Task<Result<string seq * ImportMap, string>>
 
   static member GetMapAndDependencies:
-    map: ImportMap *
-    [<Optional>] ?provider: Provider *
-    [<Optional>] ?runConfig: RunConfiguration ->
-      Task<Result<string seq * ImportMap, string>>
+    map: ImportMap -> Task<Result<string seq * ImportMap, string>>
 
   static member Remove:
-    package: string *
-    map: ImportMap *
-    provider: Provider *
-    [<Optional>] ?runConfig: RunConfiguration ->
-      Task<Result<ImportMap, string>>
+    package: string * map: ImportMap -> Task<Result<ImportMap, string>>
 
   static member SwitchProvider:
-    map: ImportMap *
-    provider: Provider *
-    [<Optional>] ?runConfig: RunConfiguration ->
-      Task<Result<ImportMap, string>>
+    map: ImportMap -> Task<Result<ImportMap, string>>
 
   static member LocateDependenciesFromMapAndConfig:
     importMap: ImportMap * config: PerlaConfig ->
-      (Dependency seq * Dependency seq)
+      (PkgDependency Set * PkgDependency Set)

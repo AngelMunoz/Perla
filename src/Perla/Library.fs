@@ -98,8 +98,8 @@ module Lib =
     | [| template |] -> None, template, None
     | _ -> None, templateName, None
 
-  let dependencyTable(deps: Dependency seq, title: string) =
-    let table = Table().AddColumns([| "Name"; "Version"; "Alias" |])
+  let dependencyTable(deps: PkgDependency Set, title: string) =
+    let table = Table().AddColumns([| "Name"; "Version" |])
 
     table.Title <- TableTitle(title)
 
@@ -107,12 +107,7 @@ module Lib =
       column.Alignment <- Justify.Left
 
     for dependency in deps do
-      table.AddRow(
-        dependency.name,
-        defaultArg dependency.version "",
-        defaultArg dependency.alias ""
-      )
-      |> ignore
+      table.AddRow(dependency.package, UMX.untag dependency.version) |> ignore
 
     table
 
@@ -395,9 +390,10 @@ module Lib =
       with get (value: string): IRenderable option =
         match value.ToLowerInvariant() with
         | "index" -> Text(UMX.untag this.index) :> IRenderable |> Some
-        | "runconfiguration" ->
-          Text(this.runConfiguration.AsString) :> IRenderable |> Some
-        | "provider" -> Text(this.provider.AsString) :> IRenderable |> Some
+        | "provider" ->
+          Text(this.provider |> PkgManager.DownloadProvider.asString)
+          :> IRenderable
+          |> Some
         | "plugins" ->
           this.plugins
           |> Seq.fold (fun current next -> $"{next};{current}") ""
@@ -420,17 +416,7 @@ module Lib =
         | "envpath" -> $"{this.envPath}" |> Text :> IRenderable |> Some
         | "dependencies" ->
           this.dependencies
-          |> Seq.fold
-            (fun current next -> $"{next.AsVersionedString};{current}")
-            ""
-          |> Text
-          :> IRenderable
-          |> Some
-        | "devdependencies" ->
-          this.devDependencies
-          |> Seq.fold
-            (fun current next -> $"{next.AsVersionedString};{current}")
-            ""
+          |> Seq.fold (fun current next -> $"{next.version};{current}") ""
           |> Text
           :> IRenderable
           |> Some

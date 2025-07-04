@@ -1,10 +1,7 @@
 ﻿namespace Perla.Build
 
-open AngleSharp
 open AngleSharp.Html.Dom
 open System.Runtime.InteropServices
-open System.Threading
-open System.Threading.Tasks
 open Perla.Types
 open Perla.Units
 open Perla.PackageManager.Types
