@@ -73,6 +73,7 @@ module Defaults =
       |> Map.ofList
     jsxAutomatic = false
     jsxImportSource = None
+    aliases = Map.empty
   }
 
   let BuildConfig = {

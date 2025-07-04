@@ -1,10 +1,11 @@
 ﻿namespace Perla.Esbuild
 
 open System
+open System.IO
 open System.Runtime.InteropServices
 open CliWrap
 
-open FsToolkit.ErrorHandling
+open IcedTasks
 open FSharp.UMX
 
 open Perla
@@ -22,8 +23,28 @@ type LoaderType =
   | Jsx
   | Css
 
+type EsbuildServiceArgs = {
+  Cwd: string<SystemPath>
+  LoadTsConfig: unit -> CancellableTask<string option>
+  Logger: Microsoft.Extensions.Logging.ILogger
+}
+
+[<Interface>]
+type EsbuildService =
+  abstract ProcessJS:
+    entrypoint: string * outdir: string * config: EsbuildConfig ->
+      CancellableTask<unit>
+
+  abstract ProcessCss:
+    entrypoint: string * outdir: string * config: EsbuildConfig ->
+      CancellableTask<unit>
+
+  abstract GetPlugin: config: EsbuildConfig -> PluginInfo
+
 [<RequireQualifiedAccess>]
 module Esbuild =
+  open Microsoft.Extensions.Logging
+  open System.Threading.Tasks
 
   let addEsExternals (externals: string seq) (args: Builders.ArgumentsBuilder) =
     externals |> Seq.map(fun ex -> $"--external:{ex}") |> args.Add
@@ -115,19 +136,163 @@ module Esbuild =
     | None -> args
 
   let addAliases
-    (aliases: Map<string<BareImport>, string<ResolutionUrl>> option)
+    (aliases: Map<string<BareImport>, string<ResolutionUrl>>)
     (args: Builders.ArgumentsBuilder)
     =
-    match aliases with
-    | Some aliases ->
-      for KeyValue(alias, path) in aliases do
-        if (UMX.untag path).StartsWith("./") then
-          args.Add $"--alias:{alias}={path}" |> ignore
-    | None -> ()
+    for KeyValue(alias, path) in aliases do
+      if (UMX.untag path).StartsWith("./") then
+        args.Add $"--alias:{alias}={path}" |> ignore
 
     args
 
   let addKeepNames(args: Builders.ArgumentsBuilder) = args.Add "--keep-names"
+
+  let singleFileCmd
+    (
+      source: string,
+      loader: LoaderType option,
+      config: EsbuildConfig,
+      loadTsConfig: unit -> CancellableTask<string option>,
+      logger: ILogger
+    ) =
+    cancellableTask {
+      let execBin = config.esBuildPath |> UMX.untag
+      let! tsconfig = loadTsConfig()
+      use writer = new MemoryStream()
+
+      let command =
+        Cli
+          .Wrap(execBin)
+          .WithStandardInputPipe(PipeSource.FromString source)
+          .WithStandardOutputPipe(PipeTarget.ToStream writer)
+          .WithStandardErrorPipe(PipeTarget.ToDelegate logger.LogError)
+          .WithArguments(fun args ->
+            args
+            |> addTarget config.ecmaVersion
+            |> addFormat "esm"
+            |> addLoader loader
+            |> addMinify config.minify
+            |> addJsxAutomatic config.jsxAutomatic
+            |> addJsxImportSource config.jsxImportSource
+            |> addTsconfigRaw tsconfig
+            |> addKeepNames
+            |> ignore)
+          .WithValidation
+          CommandResultValidation.None
+
+      do! (command.ExecuteAsync()).Task :> Task
+      return Encoding.UTF8.GetString(writer.ToArray())
+    }
+
+  let Create(serviceArgs: EsbuildServiceArgs) =
+    { new EsbuildService with
+        member this.GetPlugin(config: EsbuildConfig) : PluginInfo =
+          let shouldTransform: FilePredicate =
+            fun extension ->
+              [ ".jsx"; ".tsx"; ".ts"; ".css"; ".js" ]
+              |> List.contains extension
+
+          let transform: TransformAsync =
+            fun args -> async {
+
+              let loader =
+                match args.extension with
+                | ".css" -> Some LoaderType.Css
+                | ".jsx" -> Some LoaderType.Jsx
+                | ".tsx" -> Some LoaderType.Tsx
+                | ".ts" -> Some LoaderType.Typescript
+                | ".js" -> None
+                | _ -> None
+
+              let! result =
+                singleFileCmd(
+                  args.content,
+                  loader,
+                  config,
+                  serviceArgs.LoadTsConfig,
+                  serviceArgs.Logger
+                )
+
+                |> Async.AwaitCancellableTask
+
+              return {
+                content = result
+                extension = if args.extension = ".css" then ".css" else ".js"
+              }
+            }
+
+          plugin Constants.PerlaEsbuildPluginName {
+            should_process_file shouldTransform
+            with_transform transform
+          }
+
+        member this.ProcessCss
+          (entrypoint, outdir, config: EsbuildConfig)
+          : CancellableTask<unit> =
+          cancellableTask {
+            let execBin = config.esBuildPath |> UMX.untag
+            let fileLoaders = config.fileLoaders
+
+            let command =
+              Cli
+                .Wrap(execBin)
+                // ensure esbuild is called where the actual sources are
+                .WithWorkingDirectory(serviceArgs.Cwd |> UMX.untag)
+                .WithStandardOutputPipe(
+                  PipeTarget.ToDelegate serviceArgs.Logger.LogInformation
+                )
+                .WithStandardErrorPipe(
+                  PipeTarget.ToDelegate serviceArgs.Logger.LogError
+                )
+                .WithArguments(fun args ->
+                  args.Add(entrypoint)
+                  |> addIsBundle true
+                  |> addMinify config.minify
+                  |> addOutDir outdir
+                  |> addDefaultFileLoaders fileLoaders
+                  |> ignore)
+
+            do! (command.ExecuteAsync()).Task :> Task
+            return ()
+          }
+
+        member this.ProcessJS
+          (entrypoint, outdir, config: EsbuildConfig)
+          : CancellableTask<unit> =
+          cancellableTask {
+            let execBin = config.esBuildPath |> UMX.untag
+            let fileLoaders = config.fileLoaders
+
+            let command =
+              Cli
+                .Wrap(execBin)
+                // ensure esbuild is called where the actual sources are
+                .WithWorkingDirectory(UMX.untag serviceArgs.Cwd)
+                .WithStandardOutputPipe(
+                  PipeTarget.ToDelegate serviceArgs.Logger.LogInformation
+                )
+                .WithStandardErrorPipe(
+                  PipeTarget.ToDelegate serviceArgs.Logger.LogInformation
+                )
+                .WithArguments(fun args ->
+                  args.Add entrypoint
+                  |> addEsExternals config.externals
+                  |> addIsBundle true
+                  |> addTarget config.ecmaVersion
+                  |> addDefaultFileLoaders fileLoaders
+                  |> addMinify config.minify
+                  |> addFormat "esm"
+                  |> addJsxAutomatic config.jsxAutomatic
+                  |> addJsxImportSource config.jsxImportSource
+                  |> addOutDir outdir
+                  |> addAliases config.aliases
+                  |> ignore)
+
+            do! (command.ExecuteAsync()).Task :> Task
+            return ()
+          }
+
+    }
 
 type Esbuild =
 
@@ -161,7 +326,7 @@ type Esbuild =
         |> Esbuild.addJsxAutomatic config.jsxAutomatic
         |> Esbuild.addJsxImportSource config.jsxImportSource
         |> Esbuild.addOutDir outDir
-        |> Esbuild.addAliases aliases
+        |> Esbuild.addAliases(aliases |> Option.defaultValue config.aliases)
         |> ignore)
 
   static member ProcessCss

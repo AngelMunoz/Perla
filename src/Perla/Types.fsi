@@ -62,6 +62,7 @@ module Types =
     fileLoaders: Map<string, string>
     jsxAutomatic: bool
     jsxImportSource: string option
+    aliases: Map<string<BareImport>, string<ResolutionUrl>>
   }
 
   type BuildConfig = {

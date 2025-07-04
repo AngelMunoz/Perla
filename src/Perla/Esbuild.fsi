@@ -1,12 +1,18 @@
 ﻿namespace Perla.Esbuild
 
+open System
+open System.IO
 open System.Text
 open System.Runtime.InteropServices
+
 open CliWrap
+
+open IcedTasks
+open FSharp.UMX
+
 open Perla.Types
 open Perla.Units
 open Perla.Plugins
-open FSharp.UMX
 
 [<RequireQualifiedAccess; Struct>]
 type LoaderType =
@@ -15,6 +21,26 @@ type LoaderType =
   | Jsx
   | Css
 
+type EsbuildServiceArgs = {
+  Cwd: string<SystemPath>
+  LoadTsConfig: unit -> CancellableTask<string option>
+  Logger: Microsoft.Extensions.Logging.ILogger
+}
+
+[<Interface>]
+type EsbuildService =
+  abstract ProcessJS:
+    entrypoint: string * outdir: string * config: EsbuildConfig ->
+      CancellableTask<unit>
+
+  abstract ProcessCss:
+    entrypoint: string * outdir: string * config: EsbuildConfig ->
+      CancellableTask<unit>
+
+  abstract GetPlugin: config: EsbuildConfig -> PluginInfo
+
+module Esbuild =
+  val Create: serviceArgs: EsbuildServiceArgs -> EsbuildService
 
 [<Class>]
 type Esbuild =
