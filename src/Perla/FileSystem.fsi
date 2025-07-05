@@ -58,6 +58,36 @@ module FileSystem =
 
   val CheckFableExists: cancellationToken: CancellationToken -> Task<bool>
 
+
+
+type PerlaDirectories =
+  abstract member AssemblyRoot: string<SystemPath> with get
+  abstract member PerlaArtifactsRoot: string<SystemPath> with get
+  abstract member Database: string<SystemPath> with get
+  abstract member Templates: string<SystemPath> with get
+  abstract member PerlaConfigPath: string<SystemPath> with get
+  abstract member LiveReloadScript: string with get
+  abstract member WorkerScript: string with get
+  abstract member TestingHelpersScript: string with get
+  abstract member MochaRunnerScript: string with get
+  abstract member DescriptionsFile: Map<string, string> with get
+  abstract member CurrentWorkingDirectory: string<SystemPath> with get
+
+
+type PerlaFs =
+  abstract member SetCwdToPerlaRoot: ?fromPath: string<SystemPath> -> unit
+
+  abstract member ResolveConfig:
+    ?fromDirectory: string<SystemPath> ->
+      CancellableTask<Perla.Types.PerlaConfig option>
+
+  abstract member ResolveImportMap:
+    unit -> CancellableTask<Perla.PkgManager.ImportMap>
+
+
+
+
+
 [<Class>]
 type FileSystem =
   static member PerlaConfigText:
