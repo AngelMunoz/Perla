@@ -91,6 +91,7 @@
     <PackageReference Include="FSharp.Control.AsyncSeq" />
     <PackageReference Include="FSharp.Control.TaskSeq" />
     <PackageReference Include="FSharp.Control.Reactive" />
+    <PackageReference Include="FSharp.Data.Adaptive" />
     <PackageReference Include="FSharp.SystemCommandLine" />
     <PackageReference Include="FsToolkit.ErrorHandling" />
     <PackageReference Include="FSharp.UMX" />

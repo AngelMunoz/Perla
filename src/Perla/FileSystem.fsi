@@ -1,4 +1,4 @@
-﻿namespace Perla.FileSystem
+namespace Perla.FileSystem
 
 open System
 open System.IO
@@ -6,7 +6,10 @@ open System.Runtime.InteropServices
 open System.Text.Json.Nodes
 open System.Threading
 open System.Threading.Tasks
+
+open IcedTasks
 open FSharp.UMX
+open FSharp.Data.Adaptive
 open Perla.Units
 open Perla.PackageManager.Types
 open Perla.Json
@@ -59,7 +62,6 @@ module FileSystem =
   val CheckFableExists: cancellationToken: CancellationToken -> Task<bool>
 
 
-
 type PerlaDirectories =
   abstract member AssemblyRoot: string<SystemPath> with get
   abstract member PerlaArtifactsRoot: string<SystemPath> with get
@@ -74,19 +76,26 @@ type PerlaDirectories =
   abstract member CurrentWorkingDirectory: string<SystemPath> with get
 
 
-type PerlaFs =
-  abstract member SetCwdToPerlaRoot: ?fromPath: string<SystemPath> -> unit
+type PerlaFsManager =
+  abstract SetCwdToPerlaRoot: ?fromPath: string<SystemPath> -> unit
 
-  abstract member ResolveConfig:
-    ?fromDirectory: string<SystemPath> ->
+  abstract ResolveConfig:
+    unit ->
       CancellableTask<Perla.Types.PerlaConfig option>
 
-  abstract member ResolveImportMap:
-    unit -> CancellableTask<Perla.PkgManager.ImportMap>
+  abstract ResolveImportMap:
+    unit -> CancellableTask<Perla.PkgManager.ImportMap option>
 
+  abstract ResolveIndexPath:
+    unit -> CancellableTask<string<SystemPath>>
 
+  abstract ResolvePluginPaths:
+    unit -> (string * string)[]
 
+  abstract ResolveDotEnvPaths:
+    unit -> string<SystemPath>[]
 
+  abstract ObservePerlaFiles: unit -> PerlaFileChange aval
 
 [<Class>]
 type FileSystem =
