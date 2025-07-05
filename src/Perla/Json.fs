@@ -444,3 +444,231 @@ type Json =
         return! Decode.fromString decoder value |> Result.map TestRunFinished
       | unknown -> return! Error($"'{unknown}' is not a known event")
     }
+
+
+module PerlaConfig =
+
+  [<RequireQualifiedAccess>]
+  module FromDecoders =
+    open ConfigDecoders
+
+    let GetFable(config: FableConfig option, fable: DecodedFableConfig option) = option {
+      let! decoded = fable
+      let fable = defaultArg config Defaults.FableConfig
+
+      let outDir = decoded.outDir |> Option.orElseWith(fun () -> fable.outDir)
+
+      return {
+        fable with
+            project = defaultArg decoded.project fable.project
+            extension = defaultArg decoded.extension fable.extension
+            sourceMaps = defaultArg decoded.sourceMaps fable.sourceMaps
+            outDir = outDir
+      }
+    }
+
+    let GetDevServer
+      (config: DevServerConfig, devServer: DecodedDevServer option)
+      =
+      option {
+        let! decoded = devServer
+
+        return {
+          config with
+              port = defaultArg decoded.port config.port
+              host = defaultArg decoded.host config.host
+              liveReload = defaultArg decoded.liveReload config.liveReload
+              useSSL = defaultArg decoded.useSSL config.useSSL
+              proxy = defaultArg decoded.proxy config.proxy
+        }
+      }
+
+    let GetBuild(config: BuildConfig, build: DecodedBuild option) = option {
+      let! decoded = build
+
+      return {
+        config with
+            includes = defaultArg decoded.includes config.includes
+            excludes = defaultArg decoded.excludes config.excludes
+            outDir = defaultArg decoded.outDir config.outDir
+            emitEnvFile = defaultArg decoded.emitEnvFile config.emitEnvFile
+      }
+    }
+
+    let GetEsbuild(config: EsbuildConfig, esbuild: DecodedEsbuild option) = option {
+      let! decoded = esbuild
+
+      return {
+        config with
+            version = defaultArg decoded.version config.version
+            ecmaVersion = defaultArg decoded.ecmaVersion config.ecmaVersion
+            minify = defaultArg decoded.minify config.minify
+            injects = defaultArg decoded.injects config.injects
+            externals = defaultArg decoded.externals config.externals
+            fileLoaders = defaultArg decoded.fileLoaders config.fileLoaders
+            jsxAutomatic = defaultArg decoded.jsxAutomatic config.jsxAutomatic
+            jsxImportSource = decoded.jsxImportSource
+      }
+    }
+
+    let GetTesting(config: TestConfig, testing: DecodedTesting option) = option {
+      let! testing = testing
+
+      return {
+        config with
+            browsers = defaultArg testing.browsers config.browsers
+            includes = defaultArg testing.includes config.includes
+            excludes = defaultArg testing.excludes config.excludes
+            watch = defaultArg testing.watch config.watch
+            headless = defaultArg testing.headless config.headless
+            browserMode = defaultArg testing.browserMode config.browserMode
+            fable = GetFable(config.fable, testing.fable)
+      }
+    }
+
+    let GetPlugins(plugins: string list option) = option {
+      let! plugins = plugins
+
+      if plugins.Length = 0 then
+        return [ Constants.PerlaEsbuildPluginName ]
+      else
+        return plugins
+    }
+
+  [<RequireQualifiedAccess>]
+  module FromFields =
+    type DevServerField =
+      | Port of int
+      | Host of string
+      | LiveReload of bool
+      | UseSSL of bool
+      | MinifySources of bool
+
+    [<RequireQualifiedAccess>]
+    type TestingField =
+      | Browsers of Browser seq
+      | Includes of string seq
+      | Excludes of string seq
+      | Watch of bool
+      | Headless of bool
+      | BrowserMode of BrowserMode
+
+    type FableField =
+      | Project of string
+      | Extension of string
+      | SourceMaps of bool
+      | OutDir of bool
+
+    let GetServerFields
+      (config: DevServerConfig, serverOptions: DevServerField seq option)
+      =
+      let getDefaults() = seq {
+        DevServerField.Port config.port
+        DevServerField.Host config.host
+        DevServerField.LiveReload config.liveReload
+        DevServerField.UseSSL config.useSSL
+      }
+
+      let options = serverOptions |> Option.defaultWith getDefaults
+
+      if Seq.isEmpty options then getDefaults() else options
+
+    let GetMinify(serverOptions: DevServerField seq) =
+      serverOptions
+      |> Seq.tryPick(fun opt ->
+        match opt with
+        | MinifySources minify -> Some minify
+        | _ -> None)
+      |> Option.defaultWith(fun _ -> true)
+
+    let GetDevServerOptions
+      (config: DevServerConfig, serverOptions: DevServerField seq)
+      =
+      serverOptions
+      |> Seq.fold
+        (fun current next ->
+          match next with
+          | Port port -> { current with port = port }
+          | Host host -> { current with host = host }
+          | LiveReload liveReload -> { current with liveReload = liveReload }
+          | UseSSL useSSL -> { current with useSSL = useSSL }
+          | _ -> current)
+        config
+
+    let GetTesting
+      (testing: TestConfig, testingOptions: TestingField seq option)
+      =
+      defaultArg testingOptions Seq.empty
+      |> Seq.fold
+        (fun current next ->
+          match next with
+          | TestingField.Browsers value -> { current with browsers = value }
+          | TestingField.Includes value -> { current with includes = value }
+          | TestingField.Excludes value -> { current with excludes = value }
+          | TestingField.Watch value -> { current with watch = value }
+          | TestingField.Headless value -> { current with headless = value }
+          | TestingField.BrowserMode value ->
+              { current with browserMode = value })
+        testing
+
+  let FromString content =
+    let config = Defaults.PerlaConfig
+    let userConfig = Json.FromConfigFile content |> Result.toOption
+    let userFable = userConfig |> Option.map _.fable |> Option.flatten
+    let userDevServer = userConfig |> Option.map _.devServer |> Option.flatten
+    let userBuild = userConfig |> Option.map _.build |> Option.flatten
+    let userEsbuild = userConfig |> Option.map _.esbuild |> Option.flatten
+    let userTesting = userConfig |> Option.map _.testing |> Option.flatten
+    let userPlugins = userConfig |> Option.map _.plugins |> Option.flatten
+    let userIndex = userConfig |> Option.map _.index |> Option.flatten
+    let userProvider = userConfig |> Option.map _.provider |> Option.flatten
+    let userEnvPath = userConfig |> Option.map _.envPath |> Option.flatten
+
+    let userDependencies =
+      userConfig |> Option.map _.dependencies |> Option.flatten
+
+    let userMountDirectories =
+      userConfig |> Option.map _.mountDirectories |> Option.flatten
+
+    let userPaths = userConfig |> Option.map _.paths |> Option.flatten
+    let userEnableEnv = userConfig |> Option.map _.enableEnv |> Option.flatten
+
+    let fable = FromDecoders.GetFable(config.fable, userFable)
+
+    let devServer =
+      FromDecoders.GetDevServer(config.devServer, userDevServer)
+      |> Option.defaultValue Defaults.DevServerConfig
+
+    let build =
+      FromDecoders.GetBuild(config.build, userBuild)
+      |> Option.defaultValue Defaults.BuildConfig
+
+    let esbuild =
+      FromDecoders.GetEsbuild(config.esbuild, userEsbuild)
+      |> Option.defaultValue Defaults.EsbuildConfig
+
+    let testing =
+      FromDecoders.GetTesting(config.testing, userTesting)
+      |> Option.defaultValue Defaults.TestConfig
+
+    let plugins =
+      FromDecoders.GetPlugins(userPlugins)
+      |> Option.defaultValue Defaults.PerlaConfig.plugins
+
+    {
+      config with
+          index = defaultArg userIndex config.index
+          provider = defaultArg userProvider config.provider
+          mountDirectories =
+            defaultArg userMountDirectories config.mountDirectories
+          enableEnv = defaultArg userEnableEnv config.enableEnv
+          envPath = defaultArg userEnvPath config.envPath
+          paths = defaultArg userPaths config.paths
+          dependencies = defaultArg userDependencies config.dependencies
+          plugins = plugins
+          build = build
+          devServer = devServer
+          fable = fable
+          esbuild = esbuild
+          testing = testing
+    }

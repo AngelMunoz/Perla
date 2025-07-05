@@ -130,6 +130,12 @@ type GeneratorResponse = {
 module ImportMap =
   open Thoth.Json.Net
 
+  let Empty = {
+    imports = Map.empty
+    scopes = Map.empty
+    integrity = Map.empty
+  }
+
   let Decoder: Decoder<ImportMap> =
     Decode.object(fun get ->
       let imports =

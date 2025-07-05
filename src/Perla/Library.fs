@@ -246,8 +246,6 @@ module Lib =
     member this.Item
       with get (value: string) =
         match value.ToLowerInvariant() with
-        | "esbuildpath" ->
-          UMX.untag this.esBuildPath |> Text :> IRenderable |> Some
         | "version" -> UMX.untag this.version |> Text :> IRenderable |> Some
         | "ecmaversion" ->
           UMX.untag this.ecmaVersion |> Text :> IRenderable |> Some
@@ -283,7 +281,6 @@ module Lib =
       let tree = Tree("esbuild")
 
       tree.AddNodes(
-        $"esbuildPath -> {this.esBuildPath}",
         $"version -> {this.version}",
         $"ecmaVersion -> {this.ecmaVersion}",
         $"minify -> {this.minify}",

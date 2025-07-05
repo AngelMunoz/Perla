@@ -44,84 +44,6 @@ open Types
 open System.Text.Json.Nodes
 
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
-module Defaults =
-
-  let FableConfig: FableConfig = {
-    project = UMX.tag "./src/App.fsproj"
-    extension = UMX.tag ".fs.js"
-    sourceMaps = true
-    outDir = None
-  }
-
-  let DevServerConfig: DevServerConfig = {
-    port = 7331
-    host = "localhost"
-    liveReload = true
-    useSSL = false
-    proxy = Map.empty
-  }
-
-  let EsbuildConfig: EsbuildConfig = {
-    esBuildPath = FileSystem.FileSystem.EsbuildBinaryPath None
-    version = UMX.tag Constants.Esbuild_Version
-    ecmaVersion = Constants.Esbuild_Target
-    minify = true
-    injects = Seq.empty
-    externals = Seq.empty
-    fileLoaders =
-      [ ".png", "file"; ".woff", "file"; ".woff2", "file"; ".svg", "file" ]
-      |> Map.ofList
-    jsxAutomatic = false
-    jsxImportSource = None
-    aliases = Map.empty
-  }
-
-  let BuildConfig = {
-    includes = Seq.empty
-    excludes = seq {
-      "./**/obj/**"
-      "./**/bin/**"
-      "./**/*.fs"
-      "./**/*.fsi"
-      "./**/*.fsproj"
-    }
-    outDir = UMX.tag "./dist"
-    emitEnvFile = true
-  }
-
-  let TestConfig = {
-    browsers = [ Browser.Chromium ]
-    includes = [
-      "**/*.test.js"
-      "**/*.spec.js"
-      "**/*.Test.fs.js"
-      "**/*.Spec.fs.js"
-    ]
-    excludes = []
-    watch = false
-    headless = true
-    browserMode = BrowserMode.Parallel
-    fable = None
-  }
-
-  let PerlaConfig = {
-    index = UMX.tag Constants.IndexFile
-    provider = PkgManager.DownloadProvider.JspmIo
-    plugins = [ Constants.PerlaEsbuildPluginName ]
-    build = BuildConfig
-    devServer = DevServerConfig
-    esbuild = EsbuildConfig
-    testing = TestConfig
-    fable = None
-    mountDirectories =
-      Map.ofList [ UMX.tag<ServerUrl> "/src", UMX.tag<UserPath> "./src" ]
-    enableEnv = true
-    envPath = UMX.tag Constants.EnvPath
-    paths = Map.empty
-    dependencies = Set.empty
-  }
-
-[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module internal Json =
   open Perla.Json
 
@@ -295,7 +217,6 @@ module internal ConfigExtraction =
 
       return {
         config with
-            esBuildPath = defaultArg decoded.esBuildPath config.esBuildPath
             version = defaultArg decoded.version config.version
             ecmaVersion = defaultArg decoded.ecmaVersion config.ecmaVersion
             minify = defaultArg decoded.minify config.minify

@@ -7,12 +7,16 @@ open System.Text.Json.Nodes
 open System.Threading
 open System.Threading.Tasks
 
+open Microsoft.Extensions.Logging
+
 open IcedTasks
 open FSharp.UMX
 open FSharp.Data.Adaptive
+open Perla.Types
 open Perla.Units
 open Perla.PackageManager.Types
 open Perla.Json
+open Perla.Json.TemplateDecoders
 
 [<RequireQualifiedAccess>]
 type PerlaFileChange =
@@ -20,8 +24,64 @@ type PerlaFileChange =
   | PerlaConfig
   | ImportMap
 
+[<Measure>]
+type Repository
+
+[<Measure>]
+type Branch
+
+[<Interface>]
+type PerlaDirectories =
+  abstract AssemblyRoot: string<SystemPath> with get
+  abstract PerlaArtifactsRoot: string<SystemPath> with get
+  abstract Database: string<SystemPath> with get
+  abstract Templates: string<SystemPath> with get
+  abstract PerlaConfigPath: string<SystemPath> with get
+  abstract CurrentWorkingDirectory: string<SystemPath> with get
+  abstract SetCwdToProject: ?fromPath: string<SystemPath> -> unit
+
+[<Interface>]
+type PerlaFsManager =
+
+  abstract PerlaConfiguration: PerlaConfig aval
+
+  abstract ResolveIndexPath: string<SystemPath> aval
+
+  abstract ResolveIndex: string aval
+
+  abstract DotEnvContents: Map<string, string> aval
+
+  abstract ResolveImportMap: Perla.PkgManager.ImportMap aval
+
+  abstract ResolveDescriptionsFile: unit -> CancellableTask<Map<string, string>>
+
+  abstract ResolvePluginPaths: unit -> (string * string)[]
+
+  abstract ResolveEsbuildPath: unit -> string<SystemPath>
+
+  abstract ResolveLiveReloadScript: unit -> CancellableTask<string>
+  abstract ResolveWorkerScript: unit -> CancellableTask<string>
+  abstract ResolveTestingHelpersScript: unit -> CancellableTask<string>
+  abstract ResolveMochaRunnerScript: unit -> CancellableTask<string>
+
+  abstract SetupEsbuild: string<Semver> -> CancellableTask<unit>
+
+  abstract SetupFable: unit -> CancellableTask<unit>
+
+  abstract SetupTemplate:
+    user: string * repository: string<Repository> * branch: string<Branch> ->
+      CancellableTask<DecodedTemplateConfiguration option>
+
+
 [<RequireQualifiedAccess>]
 module FileSystem =
+
+  val GetDirectories: unit -> PerlaDirectories
+
+  val GetManager:
+    logger: ILogger * env: Perla.Env.PlatformOps * dirs: PerlaDirectories ->
+      PerlaFsManager
+
   module Operators =
     val inline (/): a: string -> b: string -> string
 
@@ -60,42 +120,6 @@ module FileSystem =
     cancellationToken: CancellationToken -> Task<Result<unit, string>>
 
   val CheckFableExists: cancellationToken: CancellationToken -> Task<bool>
-
-
-type PerlaDirectories =
-  abstract member AssemblyRoot: string<SystemPath> with get
-  abstract member PerlaArtifactsRoot: string<SystemPath> with get
-  abstract member Database: string<SystemPath> with get
-  abstract member Templates: string<SystemPath> with get
-  abstract member PerlaConfigPath: string<SystemPath> with get
-  abstract member LiveReloadScript: string with get
-  abstract member WorkerScript: string with get
-  abstract member TestingHelpersScript: string with get
-  abstract member MochaRunnerScript: string with get
-  abstract member DescriptionsFile: Map<string, string> with get
-  abstract member CurrentWorkingDirectory: string<SystemPath> with get
-
-
-type PerlaFsManager =
-  abstract SetCwdToPerlaRoot: ?fromPath: string<SystemPath> -> unit
-
-  abstract ResolveConfig:
-    unit ->
-      CancellableTask<Perla.Types.PerlaConfig option>
-
-  abstract ResolveImportMap:
-    unit -> CancellableTask<Perla.PkgManager.ImportMap option>
-
-  abstract ResolveIndexPath:
-    unit -> CancellableTask<string<SystemPath>>
-
-  abstract ResolvePluginPaths:
-    unit -> (string * string)[]
-
-  abstract ResolveDotEnvPaths:
-    unit -> string<SystemPath>[]
-
-  abstract ObservePerlaFiles: unit -> PerlaFileChange aval
 
 [<Class>]
 type FileSystem =

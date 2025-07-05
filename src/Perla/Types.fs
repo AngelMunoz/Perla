@@ -51,7 +51,6 @@ module Types =
   }
 
   type EsbuildConfig = {
-    esBuildPath: string<SystemPath>
     version: string<Semver>
     ecmaVersion: string
     minify: bool
@@ -201,3 +200,82 @@ module Types =
       | "parallel" -> Parallel
       | "sequential" -> Sequential
       | _ -> Parallel
+
+module Defaults =
+  open Types
+  open Units
+  open FSharp.UMX
+
+  let FableConfig: FableConfig = {
+    project = UMX.tag "./src/App.fsproj"
+    extension = UMX.tag ".fs.js"
+    sourceMaps = true
+    outDir = None
+  }
+
+  let DevServerConfig: DevServerConfig = {
+    port = 7331
+    host = "localhost"
+    liveReload = true
+    useSSL = false
+    proxy = Map.empty
+  }
+
+  let EsbuildConfig: EsbuildConfig = {
+    version = UMX.tag Constants.Esbuild_Version
+    ecmaVersion = Constants.Esbuild_Target
+    minify = true
+    injects = Seq.empty
+    externals = Seq.empty
+    fileLoaders =
+      [ ".png", "file"; ".woff", "file"; ".woff2", "file"; ".svg", "file" ]
+      |> Map.ofList
+    jsxAutomatic = false
+    jsxImportSource = None
+    aliases = Map.empty
+  }
+
+  let BuildConfig = {
+    includes = Seq.empty
+    excludes = seq {
+      "./**/obj/**"
+      "./**/bin/**"
+      "./**/*.fs"
+      "./**/*.fsi"
+      "./**/*.fsproj"
+    }
+    outDir = UMX.tag "./dist"
+    emitEnvFile = true
+  }
+
+  let TestConfig = {
+    browsers = [ Browser.Chromium ]
+    includes = [
+      "**/*.test.js"
+      "**/*.spec.js"
+      "**/*.Test.fs.js"
+      "**/*.Spec.fs.js"
+    ]
+    excludes = []
+    watch = false
+    headless = true
+    browserMode = BrowserMode.Parallel
+    fable = None
+  }
+
+  let PerlaConfig = {
+    index = UMX.tag Constants.IndexFile
+    provider = PkgManager.DownloadProvider.JspmIo
+    plugins = [ Constants.PerlaEsbuildPluginName ]
+    build = BuildConfig
+    devServer = DevServerConfig
+    esbuild = EsbuildConfig
+    testing = TestConfig
+    fable = None
+    mountDirectories =
+      Map.ofList [ UMX.tag<ServerUrl> "/src", UMX.tag<UserPath> "./src" ]
+    enableEnv = true
+    envPath = UMX.tag Constants.EnvPath
+    paths = Map.empty
+    dependencies = Set.empty
+  }

@@ -41,16 +41,6 @@ module Types =
 
 open Types
 
-
-[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
-module Defaults =
-  val FableConfig: FableConfig
-  val DevServerConfig: DevServerConfig
-  val EsbuildConfig: EsbuildConfig
-  val BuildConfig: BuildConfig
-  val TestConfig: TestConfig
-  val PerlaConfig: PerlaConfig
-
 module internal ConfigExtraction =
 
   [<RequireQualifiedAccess>]

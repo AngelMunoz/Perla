@@ -39,7 +39,6 @@ module TemplateDecoders =
 
 module ConfigDecoders =
 
-
   type DecodedFableConfig = {
     project: string<SystemPath> option
     extension: string<FileExtension> option
@@ -145,3 +144,6 @@ type Json =
   static member ToNode: value: 'a -> JsonNode
   static member FromConfigFile: string -> Result<DecodedPerlaConfig, string>
   static member TestEventFromJson: string -> Result<TestEvent, string>
+
+module PerlaConfig =
+    val FromString: content: string -> PerlaConfig

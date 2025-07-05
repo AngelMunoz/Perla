@@ -9,27 +9,29 @@ open System.Threading
 open System.Threading.Tasks
 open System.Runtime.InteropServices
 
+open Perla.Types
 open Spectre.Console
 
 open CliWrap
 
 open FsHttp
 
-open ICSharpCode.SharpZipLib.GZip
 open ICSharpCode.SharpZipLib.Tar
 
+open IcedTasks
 open FSharp.UMX
 
 open FsToolkit.ErrorHandling
 
 open FSharp.Control.Reactive
+open FSharp.Data.Adaptive
 
-open Fake.IO.Globbing
 open Fake.IO.Globbing.Operators
 
 open Perla
 open Perla.Units
 open Perla.Json
+open Perla.Json.TemplateDecoders
 open Perla.Logger
 open Perla.PackageManager.Types
 
@@ -39,15 +41,357 @@ type PerlaFileChange =
   | PerlaConfig
   | ImportMap
 
+[<Measure>]
+type Repository
 
+[<Measure>]
+type Branch
+
+[<Interface>]
+type PerlaDirectories =
+  abstract AssemblyRoot: string<SystemPath> with get
+  abstract PerlaArtifactsRoot: string<SystemPath> with get
+  abstract Database: string<SystemPath> with get
+  abstract Templates: string<SystemPath> with get
+  abstract PerlaConfigPath: string<SystemPath> with get
+  abstract CurrentWorkingDirectory: string<SystemPath> with get
+  abstract SetCwdToProject: ?fromPath: string<SystemPath> -> unit
+
+[<Interface>]
+type PerlaFsManager =
+
+  abstract PerlaConfiguration: Types.PerlaConfig aval
+
+  abstract ResolveIndexPath: string<SystemPath> aval
+
+  abstract ResolveIndex: string aval
+
+  abstract DotEnvContents: Map<string, string> aval
+
+  abstract ResolveImportMap: PkgManager.ImportMap aval
+
+  abstract ResolveDescriptionsFile: unit -> CancellableTask<Map<string, string>>
+
+  abstract ResolvePluginPaths: unit -> (string * string)[]
+
+  abstract ResolveEsbuildPath: unit -> string<SystemPath>
+
+  abstract ResolveLiveReloadScript: unit -> CancellableTask<string>
+  abstract ResolveWorkerScript: unit -> CancellableTask<string>
+  abstract ResolveTestingHelpersScript: unit -> CancellableTask<string>
+  abstract ResolveMochaRunnerScript: unit -> CancellableTask<string>
+
+  abstract SetupEsbuild: string<Semver> -> CancellableTask<unit>
+
+  abstract SetupFable: unit -> CancellableTask<unit>
+
+  abstract SetupTemplate:
+    user: string * repository: string<Repository> * branch: string<Branch> ->
+      CancellableTask<DecodedTemplateConfiguration option>
 
 [<RequireQualifiedAccess>]
 module FileSystem =
+  open Microsoft.Extensions.Logging
 
+  [<AutoOpen>]
   module Operators =
     let inline (/) a b = Path.Combine(a, b)
 
-  open Operators
+    let inline (|/) (a: string<SystemPath>) (b: string) =
+      Path.Combine(UMX.untag a, UMX.untag b) |> UMX.tag<SystemPath>
+
+  let GetDirectories() =
+    let rec findConfig filename (directory: DirectoryInfo | null) =
+      if isNull directory then
+        None
+      else
+        let found =
+          directory.GetFiles(filename, SearchOption.TopDirectoryOnly)
+          |> Array.tryHead
+
+        match found with
+        | Some found -> Some found
+        | None -> findConfig filename directory.Parent
+
+    let findPerlaConfig = findConfig "perla.json"
+
+    { new PerlaDirectories with
+        member _.AssemblyRoot = UMX.tag<SystemPath> AppContext.BaseDirectory
+
+        member _.CurrentWorkingDirectory =
+          UMX.tag<SystemPath> Environment.CurrentDirectory
+
+        member _.PerlaArtifactsRoot =
+          Environment.GetFolderPath(
+            Environment.SpecialFolder.LocalApplicationData
+          )
+          / Constants.ArtifactsDirectoryname
+          |> UMX.tag<SystemPath>
+
+        member this.Database =
+          $"{this.PerlaArtifactsRoot}" / Constants.TemplatesDatabase |> UMX.tag
+
+        member this.Templates =
+          $"{this.PerlaArtifactsRoot}" / Constants.TemplatesDirectory |> UMX.tag
+
+        member this.PerlaConfigPath =
+          let cwd = DirectoryInfo(UMX.untag this.CurrentWorkingDirectory)
+
+          findPerlaConfig cwd
+          |> Option.defaultWith(fun () -> FileInfo(cwd.FullName / "perla.json"))
+          |> _.FullName
+          |> UMX.tag<SystemPath>
+
+        member this.SetCwdToProject(?fromPath) =
+          let path =
+            option {
+              let! path = fromPath
+              let! file = findPerlaConfig(DirectoryInfo(UMX.untag path))
+              return file.FullName
+            }
+            |> function
+              | Some path -> path
+              | None -> UMX.untag this.PerlaConfigPath
+
+          Directory.SetCurrentDirectory path
+    }
+
+  let GetManager
+    (logger: ILogger, env: Env.PlatformOps, dirs: PerlaDirectories)
+    =
+    { new PerlaFsManager with
+
+        member _.PerlaConfiguration = adaptive {
+          let path = UMX.untag dirs.PerlaConfigPath
+          let! content = AdaptiveFile.TryReadAllText path
+
+          match content with
+          | None -> return Defaults.PerlaConfig
+          | Some content -> return PerlaConfig.FromString content
+        }
+
+        member this.ResolveIndexPath =
+          this.PerlaConfiguration |> AVal.map _.index
+
+        member this.ResolveIndex = adaptive {
+          let! indexPath = this.ResolveIndexPath
+          let! content = AdaptiveFile.TryReadAllText(UMX.untag indexPath)
+          return defaultArg content ""
+        }
+
+        member _.DotEnvContents = adaptive {
+
+          let envVarRegex =
+            RegularExpressions.Regex
+              "PERLA_(?<envvarname>[a-zA-Z0-9_]+)\\s*=\\s*(?<content>.+)"
+
+          let path = UMX.untag dirs.CurrentWorkingDirectory
+          let dotEnvFiles = AdaptiveDirectory.GetFiles(path, "*.env")
+
+          let parseEnvLine line =
+            let matchResult = envVarRegex.Match line
+
+            if matchResult.Success then
+              Some(
+                matchResult.Groups.["envvarname"].Value,
+                matchResult.Groups.["content"].Value
+              )
+            else
+              None
+
+          let reduction =
+            AdaptiveReduction.fold Map.empty<string, string>
+            <| fun acc next ->
+              Map.fold (fun acc k v -> Map.add k v acc) acc next
+
+          let! dotEnvFilesContent =
+            dotEnvFiles
+            |> ASet.mapA(fun file -> adaptive {
+              let! fileContent = AdaptiveFile.TryReadAllLines file.FullName
+              let fileContent = fileContent |> Option.defaultValue Array.empty
+
+              return fileContent |> Array.choose parseEnvLine |> Map.ofArray
+            })
+            |> ASet.reduce reduction
+
+          return dotEnvFilesContent
+        }
+
+        member _.ResolveImportMap = adaptive {
+          let path = dirs.CurrentWorkingDirectory |/ Constants.ImportMapName
+
+          let! content = AdaptiveFile.TryReadAllText(UMX.untag path)
+
+          let importMap =
+            content
+            |> Option.map(
+              Thoth.Json.Net.Decode.fromString PkgManager.ImportMap.Decoder
+              >> Result.toOption
+            )
+            |> Option.flatten
+
+          return defaultArg importMap PkgManager.ImportMap.Empty
+        }
+
+        member _.ResolveDescriptionsFile() = cancellableTask {
+          let path =
+            UMX.untag dirs.AssemblyRoot / "descriptions.json"
+            |> UMX.tag<SystemPath>
+
+          try
+            let! token = CancellableTask.getCancellationToken()
+            let! content = File.ReadAllBytesAsync(UMX.untag path, token)
+            let descriptions = Json.FromBytes<Map<string, string>> content
+            return descriptions
+          with _ ->
+            return Map.empty<string, string>
+        }
+
+        member _.ResolvePluginPaths() =
+          let path = dirs.CurrentWorkingDirectory |/ ".perla" / "plugins"
+
+          !! $"{path}/**/*.fsx"
+          |> Seq.toArray
+          |> Array.Parallel.map(fun path -> path, File.ReadAllText path)
+
+        member this.ResolveEsbuildPath() =
+          let bin = if env.IsWindows() then "" else "bin"
+          let exec = if env.IsWindows() then ".exe" else ""
+
+          let esbuildVersion =
+            this.PerlaConfiguration |> AVal.map _.esbuild.version |> AVal.force
+
+          dirs.PerlaArtifactsRoot
+          |/ UMX.untag esbuildVersion
+          |/ "package"
+          |/ bin
+          |/ $"esbuild{exec}"
+          |> UMX.untag
+          |> Path.GetFullPath
+          |> UMX.tag<SystemPath>
+
+        member _.ResolveLiveReloadScript() = cancellableTask {
+          let! token = CancellableTask.getCancellationToken()
+
+          let! content =
+            File.ReadAllTextAsync(
+              UMX.untag dirs.AssemblyRoot / "livereload.js",
+              token
+            )
+
+          return content
+        }
+
+        member _.ResolveMochaRunnerScript() = cancellableTask {
+          let! token = CancellableTask.getCancellationToken()
+
+          let! content =
+            File.ReadAllTextAsync(
+              UMX.untag dirs.AssemblyRoot / "mocha-runner.js",
+              token
+            )
+
+          return content
+        }
+
+        member _.ResolveTestingHelpersScript() = cancellableTask {
+          let! token = CancellableTask.getCancellationToken()
+
+          let! content =
+            File.ReadAllTextAsync(
+              UMX.untag dirs.AssemblyRoot / "testing-helpers.js",
+              token
+            )
+
+          return content
+        }
+
+        member _.ResolveWorkerScript() = cancellableTask {
+          let! token = CancellableTask.getCancellationToken()
+
+          let! content =
+            File.ReadAllTextAsync(
+              UMX.untag dirs.AssemblyRoot / "worker.js",
+              token
+            )
+
+          return content
+        }
+
+        member this.SetupEsbuild(version) = cancellableTask {
+          let! token = CancellableTask.getCancellationToken()
+
+          let esbuildVersion = UMX.untag version
+
+          let binString = $"{env.PlatformString()}-{env.ArchString()}"
+
+          let compressedFile =
+            dirs.PerlaArtifactsRoot |/ esbuildVersion / "esbuild.tgz"
+
+
+          let url =
+            $"https://registry.npmjs.org/@esbuild/{binString}/-/{binString}-{esbuildVersion}.tgz"
+
+          let dir =
+            DirectoryInfo(UMX.untag compressedFile |> Path.GetDirectoryName)
+
+          dir.Create()
+
+          let extractDir = UMX.untag dirs.PerlaArtifactsRoot / UMX.untag version
+
+          try
+            let! req =
+              get url |> Config.cancellationToken token |> Request.sendTAsync
+
+            use! stream = req |> Response.toStreamTAsync token
+
+            use gzip = new GZipStream(stream, CompressionMode.Decompress)
+            use archive = TarArchive.CreateInputTarArchive(gzip, Encoding.UTF8)
+            archive.ExtractContents(UMX.untag extractDir, true)
+          // extracts $"./{extractDir}/package/bin/esbuild"
+          // extracts $"./{extractDir}/package/esbuild.exe" in windows
+          with ex ->
+            logger.LogWarning("Failed to extract esbuild from {url}", url, ex)
+            return ()
+
+          if not(env.IsWindows()) then
+            let esbuildBinaryPath = this.ResolveEsbuildPath() |> UMX.untag
+
+            logger.LogInformation(
+              "Executing: chmod +x on \"{esbuildBinaryPath}\"",
+              esbuildBinaryPath
+            )
+
+            let command =
+              Cli
+                .Wrap("chmod")
+                .WithStandardOutputPipe(PipeTarget.ToDelegate logger.LogDebug)
+                .WithStandardErrorPipe(PipeTarget.ToDelegate logger.LogDebug)
+                .WithArguments
+                $"+x {esbuildBinaryPath}"
+
+            let! _ = command.ExecuteAsync token
+
+            logger.LogInformation(
+              "Successfully set executable permissions for {esbuildBinaryPath}",
+              esbuildBinaryPath
+            )
+
+            logger.LogInformation
+              "This setup should happen once per machine. If you see it often please report a bug."
+
+            return ()
+          else
+
+            logger.LogInformation
+              "This setup should happen once per machine. If you see it often please report a bug."
+
+            return ()
+        }
+
+        member this.SetupFable() = failwith "todo"
+        member this.SetupTemplate(user, repository, branch) = failwith "todo"
+    }
 
   let AssemblyRoot: string<SystemPath> =
     UMX.tag<SystemPath> AppContext.BaseDirectory
@@ -237,7 +581,8 @@ module FileSystem =
       match! path with
       | Some path ->
         let extract() =
-          use stream = new GZipInputStream(File.OpenRead path)
+          use stream =
+            new ICSharpCode.SharpZipLib.GZip.GZipInputStream(File.OpenRead path)
 
           use archive = TarArchive.CreateInputTarArchive(stream, Encoding.UTF8)
 

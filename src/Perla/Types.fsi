@@ -53,7 +53,6 @@ module Types =
   }
 
   type EsbuildConfig = {
-    esBuildPath: string<SystemPath>
     version: string<Semver>
     ecmaVersion: string
     minify: bool
@@ -176,3 +175,13 @@ module Types =
   exception PackageNotFoundException
   exception HeaderNotFoundException of string
   exception FailedToParseNameException of string
+
+module Defaults =
+  open Types
+
+  val FableConfig: FableConfig
+  val DevServerConfig: DevServerConfig
+  val EsbuildConfig: EsbuildConfig
+  val BuildConfig: BuildConfig
+  val TestConfig: TestConfig
+  val PerlaConfig: PerlaConfig

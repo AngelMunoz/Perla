@@ -10,6 +10,7 @@ open CliWrap
 open IcedTasks
 open FSharp.UMX
 
+open Perla.FileSystem
 open Perla.Types
 open Perla.Units
 open Perla.Plugins
@@ -29,6 +30,7 @@ type EsbuildServiceArgs = {
 
 [<Interface>]
 type EsbuildService =
+  abstract SetupEsbuild: version: string<Semver> -> CancellableTask<unit>
   abstract ProcessJS:
     entrypoint: string * outdir: string * config: EsbuildConfig ->
       CancellableTask<unit>
@@ -40,7 +42,7 @@ type EsbuildService =
   abstract GetPlugin: config: EsbuildConfig -> PluginInfo
 
 module Esbuild =
-  val Create: serviceArgs: EsbuildServiceArgs -> EsbuildService
+  val Create: serviceArgs: EsbuildServiceArgs * perlaDirs: PerlaDirectories -> EsbuildService
 
 [<Class>]
 type Esbuild =
