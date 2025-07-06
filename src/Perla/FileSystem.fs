@@ -13,10 +13,9 @@ open Perla.Types
 open Spectre.Console
 
 open CliWrap
+open CliWrap.Buffered
 
 open FsHttp
-
-open ICSharpCode.SharpZipLib.Tar
 
 open IcedTasks
 open FSharp.UMX
@@ -92,6 +91,7 @@ type PerlaFsManager =
 [<RequireQualifiedAccess>]
 module FileSystem =
   open Microsoft.Extensions.Logging
+  open System.Formats.Tar
 
   [<AutoOpen>]
   module Operators =
@@ -344,10 +344,15 @@ module FileSystem =
               get url |> Config.cancellationToken token |> Request.sendTAsync
 
             use! stream = req |> Response.toStreamTAsync token
+            use source = new GZipStream(stream, CompressionMode.Decompress)
 
-            use gzip = new GZipStream(stream, CompressionMode.Decompress)
-            use archive = TarArchive.CreateInputTarArchive(gzip, Encoding.UTF8)
-            archive.ExtractContents(UMX.untag extractDir, true)
+            do!
+              TarFile.ExtractToDirectoryAsync(
+                source,
+                UMX.untag extractDir,
+                true,
+                token
+              )
           // extracts $"./{extractDir}/package/bin/esbuild"
           // extracts $"./{extractDir}/package/esbuild.exe" in windows
           with ex ->
@@ -389,8 +394,110 @@ module FileSystem =
             return ()
         }
 
-        member this.SetupFable() = failwith "todo"
-        member this.SetupTemplate(user, repository, branch) = failwith "todo"
+        member _.SetupFable() = cancellableTask {
+          let! token = CancellableTask.getCancellationToken()
+
+          let ext = if env.IsWindows() then ".exe" else ""
+          let dotnet = $"dotnet{ext}"
+
+          let dotnetCmd = Cli.Wrap(dotnet)
+
+
+          let! fableExists =
+            dotnetCmd
+              .WithArguments([ "fable"; "--version" ])
+              .WithValidation(CommandResultValidation.None)
+              .ExecuteBufferedAsync(token)
+
+          if fableExists.ExitCode = 0 then
+            logger.LogInformation "Fable is already installed, skipping setup."
+            return ()
+
+          logger.LogInformation "Fable is not installed, installing..."
+
+          let! installCmd =
+            dotnetCmd
+              .WithArguments(
+                [ "tool"; "install"; "fable"; "--create-manifest-if-needed" ]
+              )
+              .WithValidation(CommandResultValidation.None)
+              .ExecuteBufferedAsync
+              token
+
+          if installCmd.ExitCode <> 0 then
+            logger.LogError(
+              "Failed to install Fable: {Error}",
+              installCmd.StandardError
+            )
+
+            return ()
+
+          logger.LogInformation "Fable installed successfully."
+          return ()
+        }
+
+        member _.SetupTemplate(user, repository, branch) = cancellableTask {
+          let! token = CancellableTask.getCancellationToken()
+
+          let! url =
+            get
+              $"https://github.com/{user}/{repository}/archive/refs/heads/{branch}.zip"
+            |> Config.cancellationToken token
+            |> Request.sendTAsync
+
+          use! stream = url |> Response.toStreamTAsync token
+
+          let targetPath =
+            Path.Combine(
+              UMX.untag dirs.Templates,
+              $"{user}-{repository}-{branch}"
+            )
+
+          try
+            Directory.Delete(targetPath, true)
+          with ex ->
+            ()
+
+          use zip = new ZipArchive(stream)
+          zip.ExtractToDirectory(UMX.untag dirs.Templates, true)
+
+          Directory.Move(
+            Path.Combine(UMX.untag dirs.Templates, $"{repository}-{branch}"),
+            targetPath
+          )
+
+          let! config = cancellableTask {
+            try
+              let! content =
+                File.ReadAllTextAsync(targetPath / "perla.config.json")
+
+              return Some content
+            with _ ->
+              return None
+          }
+
+          match config with
+          | Some config ->
+            return
+              Thoth.Json.Net.Decode.fromString
+                TemplateConfigurationDecoder
+                config
+              |> Result.teeError(fun error ->
+                logger.LogWarning(
+                  "Failed to decode template configuration: {error}",
+                  error
+                ))
+              |> Result.toOption
+          | None ->
+            logger.LogWarning(
+              "No Configuration File found in template {user}/{repository}@{branch}",
+              user,
+              repository,
+              branch
+            )
+
+            return None
+        }
     }
 
   let AssemblyRoot: string<SystemPath> =
@@ -584,7 +691,11 @@ module FileSystem =
           use stream =
             new ICSharpCode.SharpZipLib.GZip.GZipInputStream(File.OpenRead path)
 
-          use archive = TarArchive.CreateInputTarArchive(stream, Encoding.UTF8)
+          use archive =
+            ICSharpCode.SharpZipLib.Tar.TarArchive.CreateInputTarArchive(
+              stream,
+              Encoding.UTF8
+            )
 
           path |> Path.GetDirectoryName |> archive.ExtractContents
 
