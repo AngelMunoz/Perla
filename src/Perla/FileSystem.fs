@@ -86,7 +86,13 @@ type PerlaFsManager =
 
   abstract SetupTemplate:
     user: string * repository: string<Repository> * branch: string<Branch> ->
-      CancellableTask<DecodedTemplateConfiguration option>
+      CancellableTask<
+        (string<SystemPath> *
+        DecodedTemplateConfiguration *
+        string *
+        string<Repository> *
+        string<Branch>) option
+       >
 
 [<RequireQualifiedAccess>]
 module FileSystem =
@@ -122,9 +128,8 @@ module FileSystem =
           UMX.tag<SystemPath> Environment.CurrentDirectory
 
         member _.PerlaArtifactsRoot =
-          Environment.GetFolderPath(
+          Environment.GetFolderPath
             Environment.SpecialFolder.LocalApplicationData
-          )
           / Constants.ArtifactsDirectoryname
           |> UMX.tag<SystemPath>
 
@@ -478,7 +483,7 @@ module FileSystem =
 
           match config with
           | Some config ->
-            return
+            let decoded =
               Thoth.Json.Net.Decode.fromString
                 TemplateConfigurationDecoder
                 config
@@ -488,6 +493,15 @@ module FileSystem =
                   error
                 ))
               |> Result.toOption
+
+            return
+              decoded
+              |> Option.map(fun config ->
+                UMX.tag<SystemPath> targetPath,
+                config,
+                user,
+                repository,
+                branch)
           | None ->
             logger.LogWarning(
               "No Configuration File found in template {user}/{repository}@{branch}",

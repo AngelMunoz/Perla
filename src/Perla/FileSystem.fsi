@@ -18,7 +18,7 @@ open Perla.PackageManager.Types
 open Perla.Json
 open Perla.Json.TemplateDecoders
 
-[<RequireQualifiedAccess>]
+[<RequireQualifiedAccess; Obsolete>]
 type PerlaFileChange =
   | Index
   | PerlaConfig
@@ -70,7 +70,13 @@ type PerlaFsManager =
 
   abstract SetupTemplate:
     user: string * repository: string<Repository> * branch: string<Branch> ->
-      CancellableTask<DecodedTemplateConfiguration option>
+      CancellableTask<
+        (string<SystemPath> *
+        DecodedTemplateConfiguration *
+        string *
+        string<Repository> *
+        string<Branch>) option
+       >
 
 
 [<RequireQualifiedAccess>]
@@ -82,46 +88,76 @@ module FileSystem =
     logger: ILogger * env: Perla.Env.PlatformOps * dirs: PerlaDirectories ->
       PerlaFsManager
 
-  module Operators =
-    val inline (/): a: string -> b: string -> string
-
+  [<Obsolete>]
   val AssemblyRoot: string<SystemPath>
+
+  [<Obsolete>]
   val PerlaArtifactsRoot: string<SystemPath>
+
+  [<Obsolete>]
   val Database: string<SystemPath>
+
+  [<Obsolete>]
   val Templates: string<SystemPath>
+
+  [<Obsolete>]
   val PerlaConfigPath: string<SystemPath>
+
+  [<Obsolete>]
   val LiveReloadScript: Lazy<string>
+
+  [<Obsolete>]
   val WorkerScript: Lazy<string>
+
+  [<Obsolete>]
   val TestingHelpersScript: Lazy<string>
+
+  [<Obsolete>]
   val MochaRunnerScript: Lazy<string>
+
+  [<Obsolete>]
   val DescriptionsFile: Lazy<Map<string, string>>
+
+  [<Obsolete>]
   val CurrentWorkingDirectory: unit -> string<SystemPath>
 
+  [<Obsolete>]
   val GetConfigPath:
     fileName: string ->
     fromDirectory: string<SystemPath> option ->
       string<SystemPath>
 
+  [<Obsolete>]
   val ExtractTemplateZip:
     username: string * repository: string * branch: string ->
       stream: Stream ->
         string<SystemPath> *
         Result<TemplateDecoders.DecodedTemplateConfiguration, string>
 
+  [<Obsolete>]
   val RemoveTemplateDirectory: path: string<SystemPath> -> unit
+
+  [<Obsolete>]
   val EsbuildBinaryPath: string<Semver> option -> string<SystemPath>
+
+  [<Obsolete>]
   val TryReadTsConfig: unit -> string option
+
+  [<Obsolete>]
   val GetTempDir: unit -> string
 
+  [<Obsolete>]
   val TplRepositoryChildTemplates:
     path: string<SystemPath> -> string<SystemPath> seq
 
+  [<Obsolete>]
   val DotNetToolRestore:
     cancellationToken: CancellationToken -> Task<Result<unit, string>>
 
+  [<Obsolete>]
   val CheckFableExists: cancellationToken: CancellationToken -> Task<bool>
 
-[<Class>]
+[<Class; Obsolete>]
 type FileSystem =
   static member PerlaConfigText:
     ?fromDirectory: string<SystemPath> -> string option
