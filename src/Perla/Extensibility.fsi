@@ -1,32 +1,24 @@
 ﻿namespace Perla.Extensibility
 
-open System.IO
-open System.Collections.Generic
-open FSharp.Compiler.Interactive.Shell
+open Microsoft.Extensions.Logging
 
-open FsToolkit.ErrorHandling
-
-open Perla.Types
 open Perla.Plugins
 open Perla.Plugins.Registry
 
-[<Struct>]
-type ExtCache =
-  static member PluginCache: Lazy<Dictionary<string, PluginInfo>>
+[<Interface>]
+type ExtensibilityService =
+  abstract LoadPlugins:
+    pluginFiles: (string * string)[] * ?esbuildPlugin: PluginInfo ->
+      Result<PluginInfo list, PluginLoadError>
 
-  static member SessionCache: Lazy<Dictionary<string, FsiEvaluationSession>>
+  abstract GetAllPlugins: unit -> PluginInfo list
+  abstract GetRunnablePlugins: order: string list -> RunnablePlugin list
 
-[<Struct>]
-type PluginStdio =
+  abstract RunPlugins:
+    pluginOrder: string list -> fileInput: FileTransform -> Async<FileTransform>
 
-  static member Stdout: TextWriter
-
-  static member Stderr: TextWriter
+  abstract HasPluginsForExtension: extension: string -> bool
 
 [<RequireQualifiedAccess>]
-module PluginLoader =
-
-  val inline Load<'Fs, 'Esbuild
-    when 'Fs: (static member PluginFiles: unit -> (string * string) array)
-    and 'Esbuild: (static member GetPlugin: EsbuildConfig -> PluginInfo)> :
-    esbuildConfig: EsbuildConfig -> Validation<PluginInfo list, PluginLoadError>
+module ExtensibilityService =
+  val Create: logger: ILogger -> ExtensibilityService

@@ -1,60 +1,110 @@
 ﻿namespace Perla.Extensibility
 
 open System
-open System.Collections.Generic
-open FSharp.Compiler.Interactive.Shell
+open System.IO
+open System.Text
+open Microsoft.Extensions.Logging
 
 open FsToolkit.ErrorHandling
-
-open Perla.Types
-open Perla.Esbuild
 
 open Perla.Plugins
 open Perla.Plugins.Registry
 
-[<Struct>]
-type ExtCache =
-  static let _pluginCache = lazy (Dictionary<string, PluginInfo>())
+[<Interface>]
+type ExtensibilityService =
+  abstract LoadPlugins:
+    pluginFiles: (string * string)[] * ?esbuildPlugin: PluginInfo ->
+      Result<PluginInfo list, PluginLoadError>
 
-  static let _sessionCache = lazy (Dictionary<string, FsiEvaluationSession>())
+  abstract GetAllPlugins: unit -> PluginInfo list
+  abstract GetRunnablePlugins: order: string list -> RunnablePlugin list
 
-  static member PluginCache = _pluginCache
+  abstract RunPlugins:
+    pluginOrder: string list -> fileInput: FileTransform -> Async<FileTransform>
 
-  static member SessionCache = _sessionCache
+  abstract HasPluginsForExtension: extension: string -> bool
 
-[<Struct>]
-type PluginStdio =
+[<RequireQualifiedAccess>]
+module ExtensibilityService =
+  // LogTextWriter function that returns a TextWriter object expression
+  let logWriter(logger: ILogger, logLevel: LogLevel) =
+    let buffer = StringBuilder()
 
-  static member Stdout = Console.Out
+    { new TextWriter() with
+        override _.Encoding = Encoding.UTF8
 
-  static member Stderr = Console.Error
+        override _.Write(value: char) =
+          if value = '\n' then
+            let line = buffer.ToString()
+            buffer.Clear() |> ignore
 
-module PluginLoader =
-  let inline Load<'Fs, 'Esbuild
-    when 'Fs: (static member PluginFiles: unit -> (string * string) array)
-    and 'Esbuild: (static member GetPlugin: EsbuildConfig -> PluginInfo)>
-    (esbuildConfig: EsbuildConfig)
-    =
-    validation {
-      let esbuild = 'Esbuild.GetPlugin esbuildConfig
-      do! PluginRegistry.LoadFromCode<ExtCache> esbuild
+            if not(String.IsNullOrWhiteSpace(line)) then
+              logger.Log(logLevel, line)
+          else
+            buffer.Append(value) |> ignore
 
-      do!
-        'Fs.PluginFiles()
-        |> Array.Parallel.map(fun (path, content) ->
-          PluginRegistry.LoadFromText<ExtCache, PluginStdio>(path, content))
-        |> List.ofArray
-        |> List.traverseResultA(fun plugin -> result {
-          let! plugin = plugin
-          Console.WriteLine $"Loaded plugin: {plugin.name}"
+        override _.Write(value: string) =
+          if isNull value then
+            ()
+          else
+            for char in value do
+              base.Write(char)
 
-          do!
-            ExtCache.PluginCache.Value.TryAdd(plugin.name, plugin)
-            |> Result.requireTrue(AlreadyLoaded plugin.name)
+        override _.WriteLine(value: string) =
+          if isNull value then
+            logger.Log(logLevel, String.Empty)
+          else
+            logger.Log(logLevel, value)
 
-          return plugin
-        })
-        |> Result.ignore
+        override _.WriteLine() =
+          let line = buffer.ToString()
+          buffer.Clear() |> ignore
+          logger.Log(logLevel, line)
 
-      return PluginRegistry.GetPluginList<ExtCache>()
+        override _.Flush() =
+          if buffer.Length > 0 then
+            let line = buffer.ToString()
+            buffer.Clear() |> ignore
+
+            if not(String.IsNullOrWhiteSpace(line)) then
+              logger.Log(logLevel, line)
+    }
+
+  let Create(logger: ILogger) =
+    let stdout = logWriter(logger, LogLevel.Information)
+    let stderr = logWriter(logger, LogLevel.Error)
+    let pluginManager = PluginManager.Create(stdout, stderr)
+
+    { new ExtensibilityService with
+        member _.LoadPlugins(pluginFiles, ?esbuildPlugin) = result {
+          // Load the esbuild plugin first if provided
+          match esbuildPlugin with
+          | Some plugin ->
+            do! pluginManager.LoadFromCode(plugin)
+            logger.LogInformation($"Loaded esbuild plugin: {plugin.name}")
+          | None -> ()
+
+          // Load plugins from files
+          let! loadResults =
+            pluginFiles
+            |> Array.traverseResultM(fun (path, content) ->
+              pluginManager.LoadFromText(path, content))
+            |> Result.teeError(fun (error: PluginLoadError) ->
+              logger.LogError("Failure to load a plugin: {error}", error))
+
+
+          // Return all loaded plugins
+          return pluginManager.GetAllPlugins()
+        }
+
+        member _.GetAllPlugins() = pluginManager.GetAllPlugins()
+
+        member _.GetRunnablePlugins(order) =
+          pluginManager.GetRunnablePlugins(order)
+
+        member _.RunPlugins (pluginOrder) (fileInput) =
+          pluginManager.RunPlugins (pluginOrder) fileInput
+
+        member _.HasPluginsForExtension(extension) =
+          pluginManager.HasPluginsForExtension(extension)
     }
