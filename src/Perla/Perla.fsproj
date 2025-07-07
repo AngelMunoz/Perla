@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -48,8 +48,6 @@
     <Compile Include="Library.fsi" />
     <Compile Include="Library.fs" />
     <Compile Include="Testing.fs" />
-    <Compile Include="Dependencies.fsi" />
-    <Compile Include="Dependencies.fs" />
     <Compile Include="Server.fsi" />
     <Compile Include="Server.fs" />
     <Compile Include="Configuration.fsi" />
