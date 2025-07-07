@@ -22,6 +22,9 @@ open FsToolkit.ErrorHandling
 open FSharp.Data.Adaptive
 
 open Fake.IO.Globbing.Operators
+open Fake.IO.Globbing
+
+open Spectre.Console
 
 open Perla
 open Perla.Units
@@ -96,6 +99,12 @@ type PerlaFsManager =
         string<Repository> *
         string<Branch>) option
        >
+
+  abstract CopyGlobs:
+    buildConfig: BuildConfig * tempDir: string<SystemPath> -> unit
+
+  abstract EmitEnvFile:
+    config: PerlaConfig * tmpPath: string<SystemPath> option -> unit
 
 [<AutoOpen>]
 module Operators =
@@ -555,4 +564,131 @@ module FileSystem =
 
             return None
         }
+
+        member _.CopyGlobs
+          (buildConfig: BuildConfig, tempDir: string<SystemPath>)
+          =
+          let outDir = UMX.untag buildConfig.outDir |> Path.GetFullPath
+
+          let chooseGlobs
+            (startsWith: string)
+            (contains: string)
+            (glob: string)
+            =
+            if glob.StartsWith startsWith then
+              Some(glob.Substring startsWith.Length)
+            elif not(glob.Contains contains) then
+              Some(glob)
+            else
+              None
+
+          let lfsGlob =
+            let localIncludes =
+              buildConfig.includes
+              |> Seq.choose(chooseGlobs "lfs:" "vfs:")
+              |> Seq.toList
+
+            let localExcludes =
+              buildConfig.excludes
+              |> Seq.choose(chooseGlobs "lfs:" "vfs:")
+              |> Seq.toList
+
+            {
+              BaseDirectory = dirs.CurrentWorkingDirectory |> UMX.untag
+              Includes = localIncludes
+              Excludes = localExcludes
+            }
+
+          let vfsGlob =
+            let virtualIncludes =
+              buildConfig.includes
+              |> Seq.choose(chooseGlobs "vfs:" "lfs:")
+              |> Seq.toList
+
+            let virtualExcludes =
+              buildConfig.excludes
+              |> Seq.choose(chooseGlobs "vfs:" "lfs:")
+              |> Seq.toList
+
+            {
+              BaseDirectory = UMX.untag tempDir
+              Includes = virtualIncludes
+              Excludes = virtualExcludes
+            }
+
+          let copyAndIncrement
+            (cwd: string)
+            (tsk: ProgressTask)
+            (file: string)
+            =
+            tsk.Increment 1
+            let targetPath = file.Replace(cwd, outDir)
+
+            try
+              Path.GetDirectoryName targetPath
+              |> Directory.CreateDirectory
+              |> ignore
+            with _ ->
+              ()
+
+            File.Copy(file, targetPath, true)
+
+          AnsiConsole
+            .Progress()
+            .Start(fun ctx ->
+              let lfsTask =
+                ctx.AddTask(
+                  "Copy Local Files to Output",
+                  true,
+                  lfsGlob |> Seq.length |> float
+                )
+
+              let vfsTask =
+                ctx.AddTask(
+                  "Copy virtual files to Output",
+                  true,
+                  vfsGlob |> Seq.length |> float
+                )
+
+              let copyLocal =
+                copyAndIncrement
+                  (UMX.untag dirs.CurrentWorkingDirectory)
+                  lfsTask
+
+              let copyVirtual = copyAndIncrement (UMX.untag tempDir) vfsTask
+
+              vfsGlob |> Seq.toArray |> Array.Parallel.iter copyVirtual
+
+              lfsGlob |> Seq.toArray |> Array.Parallel.iter copyLocal)
+
+        member this.EmitEnvFile
+          (config: PerlaConfig, tmpPath: string<SystemPath> option)
+          =
+          let tmpPath = defaultArg tmpPath config.build.outDir |> UMX.untag
+          let content = this.DotEnvContents |> AVal.force
+
+          if Map.isEmpty content then
+            logger.LogInformation("No environment variables to emit, skipping.")
+          else
+            logger.LogInformation(
+              "Emitting environment variables to {Path}",
+              UMX.untag config.envPath
+            )
+
+          // ensure the directory exists
+          Directory.CreateDirectory tmpPath |> ignore
+
+          let content =
+            content
+            |> Map.fold
+              (fun (sb: StringBuilder) key value ->
+                sb.AppendLine $"export const {key} = \"{value}\"")
+              (StringBuilder())
+            |> _.ToString()
+
+          // remove the leading slash
+          let targetFile = (UMX.untag config.envPath)[1..]
+
+          let path = Path.Combine(tmpPath, targetFile) |> Path.GetFullPath
+          File.WriteAllText(path, content)
     }

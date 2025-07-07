@@ -73,6 +73,12 @@ type PerlaFsManager =
         string<Branch>) option
        >
 
+  abstract CopyGlobs:
+    buildConfig: BuildConfig * tempDir: string<SystemPath> -> unit
+
+  abstract EmitEnvFile:
+    config: PerlaConfig * tmpPath: string<SystemPath> option -> unit
+
 
 [<RequireQualifiedAccess>]
 module FileSystem =

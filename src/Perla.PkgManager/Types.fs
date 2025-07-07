@@ -174,6 +174,12 @@ module ImportMap =
           map.integrity |> Map.map(fun _ v -> Encode.string v) |> Encode.dict
       ]
 
+type ImportMap with
+
+  member this.ToJson(?indentSize: int) =
+    let indentSize = defaultArg indentSize 0
+    ImportMap.Encoder this |> Thoth.Json.Net.Encode.toString indentSize
+
 module GeneratorResponse =
   open Thoth.Json.Net
 
