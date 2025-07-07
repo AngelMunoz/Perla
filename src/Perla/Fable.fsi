@@ -1,15 +1,9 @@
 ﻿namespace Perla.Fable
 
-open System
 open System.Collections.Generic
-open System.Threading
-open System.Threading.Tasks
-open System.Runtime.InteropServices
-
 open Microsoft.Extensions.Logging
 
 open IcedTasks
-open CliWrap
 
 open Perla.Types
 open Perla.Env
