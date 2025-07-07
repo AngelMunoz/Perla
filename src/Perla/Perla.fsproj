@@ -13,9 +13,6 @@
         Perla uses esbuild, import maps, ESModules, and other modern well supported by browser features to enable A
         seamless development experience with less tooling.
     </Description>
-    <Summary>
-        A SPA Dev Server that focuses on removing the node toolchain for frontend developers where possible
-    </Summary>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="$(AssemblyName).Tests" />
@@ -25,8 +22,8 @@
     <Compile Include="Constants.fs" />
     <Compile Include="Types.fsi" />
     <Compile Include="Types.fs" />
-    <Compile Include="Env.fsi" />
-    <Compile Include="Env.fs" />
+    <Compile Include="PlatformOps.fsi" />
+    <Compile Include="PlatformOps.fs" />
     <Compile Include="Json.fsi" />
     <Compile Include="Json.fs" />
     <Compile Include="FileSystem.fsi" />

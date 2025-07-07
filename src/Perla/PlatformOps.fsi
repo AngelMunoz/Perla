@@ -1,4 +1,4 @@
-module Perla.Env
+namespace Perla
 
 
 type PlatformOps =
@@ -6,4 +6,5 @@ type PlatformOps =
   abstract member PlatformString: unit -> string
   abstract member ArchString: unit -> string
 
-val Create: unit -> PlatformOps
+module PlatformOps =
+  val Create: unit -> PlatformOps
