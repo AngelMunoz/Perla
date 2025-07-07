@@ -12,10 +12,12 @@ open System.Runtime.InteropServices
 open System.Text
 open System.Threading.Tasks
 open System.Runtime.CompilerServices
+open System.Collections.Generic
 
 open AngleSharp
 open AngleSharp.Html.Parser
 open AngleSharp.Io
+open AngleSharp.Dom
 
 open Fake.IO
 open Microsoft.AspNetCore.Builder
@@ -25,9 +27,11 @@ open Microsoft.Extensions.Logging
 open Microsoft.Extensions.Primitives
 open Microsoft.AspNetCore.StaticFiles
 open Microsoft.Net.Http.Headers
+open Microsoft.Extensions.Logging
 
 open Perla.PackageManager.Types
 open Yarp.ReverseProxy
+open Yarp.ReverseProxy.Configuration
 open Yarp.ReverseProxy.Forwarder
 
 open FSharp.Control
@@ -43,14 +47,15 @@ open Perla.Logger
 open Perla.Plugins
 open Perla.FileSystem
 open Perla.VirtualFs
+open Perla.Build
+open Perla.Env
 
 open FSharp.UMX
+open FSharp.Data.Adaptive
+open IcedTasks
 
-open Hellang.Middleware.SpaFallback
-
-open Serilog
-open Serilog.Events
 open Spectre.Console
+
 
 module Types =
 
@@ -58,7 +63,6 @@ module Types =
   type ReloadKind =
     | FullReload
     | HMR
-
 
   [<RequireQualifiedAccess; Struct>]
   type PerlaScript =
@@ -82,18 +86,16 @@ module Types =
 
 open Types
 
+// ============================================================================
+// Extensions
+// ============================================================================
+
 [<AutoOpen>]
 module Extensions =
 
-  /// Taken from https://github.com/giraffe-fsharp/Giraffe/blob/71ef664f7a6276b1f7cc548189c54dccf633898c/src/Giraffe/HttpContextExtensions.fs#L21
-  /// Licensed under: https://github.com/giraffe-fsharp/Giraffe/blob/71ef664f7a6276b1f7cc548189c54dccf633898c/LICENSE
   [<Extension>]
   type HttpContextExtensions() =
 
-    /// <summary>
-    /// Gets an instance of `'T` from the request's service container.
-    /// </summary>
-    /// <returns>Returns an instance of `'T`.</returns>
     [<Extension>]
     static member GetService<'T>(ctx: HttpContext) =
       let t = typeof<'T>
@@ -102,61 +104,27 @@ module Extensions =
       | null -> raise(exn t.Name)
       | service -> service :?> 'T
 
-    /// <summary>
-    /// Gets an instance of <see cref="Microsoft.Extensions.Logging.ILogger{T}" /> from the request's service container.
-    ///
-    /// The type `'T` should represent the class or module from where the logger gets instantiated.
-    /// </summary>
-    /// <returns> Returns an instance of <see cref="Microsoft.Extensions.Logging.ILogger{T}" />.</returns>
     [<Extension>]
     static member GetLogger<'T>(ctx: HttpContext) =
       ctx.GetService<ILogger<'T>>()
 
-    /// <summary>
-    /// Gets an instance of <see cref="Microsoft.Extensions.Logging.ILogger"/> from the request's service container.
-    /// </summary>
-    /// <param name="ctx">The current http context object.</param>
-    /// <param name="categoryName">The category name for messages produced by this logger.</param>
-    /// <returns>Returns an instance of <see cref="Microsoft.Extensions.Logging.ILogger"/>.</returns>
     [<Extension>]
     static member GetLogger(ctx: HttpContext, categoryName: string) =
       let loggerFactory = ctx.GetService<ILoggerFactory>()
       loggerFactory.CreateLogger categoryName
 
-    /// <summary>
-    /// Sets the HTTP status code of the response.
-    /// </summary>
-    /// <param name="ctx">The current http context object.</param>
-    /// <param name="httpStatusCode">The status code to be set in the response. For convenience you can use the static <see cref="Microsoft.AspNetCore.Http.StatusCodes"/> class for passing in named status codes instead of using pure int values.</param>
     [<Extension>]
     static member SetStatusCode(ctx: HttpContext, httpStatusCode: int) =
       ctx.Response.StatusCode <- httpStatusCode
 
-    /// <summary>
-    /// Adds or sets a HTTP header in the response.
-    /// </summary>
-    /// <param name="ctx">The current http context object.</param>
-    /// <param name="key">The HTTP header name. For convenience you can use the static <see cref="Microsoft.Net.Http.Headers.HeaderNames"/> class for passing in strongly typed header names instead of using pure `string` values.</param>
-    /// <param name="value">The value to be set. Non string values will be converted to a string using the object's ToString() method.</param>
     [<Extension>]
     static member SetHttpHeader(ctx: HttpContext, key: string, value: obj) =
       ctx.Response.Headers[key] <- StringValues(value.ToString())
 
-    /// <summary>
-    /// Sets the Content-Type HTTP header in the response.
-    /// </summary>
-    /// <param name="ctx">The current http context object.</param>
-    /// <param name="contentType">The mime type of the response (e.g.: application/json or text/html).</param>
     [<Extension>]
     static member SetContentType(ctx: HttpContext, contentType: string) =
       ctx.SetHttpHeader(HeaderNames.ContentType, contentType)
 
-    /// <summary>
-    /// Writes a byte array to the body of the HTTP response and sets the HTTP Content-Length header accordingly.
-    /// </summary>
-    /// <param name="ctx">The current http context object.</param>
-    /// <param name="bytes">The byte array to be send back to the client.</param>
-    /// <returns>Task of Some HttpContext after writing to the body of the response.</returns>
     [<Extension>]
     static member WriteBytesAsync(ctx: HttpContext, bytes: byte[]) = task {
       ctx.SetHttpHeader(HeaderNames.ContentLength, bytes.Length)
@@ -167,31 +135,25 @@ module Extensions =
       return Some ctx
     }
 
-    /// <summary>
-    /// Writes an UTF-8 encoded string to the body of the HTTP response and sets the HTTP Content-Length header accordingly.
-    /// </summary>
-    /// <param name="ctx">The current http context object.</param>
-    /// <param name="str">The string value to be send back to the client.</param>
-    /// <returns>Task of Some HttpContext after writing to the body of the response.</returns>
     [<Extension>]
     static member WriteStringAsync(ctx: HttpContext, str: string) =
       ctx.WriteBytesAsync(Encoding.UTF8.GetBytes str)
 
-    /// <summary>
-    /// Writes an UTF-8 encoded string to the body of the HTTP response and sets the HTTP `Content-Length` header accordingly, as well as the `Content-Type` header to `text/plain`.
-    /// </summary>
-    /// <param name="ctx">The current http context object.</param>
-    /// <param name="str">The string value to be send back to the client.</param>
-    /// <returns>Task of Some HttpContext after writing to the body of the response.</returns>
     [<Extension>]
     static member WriteTextAsync(ctx: HttpContext, str: string) =
       ctx.SetContentType "text/plain; charset=utf-8"
       ctx.WriteStringAsync str
 
+// ============================================================================
+// LiveReload Module
+// ============================================================================
 
 module LiveReload =
 
-  let WriteReloadChange(event: FileChangedEvent, response: HttpResponse) =
+  let WriteReloadChange
+    (logger: Microsoft.Extensions.Logging.ILogger)
+    (event: FileChangedEvent, response: HttpResponse)
+    =
     let data =
       Json.ToText(
         {|
@@ -201,20 +163,24 @@ module LiveReload =
         false
       )
 
-    Logger.log($"LiveReload: File Changed: {event.name}", target = Serve)
+    logger.LogInformation(
+      "LiveReload: File Changed: {FileName}",
+      UMX.untag event.name
+    )
+
     response.WriteAsync $"event:reload\ndata:{data}\n\n"
 
   let WriteHmrChange
+    (logger: Microsoft.Extensions.Logging.ILogger)
     (event: FileChangedEvent, transform: FileTransform, response: HttpResponse)
     =
-
     let oldPath =
       event.oldPath
       |> Option.map(fun oldPath ->
         $"{oldPath}".Replace(Path.DirectorySeparatorChar, '/'))
 
     let replaced =
-      if Env.IsWindows then
+      if RuntimeInformation.IsOSPlatform(OSPlatform.Windows) then
         (UMX.untag event.name).Replace(Path.DirectorySeparatorChar, '/')
       else
         (UMX.untag event.name)
@@ -233,13 +199,20 @@ module LiveReload =
         |}
       )
 
-    Logger.log($"HMR: CSS File Changed: {userPath}", target = Serve)
+    logger.LogInformation("HMR: CSS File Changed: {UserPath}", userPath)
     response.WriteAsync $"event:replace-css\ndata:{data}\n\n"
 
-  let WriteCompileError(error: string option, response: HttpResponse) =
+  let WriteCompileError
+    (logger: Microsoft.Extensions.Logging.ILogger)
+    (error: string option, response: HttpResponse)
+    =
     let err = Json.ToText({| error = error |}, true)
-    Logger.log($"Compilation Error: {err.Substring(0, 80)}...", target = Serve)
+    logger.LogWarning("Compilation Error: {Error}", err.Substring(0, 80))
     response.WriteAsync(ReloadEvents.CompileError(err).AsString)
+
+// ============================================================================
+// Middleware Module
+// ============================================================================
 
 [<RequireQualifiedAccess>]
 module Middleware =
@@ -250,6 +223,7 @@ module Middleware =
     | Normal
 
   let processFile
+    (logger: Microsoft.Extensions.Logging.ILogger)
     (
       setContentAndWrite: string * byte array -> Task<_>,
       reqPath: string,
@@ -278,31 +252,48 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
       )
     | mimeType, Normal -> setContentAndWrite(mimeType, content)
     | mimeType, JS ->
-      Logger.log
-        $"Requested %A{JS} - {mimeType} - {reqPath} as JS, this file type is not supported as JS, sending default content"
+      logger.LogWarning(
+        "Requested {RequestedAs} - {MimeType} - {RequestPath} as JS, this file type is not supported as JS, sending default content",
+        JS,
+        mimeType,
+        reqPath
+      )
 
       setContentAndWrite(mimeType, content)
 
-  let ResolveFile: HttpContext -> RequestDelegate -> Task =
-    fun ctx next ->
-      task {
-        match
-          VirtualFileSystem.TryResolveFile(UMX.tag<ServerUrl> ctx.Request.Path)
-        with
-        | Some file ->
-          let fileExtProvider =
-            ctx.GetService<FileExtensionContentTypeProvider>()
+  let ResolveFile
+    (logger: Microsoft.Extensions.Logging.ILogger)
+    : HttpContext -> RequestDelegate -> Task =
+    fun ctx next -> taskUnit {
+      let vfs = ctx.GetService<VirtualFileSystem>()
+      let processFile = processFile logger
 
-          match fileExtProvider.TryGetContentType(ctx.Request.Path) with
-          | true, mime ->
-            let setContentTypeAndWrite(mimeType, content) =
-              ctx.SetContentType mimeType
-              ctx.WriteBytesAsync content
+      match vfs.Resolve(UMX.tag<ServerUrl> ctx.Request.Path) with
+      | Some file ->
+        let fileExtProvider = ctx.GetService<FileExtensionContentTypeProvider>()
 
-            let requestedAs =
-              let query = ctx.Request.Query
+        match fileExtProvider.TryGetContentType(ctx.Request.Path) with
+        | true, mime ->
+          let setContentTypeAndWrite(mimeType, content) =
+            ctx.SetContentType mimeType
+            ctx.WriteBytesAsync content
 
-              if query.ContainsKey("js") then JS else Normal
+          let requestedAs =
+            let query = ctx.Request.Query
+            if query.ContainsKey("js") then JS else Normal
+
+          match file with
+          | TextFile content ->
+            return!
+              processFile(
+                setContentTypeAndWrite,
+                ctx.Request.Path,
+                mime,
+                requestedAs,
+                Encoding.UTF8.GetBytes(content.content)
+              )
+          | BinaryFile info ->
+            let fileBytes = File.ReadAllBytes(UMX.untag info.source)
 
             return!
               processFile(
@@ -310,71 +301,94 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
                 ctx.Request.Path,
                 mime,
                 requestedAs,
-                file
+                fileBytes
               )
-          | false, _ -> return! next.Invoke(ctx)
-        | None -> return! next.Invoke(ctx)
-      }
-      :> Task
+        | false, _ -> return! next.Invoke(ctx)
+      | None -> return! next.Invoke(ctx)
+    }
 
-  let ProcessTestEvent (testEvents: ISubject<TestEvent>) (ctx: HttpContext) =
-    task {
+  let ProcessTestEvent
+    (logger: ILogger)
+    (testEvents: ISubject<TestEvent>)
+    (ctx: HttpContext)
+    =
+    taskUnit {
       use content = new StreamReader(ctx.Request.Body, Encoding.UTF8)
       let! toDecode = content.ReadToEndAsync()
 
       Json.TestEventFromJson toDecode
       |> Result.teeError(fun err ->
-        Logger.log $"[bold red]{err.EscapeMarkup()}[/]")
+        logger.LogError("Failed to parse test event: {Error}", err))
       |> Result.iter testEvents.OnNext
 
       return Results.Ok()
     }
-    :> Task
 
-  let SendScript (script: PerlaScript) (_: HttpContext) = task {
+  let SendScript (logger: ILogger) (script: PerlaScript) (ctx: HttpContext) = task {
+    let fsManager = ctx.GetService<PerlaFsManager>()
 
-    Logger.log($"Sending Script %A{script}", target = PrefixKind.Serve)
+    logger.LogInformation("Sending Script {Script}", script)
 
     match script with
     | PerlaScript.LiveReload ->
-      return Results.Text(FileSystem.LiveReloadScript.Value, "text/javascript")
+      let! content =
+        fsManager.ResolveLiveReloadScript() |> Async.AwaitCancellableTask
+
+      return Results.Text(content, "text/javascript")
 
     | PerlaScript.Worker ->
-      return Results.Text(FileSystem.WorkerScript.Value, "text/javascript")
+      let! content =
+        fsManager.ResolveWorkerScript() |> Async.AwaitCancellableTask
+
+      return Results.Text(content, "text/javascript")
+
     | PerlaScript.TestingHelpers ->
-      return
-        Results.Text(FileSystem.TestingHelpersScript.Value, "text/javascript")
+      let! content =
+        fsManager.ResolveTestingHelpersScript() |> Async.AwaitCancellableTask
+
+      return Results.Text(content, "text/javascript")
+
     | PerlaScript.MochaTestRunner ->
-      return Results.Text(FileSystem.MochaRunnerScript.Value, "text/javascript")
+      let! content =
+        fsManager.ResolveMochaRunnerScript() |> Async.AwaitCancellableTask
+
+      return Results.Text(content, "text/javascript")
+
     | PerlaScript.Env ->
-      match Env.GetEnvContent() with
-      | Some content ->
-        return
-          Results.Stream(
-            new MemoryStream(Encoding.UTF8.GetBytes content),
-            "text/javascript"
-          )
-      | None ->
-        Logger.log(
-          "An env file was requested but no env variables were found",
-          target = PrefixKind.Serve
+      let fsManager = ctx.GetService<PerlaFsManager>()
+      let envVars = fsManager.DotEnvContents |> AVal.force
+
+      if Map.isEmpty envVars then
+        logger.LogWarning(
+          "An env file was requested but no env variables were found"
         )
 
         let message =
           """If you want to use env variables, remember to prefix them with 'PERLA_' e.g.
 'PERLA_myApiKey' or 'PERLA_CLIENT_SECRET', then you will be able to import them via the env file"""
 
-        Logger.logCustom(
-          $"[bold red]Env Content not found[/][bold yellow]{message}[/]",
-          escape = false
-        )
+        logger.LogWarning("Env Content not found. {Message}", message)
 
         return Results.NotFound({| message = message |})
+      else
+        let content =
+          envVars
+          |> Map.fold
+            (fun (sb: StringBuilder) key value ->
+              sb.AppendLine $"export const {key} = \"{value}\"")
+            (StringBuilder())
+          |> _.ToString()
+
+        return
+          Results.Stream(
+            new MemoryStream(Encoding.UTF8.GetBytes content),
+            "text/javascript"
+          )
   }
 
   let SseHandler
-    (eventStream: IObservable<FileChangedEvent * FileTransform>)
-    (compileErrors: IObservable<string option>)
+    (fileChangedEvents: IObservable<FileChangedEvent * FileTransform>)
+    (compileErrorEvents: IObservable<string option>)
     (ctx: HttpContext)
     =
     task {
@@ -382,19 +396,25 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
       logger.LogInformation $"LiveReload Client Connected"
       ctx.SetHttpHeader("Content-Type", "text/event-stream")
       ctx.SetHttpHeader("Cache-Control", "no-cache")
+      ctx.SetHttpHeader("Connection", "keep-alive")
+      ctx.SetHttpHeader("Access-Control-Allow-Origin", "*")
+      ctx.SetHttpHeader("Access-Control-Allow-Headers", "Cache-Control")
       ctx.SetStatusCode 200
       let res = ctx.Response
+      let writeHmrChange = LiveReload.WriteHmrChange logger
+      let writeReloadChange = LiveReload.WriteReloadChange logger
+      let writeCompileError = LiveReload.WriteCompileError logger
       // Start Client communication
       do! res.WriteAsync($"id:{ctx.Connection.Id}\ndata:{DateTime.Now}\n\n")
       do! res.Body.FlushAsync()
 
       let onChangeSub =
-        eventStream
+        fileChangedEvents
         |> Observable.map(fun (event, fileTransform) -> task {
           match event.changeType with
           | Changed when fileTransform.extension.ToLowerInvariant() = ".css" ->
-            do! LiveReload.WriteHmrChange(event, fileTransform, res)
-          | _ -> do! LiveReload.WriteReloadChange(event, res)
+            do! writeHmrChange(event, fileTransform, res)
+          | _ -> do! writeReloadChange(event, res)
 
           do! res.Body.FlushAsync()
         })
@@ -403,9 +423,9 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
           logger.LogInformation "File Changed Event processed")
 
       let onCompilerErrorSub =
-        compileErrors
+        compileErrorEvents
         |> Observable.map(fun error -> task {
-          do! LiveReload.WriteCompileError(error, res)
+          do! writeCompileError(error, res)
           do! res.Body.FlushAsync()
         })
         |> Observable.switchTask
@@ -417,25 +437,29 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
         onCompilerErrorSub.Dispose())
       |> ignore
 
-      while true do
-        do! Async.Sleep(TimeSpan.FromSeconds 1.)
+      // Keep connection alive
+      while not ctx.RequestAborted.IsCancellationRequested do
+        do! Task.Delay(TimeSpan.FromSeconds(30))
+        do! res.WriteAsync(": keepalive\n\n")
+        do! res.Body.FlushAsync()
 
       return Results.Ok()
     }
 
-  let IndexHandler (config: PerlaConfig) (_: HttpContext) =
-    let content = FileSystem.IndexFile(config.index)
-    let map = FileSystem.GetImportMap().AddEnvResolution(config)
+  let IndexHandler (config: PerlaConfig) (ctx: HttpContext) =
+    let fsManager = ctx.GetService<PerlaFsManager>()
+    let content = fsManager.ResolveIndex |> AVal.force
+    let map = fsManager.ResolveImportMap |> AVal.force
 
     use context = BrowsingContext.New(Configuration.Default)
-
     let parser = context.GetService<IHtmlParser>()
-    use doc = parser.ParseDocument content
+    use doc = parser.ParseDocument(content) :> IDocument
 
     let script = doc.CreateElement "script"
     script.SetAttribute("type", "importmap")
     script.TextContent <- Json.ToText map
     doc.Head.AppendChild script |> ignore
+
     // remove standalone entry points, we don't need them in the browser
     doc.QuerySelectorAll("[data-entry-point=standalone][type=module]")
     |> Seq.iter(fun f -> f.Remove())
@@ -449,86 +473,136 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
     Results.Text(doc.ToHtml(), MimeTypeNames.Html)
 
   let TestingIndex
-    config
-    (dependencies: string seq * ImportMap)
-    (_: HttpContext)
+    (config: PerlaConfig aval)
+    (map: PkgManager.ImportMap aval)
+    (ctx: HttpContext)
     =
-    let content = FileSystem.IndexFile(config.index)
-    let dependencies, map = dependencies
+    async {
 
-    use context = BrowsingContext.New(Configuration.Default)
+      let fsManager = ctx.GetService<PerlaFsManager>()
+      let content = fsManager.ResolveIndex |> AVal.force
 
-    let parser = context.GetService<IHtmlParser>()
-    use doc = parser.ParseDocument content
+      use context = BrowsingContext.New(Configuration.Default)
+      let parser = context.GetService<IHtmlParser>()
+      use doc = parser.ParseDocument(content) :> IDocument
 
-    // remove any existing entry points, we don't need them in the tests
-    doc.QuerySelectorAll("[data-entry-point][type=module]")
-    |> Seq.iter(fun f -> f.Remove())
+      // remove any existing entry points, we don't need them in the tests
+      doc.QuerySelectorAll("[data-entry-point][type=module]")
+      |> Seq.iter(fun f -> f.Remove())
 
-    doc.QuerySelectorAll("[data-entry-point][rel=stylesheet]")
-    |> Seq.iter(fun f -> f.Remove())
+      doc.QuerySelectorAll("[data-entry-point][rel=stylesheet]")
+      |> Seq.iter(fun f -> f.Remove())
 
-    doc.QuerySelectorAll("[data-entry-point=standalone][type=module]")
-    |> Seq.iter(fun f -> f.Remove())
+      doc.QuerySelectorAll("[data-entry-point=standalone][type=module]")
+      |> Seq.iter(fun f -> f.Remove())
 
-    for dependencyUrl in dependencies do
-      let link = doc.CreateElement("link")
-      link.SetAttribute("rel", "modulepreload")
-      link.SetAttribute("href", dependencyUrl)
-      doc.Head.AppendChild(link) |> ignore
+      let mochaStyles: Dom.IElement = doc.CreateElement "link"
+      mochaStyles.SetAttribute("href", "https://unpkg.com/mocha/mocha.css")
+      mochaStyles.SetAttribute("rel", "stylesheet")
+      mochaStyles.SetAttribute("type", MimeTypeNames.Css)
+      doc.Head.AppendChild mochaStyles |> ignore
 
-    let mochaStyles: Dom.IElement = doc.CreateElement "link"
-    mochaStyles.SetAttribute("href", "https://unpkg.com/mocha/mocha.css")
-    mochaStyles.SetAttribute("rel", "stylesheet")
-    mochaStyles.SetAttribute("type", MimeTypeNames.Css)
-    doc.Head.AppendChild mochaStyles |> ignore
+      let script: Dom.IElement = doc.CreateElement "script"
+      script.SetAttribute("type", "importmap")
+      script.TextContent <- Json.ToText(AVal.force map)
+      doc.Head.AppendChild script |> ignore
 
-    let script: Dom.IElement = doc.CreateElement "script"
-    script.SetAttribute("type", "importmap")
-    script.TextContent <- Json.ToText map
-    doc.Head.AppendChild script |> ignore
+      let mochaScript = doc.CreateElement "script"
+      mochaScript.SetAttribute("type", MimeTypeNames.DefaultJavaScript)
+      mochaScript.SetAttribute("src", "https://unpkg.com/mocha/mocha.js")
+      doc.Body.AppendChild mochaScript |> ignore
 
-    let mochaScript = doc.CreateElement "script"
-    mochaScript.SetAttribute("type", MimeTypeNames.DefaultJavaScript)
-    mochaScript.SetAttribute("src", "https://unpkg.com/mocha/mocha.js")
-    doc.Body.AppendChild mochaScript |> ignore
+      let mochaDiv = doc.CreateElement "div"
+      mochaDiv.SetAttribute("id", "mocha")
+      doc.Body.AppendChild mochaDiv |> ignore
 
-    let mochaDiv = doc.CreateElement "div"
-    mochaDiv.SetAttribute("id", "mocha")
-    doc.Body.AppendChild mochaDiv |> ignore
+      let runnerScript = doc.CreateElement "script"
+      runnerScript.SetAttribute("type", "module")
 
-    let runnerScript = doc.CreateElement "script"
-    runnerScript.SetAttribute("type", "module")
-    runnerScript.TextContent <- FileSystem.MochaRunnerScript.Value
-    doc.Body.AppendChild runnerScript |> ignore
+      let! runnerContent =
+        fsManager.ResolveMochaRunnerScript() |> Async.AwaitCancellableTask
+
+      runnerScript.TextContent <- runnerContent
+      doc.Body.AppendChild runnerScript |> ignore
+
+      if (AVal.force config).devServer.liveReload then
+        let liveReload = doc.CreateElement "script"
+        liveReload.SetAttribute("type", MimeTypeNames.DefaultJavaScript)
+        liveReload.SetAttribute("src", "/~perla~/livereload.js")
+        doc.Body.AppendChild liveReload |> ignore
+
+      return Results.Text(doc.ToHtml(), MimeTypeNames.Html)
+    }
+
+// ============================================================================
+// Custom SPA Middleware
+// ============================================================================
+
+module SpaMiddleware =
+  let spaFallback
+    (config: PerlaConfig)
+    (next: RequestDelegate)
+    (context: HttpContext)
+    =
+    task {
+      let path = context.Request.Path.Value
+
+      // Skip if it's an API call or static file
+      if
+        path.StartsWith("/api/")
+        || path.StartsWith("/~perla~/")
+        || Path.HasExtension(path)
+      then
+        return! next.Invoke(context)
+      else
+        // Rewrite to default page for SPA
+        context.Request.Path <- PathString(UMX.untag config.index)
+
+        return! next.Invoke(context)
+    }
 
 
-    if config.devServer.liveReload then
-      let liveReload = doc.CreateElement "script"
-      liveReload.SetAttribute("type", MimeTypeNames.DefaultJavaScript)
-      liveReload.SetAttribute("src", "/~perla~/livereload.js")
-      doc.Body.AppendChild liveReload |> ignore
+// ============================================================================
+// YARP Proxy Configuration
+// ============================================================================
 
-    Results.Text(doc.ToHtml(), MimeTypeNames.Html)
+module ProxyConfiguration =
 
-  let getProxyHandler
-    (target: string)
-    (httpClient: HttpMessageInvoker)
-    (forwardConfig: ForwarderRequestConfig)
-    : Func<HttpContext, IHttpForwarder, Task> =
-    let toFunc (ctx: HttpContext) (forwarder: IHttpForwarder) =
-      task {
-        let logger = ctx.GetLogger("Perla Proxy")
-        let! error = forwarder.SendAsync(ctx, target, httpClient, forwardConfig)
+  let createRoutesAndClusters(proxyConfig: Map<string, string>) =
+    let routes = List<RouteConfig>()
+    let clusters = List<ClusterConfig>()
 
-        if error <> ForwarderError.None then
-          let errorFeat = ctx.GetForwarderErrorFeature()
-          let ex = errorFeat.Exception
-          logger.LogWarning($"{ex.Message}")
-      }
-      :> Task
+    for KeyValue(from, target) in proxyConfig do
+      let routeId = $"route_{Guid.NewGuid()}"
+      let clusterId = $"cluster_{Guid.NewGuid()}"
 
-    Func<HttpContext, IHttpForwarder, Task>(toFunc)
+      // Create cluster
+      let cluster =
+        ClusterConfig(
+          ClusterId = clusterId,
+          Destinations =
+            Dictionary<string, DestinationConfig> [
+              KeyValuePair("destination1", DestinationConfig(Address = target))
+            ]
+        )
+
+      clusters.Add(cluster)
+
+      // Create route
+      let route =
+        RouteConfig(
+          RouteId = routeId,
+          ClusterId = clusterId,
+          Match = RouteMatch(Path = from)
+        )
+
+      routes.Add(route)
+
+    routes, clusters
+
+// ============================================================================
+// Server Module
+// ============================================================================
 
 module Server =
 
@@ -537,7 +611,6 @@ module Server =
 
     if didParse then
       let props = IPGlobalProperties.GetIPGlobalProperties()
-
       let listeners = props.GetActiveTcpListeners()
 
       listeners
@@ -561,85 +634,63 @@ module Server =
 
       $"http://{host}:{0}", $"https://{host}:{0}"
 
-  let getHttpClientAndForwarder() =
-    let socketsHandler = new SocketsHttpHandler()
-    socketsHandler.UseProxy <- false
-    socketsHandler.AllowAutoRedirect <- false
-    socketsHandler.AutomaticDecompression <- DecompressionMethods.None
-    socketsHandler.UseCookies <- false
-    let client = new HttpMessageInvoker(socketsHandler)
+  let addServices
+    (config: PerlaConfig aval)
+    (vfs: VirtualFileSystem)
+    (fileChangedEvents: IObservable<FileChangedEvent * FileTransform>)
+    (compileErrorEvents: IObservable<string option>)
+    (fsManager: PerlaFsManager)
+    (builder: WebApplicationBuilder)
+    =
+    // Core services
+    builder.Services.AddSingleton<PerlaFsManager>(fsManager) |> ignore
+    builder.Services.AddSingleton<VirtualFileSystem>(vfs) |> ignore
 
-    let reqConfig =
-      ForwarderRequestConfig(ActivityTimeout = TimeSpan.FromSeconds(100.))
+    // File extension provider
+    builder.Services.AddSingleton<FileExtensionContentTypeProvider>(fun _ ->
+      FileExtensionContentTypeProvider())
+    |> ignore
 
-    client, reqConfig
+    // YARP Reverse Proxy
+    if not(Map.isEmpty (AVal.force config).devServer.proxy) then
+      let routes, clusters =
+        ProxyConfiguration.createRoutesAndClusters
+          (AVal.force config).devServer.proxy
 
-  let addProxy proxy (app: WebApplication) =
-    match proxy |> Map.isEmpty with
-    | false ->
-      app
-        .UseRouting()
-        .UseEndpoints(fun endpoints ->
-          let client, reqConfig = getHttpClientAndForwarder()
-
-          for from, target in proxy |> Map.toSeq do
-            let handler = Middleware.getProxyHandler target client reqConfig
-            endpoints.Map(from, handler) |> ignore)
+      builder.Services.AddReverseProxy().LoadFromMemory(routes, clusters)
       |> ignore
-    | true -> ()
 
-    app
+  // Logging is provided externally via ILogger
 
-  let addLiveReload
-    liveReload
-    fileChangedEvents
-    compileErrorEvents
+  let addCommonMiddleware host port useSSL (app: WebApplication) =
+    let http, https = GetServerURLs host port useSSL
+    app.Urls.Add(http)
+    app.Urls.Add(https)
+
+    // Custom SPA middleware
+    let config =
+      app.Services.GetRequiredService<PerlaFsManager>().PerlaConfiguration
+      |> AVal.force
+
+    app.Use(fun next ->
+      RequestDelegate(fun ctx -> SpaMiddleware.spaFallback config next ctx))
+    |> ignore
+
+    if useSSL then
+      app.UseHsts().UseHttpsRedirection() |> ignore
+
+  let addVirtualFileSystemMiddleware
+    (logger: Microsoft.Extensions.Logging.ILogger)
     (app: WebApplication)
     =
-    if liveReload then
-      app.MapGet(
-        "/~perla~/sse",
-        Func<HttpContext, Task<IResult>>(
-          Middleware.SseHandler fileChangedEvents compileErrorEvents
-        )
-      )
-      |> ignore
-
-      app.MapGet(
-        "/~perla~/livereload.js",
-        Func<HttpContext, Task<IResult>>(
-          Middleware.SendScript PerlaScript.LiveReload
-        )
-      )
-      |> ignore
-
-      app.MapGet(
-        "/~perla~/worker.js",
-        Func<HttpContext, Task<IResult>>(
-          Middleware.SendScript PerlaScript.Worker
-        )
-      )
-      |> ignore
-
-    app
-
-  let addEnv enableEnv envPath (app: WebApplication) =
-    if enableEnv then
-      app.MapGet(
-        envPath,
-        Func<HttpContext, Task<IResult>>(Middleware.SendScript PerlaScript.Env)
-      )
-      |> ignore
-
-    app
-
-  let addResolveFile(app: WebApplication) =
     app.UseWhen(
       Func<HttpContext, bool>(fun ctx ->
         not(ctx.Request.Path.StartsWithSegments(PathString("/~perla~")))),
       (fun app ->
         app.Use(
-          Func<HttpContext, RequestDelegate, Task>(Middleware.ResolveFile)
+          Func<HttpContext, RequestDelegate, Task>(
+            Middleware.ResolveFile logger
+          )
         )
         |> ignore)
     )
@@ -647,69 +698,94 @@ module Server =
 
     app
 
-  let addCommonServices isTesting proxy (builder: WebApplicationBuilder) =
-    builder.Services.AddSpaFallback() |> ignore
-
-    if proxy |> Map.isEmpty |> not then
-      builder.Services.AddHttpForwarder() |> ignore
-
-    builder.Services.AddSingleton<FileExtensionContentTypeProvider>(fun _ ->
-      FileExtensionContentTypeProvider())
+  let addLiveReload
+    (logger: Microsoft.Extensions.Logging.ILogger)
+    (fileChangedEvents: IObservable<FileChangedEvent * FileTransform>)
+    (compileErrorEvents: IObservable<string option>)
+    (app: WebApplication)
+    =
+    app.MapGet(
+      "/~perla~/sse",
+      Func<HttpContext, Task<IResult>>(fun ctx ->
+        Middleware.SseHandler fileChangedEvents compileErrorEvents ctx)
+    )
     |> ignore
 
-    builder.Host.UseSerilog(fun hostingContext configureLogger ->
-      configureLogger.MinimumLevel
-        .Override("Microsoft.AspNetCore", LogEventLevel.Warning)
-        .Enrich.FromLogContext()
-        .WriteTo.Console()
-      |> (fun v ->
-        if isTesting then
-          v.MinimumLevel.Warning()
-        else
-          v.MinimumLevel.Warning())
-      |> ignore)
+    app.MapGet(
+      "/~perla~/livereload.js",
+      Func<HttpContext, Task<IResult>>(fun ctx ->
+        Middleware.SendScript logger PerlaScript.LiveReload ctx)
+    )
     |> ignore
 
-  let addCommonMiddleware host port useSSL (app: WebApplication) =
-    let http, https = GetServerURLs host port useSSL
-    app.Urls.Add(http)
-    app.Urls.Add(https)
+    app.MapGet(
+      "/~perla~/worker.js",
+      Func<HttpContext, Task<IResult>>(fun ctx ->
+        Middleware.SendScript logger PerlaScript.Worker ctx)
+    )
+    |> ignore
 
-    app.UseSpaFallback().UseSerilogRequestLogging() |> ignore
+    app
 
-    if useSSL then
-      app.UseHsts().UseHttpsRedirection() |> ignore
+  let addEnv
+    (logger: ILogger)
+    (config: PerlaConfig aval)
+    (app: WebApplication)
+    =
+    if (AVal.force config).enableEnv then
+      app.MapGet(
+        UMX.untag (AVal.force config).envPath,
+        Func<HttpContext, Task<IResult>>(fun ctx ->
+          Middleware.SendScript logger PerlaScript.Env ctx)
+      )
+      |> ignore
 
-
-
+    app
 
   module DevApp =
-    let addIndexHandler config (app: WebApplication) =
+    let addIndexHandler(app: WebApplication) =
       app.MapGet(
         "/",
-        Func<HttpContext, IResult>(Middleware.IndexHandler config)
+        Func<HttpContext, IResult>(fun ctx ->
+          let config =
+            ctx.GetService<PerlaFsManager>().PerlaConfiguration |> AVal.force
+
+          Middleware.IndexHandler config ctx)
       )
       |> ignore
 
       app.MapGet(
         "/index.html",
-        Func<HttpContext, IResult>(Middleware.IndexHandler config)
+        Func<HttpContext, IResult>(fun ctx ->
+          let config =
+            ctx.GetService<PerlaFsManager>().PerlaConfiguration |> AVal.force
+
+          Middleware.IndexHandler config ctx)
       )
       |> ignore
 
       app
 
   module TestApp =
-    let addIndexHandler config dependencies (app: WebApplication) =
+    let addIndexHandler
+      (dependencies: PkgManager.ImportMap aval)
+      (app: WebApplication)
+      =
       app.MapGet(
         "/",
-        Func<HttpContext, IResult>(Middleware.TestingIndex config dependencies)
+        Func<HttpContext, Async<IResult>>(fun ctx ->
+          let config = ctx.GetService<PerlaFsManager>().PerlaConfiguration
+
+          Middleware.TestingIndex config dependencies ctx)
       )
       |> ignore
 
       app.MapGet(
         "/index.html",
-        Func<HttpContext, IResult>(Middleware.TestingIndex config dependencies)
+        Func<HttpContext, Async<IResult>>(fun ctx ->
+          let config = ctx.GetService<PerlaFsManager>().PerlaConfiguration
+
+          Middleware.TestingIndex config dependencies ctx)
       )
       |> ignore
 
@@ -725,15 +801,17 @@ module Server =
 
       app.MapGet(
         "/~perla~/testing/helpers.js",
-        Func<HttpContext, Task<IResult>>(
-          Middleware.SendScript PerlaScript.TestingHelpers
-        )
+        Func<HttpContext, Task<IResult>>(fun ctx ->
+          let logger = ctx.GetLogger("Perla:TestingHelpers")
+          Middleware.SendScript logger PerlaScript.TestingHelpers ctx)
       )
       |> ignore
 
       app.MapPost(
         "/~perla~/testing/events",
-        Func<HttpContext, Task>(Middleware.ProcessTestEvent testingEvents)
+        Func<HttpContext, Task>(fun ctx ->
+          let logger = ctx.GetLogger("Perla:TestingEvents")
+          Middleware.ProcessTestEvent logger testingEvents ctx)
       )
       |> ignore
 
@@ -783,7 +861,6 @@ module Server =
       app.MapGet(
         "/~perla~/testing/environment",
         Func<HttpContext, IResult>(fun _ ->
-
           Results.Ok {|
             testConfig with
                 browsers =
@@ -799,93 +876,122 @@ module Server =
 
       app
 
+// ============================================================================
+// Main Server Class
+// ============================================================================
+
 type Server =
   static member GetServerApp
     (
-      config: PerlaConfig,
+      config: PerlaConfig aval,
+      vfs: VirtualFileSystem,
       fileChangedEvents: IObservable<FileChangedEvent * FileTransform>,
-      compileErrorEvents: IObservable<string option>
+      compileErrorEvents: IObservable<string option>,
+      fsManager: PerlaFsManager
     ) =
 
     let builder = WebApplication.CreateBuilder()
+    builder.Logging.AddPerlaLogger() |> ignore
 
-    let proxy = config.devServer.proxy
+    Server.addServices
+      config
+      vfs
+      fileChangedEvents
+      compileErrorEvents
+      fsManager
+      builder
 
-    let host = config.devServer.host
-    let port = config.devServer.port
-    let useSSL = config.devServer.useSSL
-    let liveReload = config.devServer.liveReload
-    let enableEnv = config.enableEnv
-    let envPath = config.envPath
-
-    Server.addCommonServices false proxy builder
     let app = builder.Build()
 
-    Server.addCommonMiddleware host port useSSL app
+    Server.addCommonMiddleware
+      (AVal.force config).devServer.host
+      (AVal.force config).devServer.port
+      (AVal.force config).devServer.useSSL
+      app
 
-    Server.DevApp.addIndexHandler config app
-    |> Server.addProxy proxy
-    |> Server.addLiveReload liveReload fileChangedEvents compileErrorEvents
-    |> Server.addEnv enableEnv (UMX.untag envPath)
-    |> Server.addResolveFile
+    Server.DevApp.addIndexHandler app
+    |> Server.addLiveReload app.Logger fileChangedEvents compileErrorEvents
+    |> Server.addEnv app.Logger config
+    |> Server.addVirtualFileSystemMiddleware app.Logger
 
   static member GetTestingApp
     (
-      config: PerlaConfig,
-      dependencies: string seq * ImportMap,
+      config: PerlaConfig aval,
+      vfs: VirtualFileSystem,
+      dependencies: PkgManager.ImportMap aval,
       testEvents: ISubject<TestEvent>,
       fileChangedEvents: IObservable<FileChangedEvent * FileTransform>,
       compileErrorEvents: IObservable<string option>,
+      fsManager: PerlaFsManager,
       [<Optional>] ?fileGlobs: string seq,
       [<Optional>] ?mochaOptions: Map<string, obj>
     ) =
 
     let builder = WebApplication.CreateBuilder()
-    let host = config.devServer.host
-    let port = config.devServer.port
-    let proxy = config.devServer.proxy
-    let useSSL = config.devServer.useSSL
-    let liveReload = config.devServer.liveReload
 
-    let enableEnv = config.enableEnv
-    let envPath = config.envPath
-
-    Server.addCommonServices true proxy builder
+    Server.addServices
+      config
+      vfs
+      fileChangedEvents
+      compileErrorEvents
+      fsManager
+      builder
 
     let app = builder.Build()
-    Server.addCommonMiddleware host port useSSL app
 
-    Server.TestApp.addIndexHandler config dependencies app
-    |> Server.addProxy proxy
-    |> Server.addLiveReload liveReload fileChangedEvents compileErrorEvents
-    |> Server.addEnv enableEnv (UMX.untag envPath)
+    Server.addCommonMiddleware
+      (AVal.force config).devServer.host
+      (AVal.force config).devServer.port
+      (AVal.force config).devServer.useSSL
+      app
+
+    Server.TestApp.addIndexHandler dependencies app
+    |> Server.addLiveReload app.Logger fileChangedEvents compileErrorEvents
+    |> Server.addEnv app.Logger config
     |> Server.TestApp.addTestingHandlers
       fileGlobs
-      config.testing
+      (AVal.force config).testing
       mochaOptions
       testEvents
-    |> Server.addResolveFile
+    |> Server.addVirtualFileSystemMiddleware app.Logger
 
-  static member GetStaticServer(config: PerlaConfig) =
+  static member GetStaticServer(config: PerlaConfig aval) =
     let webroot =
-      Path.Combine(".", $"{config.build.outDir}") |> Path.GetFullPath
+      Path.Combine(".", $"{(AVal.force config).build.outDir}")
+      |> Path.GetFullPath
 
     let builder =
       WebApplication.CreateBuilder(WebApplicationOptions(WebRootPath = webroot))
 
-    let proxy = config.devServer.proxy
+    builder.Logging.AddPerlaLogger() |> ignore
 
-    let host = config.devServer.host
-    let port = config.devServer.port
-    let useSSL = config.devServer.useSSL
-    let enableEnv = config.enableEnv
-    let envPath = config.envPath
-    Server.addCommonServices false proxy builder
+    // YARP Reverse Proxy if needed
+    if not(Map.isEmpty (AVal.force config).devServer.proxy) then
+      let routes, clusters =
+        ProxyConfiguration.createRoutesAndClusters
+          (AVal.force config).devServer.proxy
+
+      builder.Services.AddReverseProxy().LoadFromMemory(routes, clusters)
+      |> ignore
 
     let app = builder.Build()
 
-    Server.addCommonMiddleware host port useSSL app
+    Server.addCommonMiddleware
+      (AVal.force config).devServer.host
+      (AVal.force config).devServer.port
+      (AVal.force config).devServer.useSSL
+      app
 
     app.UseDefaultFiles().UseStaticFiles() |> ignore
 
-    app |> Server.addProxy proxy |> Server.addEnv enableEnv (UMX.untag envPath)
+    // Add env endpoint if enabled
+    if (AVal.force config).enableEnv then
+      app.MapGet(
+        UMX.untag (AVal.force config).envPath,
+        Func<HttpContext, Task<IResult>>(fun ctx ->
+          let logger = ctx.GetLogger("Perla:Env")
+          Middleware.SendScript logger PerlaScript.Env ctx)
+      )
+      |> ignore
+
+    app

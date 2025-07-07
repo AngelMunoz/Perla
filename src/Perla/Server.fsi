@@ -6,28 +6,30 @@ open Microsoft.AspNetCore.Builder
 open Perla.Types
 open Perla.Plugins
 open Perla.VirtualFs
-open Perla.PackageManager.Types
 open System.Reactive.Subjects
-
-module Server =
-  val GetServerURLs: string -> int -> bool -> string * string
+open Perla.FileSystem
+open FSharp.Data.Adaptive
 
 [<Class>]
 type Server =
   static member GetServerApp:
-    config: PerlaConfig *
+    config: PerlaConfig aval *
+    vfs: VirtualFileSystem *
     fileChangedEvents: IObservable<FileChangedEvent * FileTransform> *
-    compileErrorEvents: IObservable<string option> ->
+    compileErrorEvents: IObservable<string option> *
+    fsManager: PerlaFsManager ->
       WebApplication
 
   static member GetTestingApp:
-    config: PerlaConfig *
-    dependencies: (string seq * ImportMap) *
+    config: PerlaConfig aval *
+    vfs: VirtualFileSystem *
+    dependencies: Perla.PkgManager.ImportMap aval *
     testEvents: ISubject<TestEvent> *
     fileChangedEvents: IObservable<FileChangedEvent * FileTransform> *
     compileErrorEvents: IObservable<string option> *
+    fsManager: PerlaFsManager *
     [<Optional>] ?fileGlobs: string seq *
     [<Optional>] ?mochaOptions: Map<string, obj> ->
       WebApplication
 
-  static member GetStaticServer: config: PerlaConfig -> WebApplication
+  static member GetStaticServer: config: PerlaConfig aval -> WebApplication
