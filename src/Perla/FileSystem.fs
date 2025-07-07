@@ -171,9 +171,7 @@ module FileSystem =
           Directory.SetCurrentDirectory path
     }
 
-  let GetManager
-    (logger: ILogger, env: Env.PlatformOps, dirs: PerlaDirectories)
-    =
+  let GetManager(logger: ILogger, env: PlatformOps, dirs: PerlaDirectories) =
     { new PerlaFsManager with
 
         member _.PerlaConfiguration = adaptive {

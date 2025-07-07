@@ -5,9 +5,9 @@ open IcedTasks
 open CliWrap
 open CliWrap.EventStream
 
+open Perla
 open Perla.Types
 open Perla.Units
-open Perla.Env
 
 open FSharp.Control
 open FSharp.Control.Reactive

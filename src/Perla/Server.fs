@@ -44,8 +44,6 @@ open Perla.Logger
 open Perla.Plugins
 open Perla.FileSystem
 open Perla.VirtualFs
-open Perla.Build
-open Perla.Env
 
 open FSharp.UMX
 open FSharp.Data.Adaptive

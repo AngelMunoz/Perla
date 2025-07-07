@@ -5,8 +5,8 @@ open Microsoft.Extensions.Logging
 
 open IcedTasks
 
+open Perla
 open Perla.Types
-open Perla.Env
 
 [<RequireQualifiedAccess>]
 type FableEvent =

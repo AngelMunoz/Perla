@@ -7,6 +7,7 @@ open Microsoft.Extensions.Logging
 open IcedTasks
 open FSharp.UMX
 open FSharp.Data.Adaptive
+open Perla
 open Perla.Types
 open Perla.Units
 open Perla.Json.TemplateDecoders
@@ -89,5 +90,5 @@ module FileSystem =
   val GetDirectories: unit -> PerlaDirectories
 
   val GetManager:
-    logger: ILogger * env: Perla.Env.PlatformOps * dirs: PerlaDirectories ->
+    logger: ILogger * env: PlatformOps * dirs: PerlaDirectories ->
       PerlaFsManager
