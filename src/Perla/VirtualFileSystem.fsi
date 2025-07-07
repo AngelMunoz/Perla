@@ -1,18 +1,18 @@
 ﻿namespace Perla.VirtualFs
 
 open System
-open System.Threading.Tasks
+
+open Microsoft.Extensions.Logging
 
 open FSharp.UMX
 open FSharp.Control
 
-open Zio
-open Zio.FileSystems
-
-open Perla.Types
 open Perla.Units
 open Perla.Extensibility
 open Perla.Plugins
+
+type MountedDirectories = Map<string<ServerUrl>, string<UserPath>>
+type ApplyPluginsFn = FileTransform -> Async<FileTransform>
 
 [<Struct>]
 type ChangeKind =
@@ -31,50 +31,44 @@ type FileChangedEvent = {
   name: string<SystemPath>
 }
 
-[<Struct>]
-type internal PathInfo = {
-  globPath: string<SystemPath>
-  localPath: string<UserPath>
-  url: string<ServerUrl>
+type FileContent = {
+  filename: string
+  mimetype: string
+  content: string
+  source: string<SystemPath>
 }
 
-type internal ApplyPluginsFn = FileTransform -> Async<FileTransform>
+type BinaryFileInfo = {
+  filename: string
+  mimetype: string
+  source: string<SystemPath>
+}
+
+type FileKind =
+  | TextFile of FileContent
+  | BinaryFile of BinaryFileInfo
+
+type VirtualFileEntry = {
+  kind: FileKind
+  lastModified: DateTime
+}
+
+type VirtualFileSystem =
+  inherit IDisposable
+  abstract member Resolve: string<ServerUrl> -> FileKind option
+  abstract member Load: MountedDirectories -> Async<unit>
+
+  abstract member ToDisk:
+    ?location: string<SystemPath> -> Async<string<SystemPath>>
+
+  abstract member FileChanges: IObservable<FileChangedEvent>
+
+type VirtualFileSystemArgs = {
+  extensibility: ExtensibilityService
+  Logger: ILogger
+}
 
 [<RequireQualifiedAccess>]
-module VirtualFileSystem =
+module VirtualFs =
 
-  val internal processFiles:
-    plugins: string list ->
-    url: string<ServerUrl> ->
-    userPath: string<UserPath> ->
-    physicalFileSystem: IFileSystem ->
-    memoryFileSystem: IFileSystem ->
-    applyPlugins: ApplyPluginsFn ->
-    globPath: string ->
-      Async<unit>
-
-  val internal copyToDisk:
-    tempDir: string<SystemPath> *
-    mountedFileSystem: IFileSystem *
-    physicalFileSystem: IFileSystem ->
-      string
-
-  val internal updateInVirtualFs:
-    serverFs: IFileSystem ->
-    event: FileChangedEvent * transform: FileTransform ->
-      FileChangedEvent * FileTransform
-
-  val ApplyVirtualOperations:
-    plugins: string list ->
-    stream: IObservable<FileChangedEvent> ->
-      IObservable<FileChangedEvent * FileTransform>
-
-  val Mount: config: PerlaConfig -> Async<unit>
-
-  val CopyToDisk: unit -> string
-
-  val GetFileChangeStream:
-    mountedDirectories: Map<string<ServerUrl>, string<UserPath>> ->
-      IObservable<FileChangedEvent>
-
-  val TryResolveFile: url: string<ServerUrl> -> byte[] option
+  val Create: VirtualFileSystemArgs -> VirtualFileSystem

@@ -27,7 +27,7 @@
       "examples": [["perla-esbuild-plugin", "markdown-plugin"]]
     },
     "mountDirectories": {
-      "description": "A key/value object that mounts the physical path specified by the key on the route specified by the value.",
+      "description": "A key/value object that signals that the server path should find sources in the specified path e.g. '/server':'./relative/path'.",
       "type": "object",
       "default": {
         "/src": "./src"
@@ -37,8 +37,8 @@
           "/src": "./src"
         },
         {
-          "./sw": "/",
-          "./public": "/static"
+          "/": "./sw",
+          "/public": "./assets"
         }
       ]
     },
