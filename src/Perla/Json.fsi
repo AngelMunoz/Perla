@@ -11,8 +11,6 @@ open Thoth.Json.Net
 
 open FSharp.UMX
 
-
-
 module TemplateDecoders =
   type DecodedTemplateConfigItem = {
     id: string
@@ -35,7 +33,6 @@ module TemplateDecoders =
   val TemplateConfigItemDecoder: Decoder<DecodedTemplateConfigItem>
 
   val TemplateConfigurationDecoder: Decoder<DecodedTemplateConfiguration>
-
 
 module ConfigDecoders =
 
@@ -145,5 +142,23 @@ type Json =
   static member FromConfigFile: string -> Result<DecodedPerlaConfig, string>
   static member TestEventFromJson: string -> Result<TestEvent, string>
 
+
 module PerlaConfig =
-    val FromString: content: string -> PerlaConfig
+  val FromString: content: string -> PerlaConfig
+
+  type FableField =
+    | Project of string
+    | Extension of string
+    | SourceMaps of bool
+    | OutDir of bool
+
+  type PerlaWritableField =
+    | Provider of PkgManager.DownloadProvider
+    | Dependencies of PkgDependency Set
+    | Fable of FableField seq
+    | Paths of Map<string<BareImport>, string<ResolutionUrl>>
+
+  val UpdateFileFields:
+    jsonContents: JsonObject option ->
+    fields: PerlaWritableField seq ->
+      JsonObject

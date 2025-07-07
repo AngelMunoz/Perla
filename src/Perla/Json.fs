@@ -5,7 +5,6 @@ open System.Text.Json
 open System.Text.Json.Serialization
 open System.Text.Json.Nodes
 
-open Perla.PackageManager.Types
 open Perla.Types
 
 open Perla.Units
@@ -78,7 +77,6 @@ module TemplateDecoders =
       description = get.Optional.Field "description" Decode.string
       repositoryUrl = get.Optional.Field "repositoryUrl" Decode.string
     })
-
 
 module ConfigDecoders =
 
@@ -672,3 +670,119 @@ module PerlaConfig =
           esbuild = esbuild
           testing = testing
     }
+
+  type FableField =
+    | Project of string
+    | Extension of string
+    | SourceMaps of bool
+    | OutDir of bool
+
+  type PerlaWritableField =
+    | Provider of PkgManager.DownloadProvider
+    | Dependencies of PkgDependency Set
+    | Fable of FableField seq
+    | Paths of Map<string<BareImport>, string<ResolutionUrl>>
+
+  let UpdateFileFields
+    (jsonContents: JsonObject option)
+    (fields: PerlaWritableField seq)
+    =
+
+    let provider =
+      fields
+      |> Seq.tryPick(fun f ->
+        match f with
+        | Provider config -> Some config
+        | _ -> None)
+      |> Option.map PkgManager.DownloadProvider.asString
+
+    let dependencies =
+      fields
+      |> Seq.tryPick(fun f ->
+        match f with
+        | Dependencies deps -> Some deps
+        | _ -> None)
+
+    let paths =
+      fields
+      |> Seq.tryPick(fun f ->
+        match f with
+        | Paths paths -> Some paths
+        | _ -> None)
+
+    let fable =
+      fields
+      |> Seq.tryPick(fun f ->
+        match f with
+        | Fable fields ->
+          let mutable f = {|
+            project = None
+            extension = None
+            sourceMaps = None
+            outDir = None
+          |}
+
+          for field in fields do
+            match field with
+            | Project path -> f <- {| f with project = Some path |}
+            | Extension ext -> f <- {| f with extension = Some ext |}
+            | SourceMaps sourceMaps ->
+              f <- {|
+                f with
+                    sourceMaps = Some sourceMaps
+              |}
+            | OutDir outDir -> f <- {| f with outDir = Some outDir |}
+
+          Some f
+        | _ -> None)
+
+    let addProvider(content: JsonObject) =
+      match provider with
+      | Some config -> content["provider"] <- Json.ToNode(config)
+      | None -> ()
+
+      content
+
+    let addDeps(content: JsonObject) =
+      match dependencies with
+      | Some deps ->
+        let dependencies =
+          deps |> Seq.map(fun dep -> dep.package, dep.version) |> Map.ofSeq
+
+        content["dependencies"] <- Json.ToNode(dependencies)
+      | None -> ()
+
+      content
+
+    let addFable(content: JsonObject) =
+      match fable with
+      | Some fable -> content["fable"] <- Json.ToNode(fable)
+      | None -> ()
+
+      content
+
+    let addPaths(content: JsonObject) =
+      match paths with
+      | Some paths -> content["paths"] <- Json.ToNode(paths)
+      | None -> ()
+
+      content
+
+    let content =
+      match jsonContents with
+      | Some content -> content
+      | None ->
+        JsonObject
+          .Parse($"""{{ "$schema": "{Constants.JsonSchemaUrl}" }}""")
+          .AsObject()
+
+    match
+      content["$schema"]
+      |> Option.ofObj
+      |> Option.map(fun schema -> schema.GetValue<string>() |> Option.ofObj)
+      |> Option.flatten
+    with
+    | Some _ -> ()
+    | None -> content["$schema"] <- Json.ToNode(Constants.JsonSchemaUrl)
+
+    content |> addProvider |> addDeps |> addFable |> addPaths

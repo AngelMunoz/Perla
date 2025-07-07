@@ -57,7 +57,10 @@ type PerlaFsManager =
     map: Perla.PkgManager.ImportMap -> CancellableTask<unit>
 
   abstract SavePerlaConfig: config: PerlaConfig -> CancellableTask<unit>
-  abstract SavePerlaConfig: config: JsonObject -> CancellableTask<unit>
+
+  abstract SavePerlaConfig:
+    updates: Perla.Json.PerlaConfig.PerlaWritableField seq ->
+      CancellableTask<unit>
 
   abstract SetupEsbuild: string<Semver> -> CancellableTask<unit>
 

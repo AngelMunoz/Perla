@@ -29,7 +29,6 @@ open Spectre.Console
 open Perla
 open Perla.Units
 open Perla.Json
-open Perla.Json.TemplateDecoders
 
 [<RequireQualifiedAccess>]
 type PerlaFileChange =
@@ -79,11 +78,12 @@ type PerlaFsManager =
   abstract ResolveTestingHelpersScript: unit -> CancellableTask<string>
   abstract ResolveMochaRunnerScript: unit -> CancellableTask<string>
 
-  abstract SaveImportMap:
-    map: Perla.PkgManager.ImportMap -> CancellableTask<unit>
+  abstract SaveImportMap: map: PkgManager.ImportMap -> CancellableTask<unit>
 
   abstract SavePerlaConfig: config: PerlaConfig -> CancellableTask<unit>
-  abstract SavePerlaConfig: config: JsonObject -> CancellableTask<unit>
+
+  abstract SavePerlaConfig:
+    updates: PerlaConfig.PerlaWritableField seq -> CancellableTask<unit>
 
 
   abstract SetupEsbuild: string<Semver> -> CancellableTask<unit>
@@ -94,7 +94,7 @@ type PerlaFsManager =
     user: string * repository: string<Repository> * branch: string<Branch> ->
       CancellableTask<
         (string<SystemPath> *
-        DecodedTemplateConfiguration *
+        TemplateDecoders.DecodedTemplateConfiguration *
         string *
         string<Repository> *
         string<Branch>) option
@@ -368,11 +368,31 @@ module FileSystem =
           do! File.WriteAllTextAsync(UMX.untag path, content, token)
         }
 
-        member _.SavePerlaConfig(config: JsonObject) = cancellableTask {
+        member _.SavePerlaConfig(updates: PerlaConfig.PerlaWritableField seq) = cancellableTask {
           let! token = CancellableTask.getCancellationToken()
           let path = dirs.CurrentWorkingDirectory |/ Constants.PerlaConfigName
-          let content = Json.ToText(config)
-          do! File.WriteAllTextAsync(UMX.untag path, content, token)
+
+          let! mutableConfig = taskOption {
+            try
+              let! content = File.ReadAllTextAsync(UMX.untag path, token)
+
+              return
+                JsonObject
+                  .Parse(
+                    content,
+                    nodeOptions = DefaultJsonNodeOptions(),
+                    documentOptions = DefaultJsonDocumentOptions()
+                  )
+                  .AsObject()
+            with :? FileNotFoundException ->
+              return! None
+          }
+
+          let updatedContent =
+            PerlaConfig.UpdateFileFields mutableConfig updates
+            |> _.ToJsonString(Json.DefaultJsonOptions())
+
+          do! File.WriteAllTextAsync(UMX.untag path, updatedContent, token)
         }
 
         member this.SetupEsbuild(version) = cancellableTask {
@@ -537,7 +557,7 @@ module FileSystem =
           | Some config ->
             let decoded =
               Thoth.Json.Net.Decode.fromString
-                TemplateConfigurationDecoder
+                TemplateDecoders.TemplateConfigurationDecoder
                 config
               |> Result.teeError(fun error ->
                 logger.LogWarning(

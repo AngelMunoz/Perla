@@ -52,10 +52,10 @@
     <Compile Include="Server.fs" />
     <Compile Include="Configuration.fsi" />
     <Compile Include="Configuration.fs" />
-    <Compile Include="Handlers.fsi" />
-    <Compile Include="Handlers.fs" />
     <Compile Include="CliMiddleware.fsi" />
     <Compile Include="CliMiddleware.fs" />
+    <Compile Include="Handlers.fsi" />
+    <Compile Include="Handlers.fs" />
     <Compile Include="Commands.fsi" />
     <Compile Include="Commands.fs" />
     <Compile Include="Program.fs" />
