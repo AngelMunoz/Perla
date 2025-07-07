@@ -72,7 +72,7 @@ type VirtualFileSystem =
   abstract member FileChanges: IObservable<FileChangedEvent>
 
 type VirtualFileSystemArgs = {
-  extensibility: ExtensibilityService
+  Extensibility: ExtensibilityService
   Logger: ILogger
 }
 
@@ -550,12 +550,12 @@ module VirtualFs =
           )
 
           // Load all files initially and create the file change stream with watchers
-          do! loadAllFiles args.Logger args.extensibility files mountedDirs
+          do! loadAllFiles args.Logger args.Extensibility files mountedDirs
 
           let connectable =
             createFileChangeStream
               args.Logger
-              args.extensibility
+              args.Extensibility
               files
               watchers
               mountedDirs

@@ -5,7 +5,6 @@ open FSharp.SystemCommandLine
 
 open Perla.Handlers
 open Perla.Types
-open Perla.PackageManager.Types
 
 
 [<Class; Sealed>]

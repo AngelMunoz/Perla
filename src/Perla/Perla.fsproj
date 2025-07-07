@@ -49,8 +49,8 @@
     <Compile Include="Server.fs" />
     <Compile Include="Configuration.fsi" />
     <Compile Include="Configuration.fs" />
-    <Compile Include="Warmup.fsi" />
-    <Compile Include="Warmup.fs" />
+    <Compile Include="Orchestration.fsi" />
+    <Compile Include="Orchestration.fs" />
     <Compile Include="Handlers.fsi" />
     <Compile Include="Handlers.fs" />
     <Compile Include="Commands.fsi" />

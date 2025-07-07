@@ -64,7 +64,7 @@ type VirtualFileSystem =
   abstract member FileChanges: IObservable<FileChangedEvent>
 
 type VirtualFileSystemArgs = {
-  extensibility: ExtensibilityService
+  Extensibility: ExtensibilityService
   Logger: ILogger
 }
 

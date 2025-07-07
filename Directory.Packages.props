@@ -14,7 +14,7 @@
     <PackageVersion Include="FSharp.Control.Reactive" Version="6.1.2" />
     <PackageVersion Include="FSharp.Core" Version="9.0.300" />
     <PackageVersion Include="FSharp.Data.Adaptive" Version="1.2.24" />
-    <PackageVersion Include="FSharp.SystemCommandLine" Version="1.0.0-beta4" />
+    <PackageVersion Include="FSharp.SystemCommandLine" Version="2.0.0-beta5.7" />
     <PackageVersion Include="FSharp.UMX" Version="1.1.0" />
     <PackageVersion Include="FsHttp" Version="15.0.1" />
     <PackageVersion Include="FsToolkit.ErrorHandling" Version="5.0.0" />
@@ -32,7 +32,7 @@
     <PackageVersion Include="Serilog.AspNetCore" Version="9.0.0" />
     <PackageVersion Include="SharpZipLib" Version="1.4.2" />
     <PackageVersion Include="Spectre.Console" Version="0.50.0" />
-    <PackageVersion Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.0-beta5.25306.1" />
     <PackageVersion Include="System.Text.Json" Version="9.0.5" />
     <PackageVersion Include="Thoth.Json.Net" Version="12.0.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
