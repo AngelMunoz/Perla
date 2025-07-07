@@ -151,7 +151,7 @@ module Extensions =
 module LiveReload =
 
   let WriteReloadChange
-    (logger: Microsoft.Extensions.Logging.ILogger)
+    (logger: ILogger)
     (event: FileChangedEvent, response: HttpResponse)
     =
     let data =
@@ -171,7 +171,7 @@ module LiveReload =
     response.WriteAsync $"event:reload\ndata:{data}\n\n"
 
   let WriteHmrChange
-    (logger: Microsoft.Extensions.Logging.ILogger)
+    (logger: ILogger)
     (event: FileChangedEvent, transform: FileTransform, response: HttpResponse)
     =
     let oldPath =
@@ -203,7 +203,7 @@ module LiveReload =
     response.WriteAsync $"event:replace-css\ndata:{data}\n\n"
 
   let WriteCompileError
-    (logger: Microsoft.Extensions.Logging.ILogger)
+    (logger: ILogger)
     (error: string option, response: HttpResponse)
     =
     let err = Json.ToText({| error = error |}, true)
@@ -223,7 +223,7 @@ module Middleware =
     | Normal
 
   let processFile
-    (logger: Microsoft.Extensions.Logging.ILogger)
+    (logger: ILogger)
     (
       setContentAndWrite: string * byte array -> Task<_>,
       reqPath: string,
@@ -261,9 +261,7 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
 
       setContentAndWrite(mimeType, content)
 
-  let ResolveFile
-    (logger: Microsoft.Extensions.Logging.ILogger)
-    : HttpContext -> RequestDelegate -> Task =
+  let ResolveFile(logger: ILogger) : HttpContext -> RequestDelegate -> Task =
     fun ctx next -> taskUnit {
       let vfs = ctx.GetService<VirtualFileSystem>()
       let processFile = processFile logger
@@ -679,10 +677,7 @@ module Server =
     if useSSL then
       app.UseHsts().UseHttpsRedirection() |> ignore
 
-  let addVirtualFileSystemMiddleware
-    (logger: Microsoft.Extensions.Logging.ILogger)
-    (app: WebApplication)
-    =
+  let addVirtualFileSystemMiddleware (logger: ILogger) (app: WebApplication) =
     app.UseWhen(
       Func<HttpContext, bool>(fun ctx ->
         not(ctx.Request.Path.StartsWithSegments(PathString("/~perla~")))),
@@ -699,7 +694,7 @@ module Server =
     app
 
   let addLiveReload
-    (logger: Microsoft.Extensions.Logging.ILogger)
+    (logger: ILogger)
     (fileChangedEvents: IObservable<FileChangedEvent * FileTransform>)
     (compileErrorEvents: IObservable<string option>)
     (app: WebApplication)
