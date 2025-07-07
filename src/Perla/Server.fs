@@ -1,11 +1,8 @@
 ﻿namespace Perla.Server
 
-#nowarn "3391"
-
 open System
 open System.IO
 open System.Net
-open System.Net.Http
 open System.Net.NetworkInformation
 open System.Reactive.Subjects
 open System.Runtime.InteropServices
@@ -188,16 +185,14 @@ module LiveReload =
     let userPath = $"{event.userPath}/{replaced}"
 
     let data =
-      Json.ToText(
-        {|
-          oldName = event.oldName
-          oldPath = oldPath
-          name = replaced
-          url = $"{event.serverPath}/{replaced}"
-          localPath = userPath
-          content = transform.content
-        |}
-      )
+      Json.ToText {|
+        oldName = event.oldName
+        oldPath = oldPath
+        name = replaced
+        url = $"{event.serverPath}/{replaced}"
+        localPath = userPath
+        content = transform.content
+      |}
 
     logger.LogInformation("HMR: CSS File Changed: {UserPath}", userPath)
     response.WriteAsync $"event:replace-css\ndata:{data}\n\n"
@@ -241,14 +236,14 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
     | "application/json", JS ->
       setContentAndWrite(
         MimeTypeNames.DefaultJavaScript,
-        (processJsonAsJs(Encoding.UTF8.GetString(content))
-         |> Encoding.UTF8.GetBytes)
+        processJsonAsJs(Encoding.UTF8.GetString content)
+        |> Encoding.UTF8.GetBytes
       )
     | "text/css", JS ->
       setContentAndWrite(
         MimeTypeNames.DefaultJavaScript,
-        (processCssAsJs(Encoding.UTF8.GetString(content), reqPath)
-         |> Encoding.UTF8.GetBytes)
+        processCssAsJs(Encoding.UTF8.GetString content, reqPath)
+        |> Encoding.UTF8.GetBytes
       )
     | mimeType, Normal -> setContentAndWrite(mimeType, content)
     | mimeType, JS ->
@@ -270,7 +265,7 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
       | Some file ->
         let fileExtProvider = ctx.GetService<FileExtensionContentTypeProvider>()
 
-        match fileExtProvider.TryGetContentType(ctx.Request.Path) with
+        match fileExtProvider.TryGetContentType ctx.Request.Path with
         | true, mime ->
           let setContentTypeAndWrite(mimeType, content) =
             ctx.SetContentType mimeType
@@ -285,7 +280,7 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
             return!
               processFile(
                 setContentTypeAndWrite,
-                ctx.Request.Path,
+                ctx.Request.Path.ToString(),
                 mime,
                 requestedAs,
                 Encoding.UTF8.GetBytes(content.content)
@@ -296,7 +291,7 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
             return!
               processFile(
                 setContentTypeAndWrite,
-                ctx.Request.Path,
+                ctx.Request.Path.ToString(),
                 mime,
                 requestedAs,
                 fileBytes
@@ -322,33 +317,29 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
       return Results.Ok()
     }
 
-  let SendScript (logger: ILogger) (script: PerlaScript) (ctx: HttpContext) = task {
+  let SendScript (logger: ILogger) (script: PerlaScript) (ctx: HttpContext) = cancellableTask {
     let fsManager = ctx.GetService<PerlaFsManager>()
 
     logger.LogInformation("Sending Script {Script}", script)
 
     match script with
     | PerlaScript.LiveReload ->
-      let! content =
-        fsManager.ResolveLiveReloadScript() |> Async.AwaitCancellableTask
+      let! content = fsManager.ResolveLiveReloadScript()
 
       return Results.Text(content, "text/javascript")
 
     | PerlaScript.Worker ->
-      let! content =
-        fsManager.ResolveWorkerScript() |> Async.AwaitCancellableTask
+      let! content = fsManager.ResolveWorkerScript()
 
       return Results.Text(content, "text/javascript")
 
     | PerlaScript.TestingHelpers ->
-      let! content =
-        fsManager.ResolveTestingHelpersScript() |> Async.AwaitCancellableTask
+      let! content = fsManager.ResolveTestingHelpersScript()
 
       return Results.Text(content, "text/javascript")
 
     | PerlaScript.MochaTestRunner ->
-      let! content =
-        fsManager.ResolveMochaRunnerScript() |> Async.AwaitCancellableTask
+      let! content = fsManager.ResolveMochaRunnerScript()
 
       return Results.Text(content, "text/javascript")
 
@@ -377,11 +368,7 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
             (StringBuilder())
           |> _.ToString()
 
-        return
-          Results.Stream(
-            new MemoryStream(Encoding.UTF8.GetBytes content),
-            "text/javascript"
-          )
+        return Results.Text(content, "text/javascript", Encoding.UTF8, 200)
   }
 
   let SseHandler
@@ -403,7 +390,7 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
       let writeReloadChange = LiveReload.WriteReloadChange logger
       let writeCompileError = LiveReload.WriteCompileError logger
       // Start Client communication
-      do! res.WriteAsync($"id:{ctx.Connection.Id}\ndata:{DateTime.Now}\n\n")
+      do! res.WriteAsync $"id:{ctx.Connection.Id}\ndata:{DateTime.Now}\n\n"
       do! res.Body.FlushAsync()
 
       let onChangeSub =
@@ -475,7 +462,7 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
     (map: PkgManager.ImportMap aval)
     (ctx: HttpContext)
     =
-    async {
+    cancellableTask {
 
       let fsManager = ctx.GetService<PerlaFsManager>()
       let content = fsManager.ResolveIndex |> AVal.force
@@ -517,8 +504,7 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
       let runnerScript = doc.CreateElement "script"
       runnerScript.SetAttribute("type", "module")
 
-      let! runnerContent =
-        fsManager.ResolveMochaRunnerScript() |> Async.AwaitCancellableTask
+      let! runnerContent = fsManager.ResolveMochaRunnerScript()
 
       runnerScript.TextContent <- runnerContent
       doc.Body.AppendChild runnerScript |> ignore
@@ -635,8 +621,6 @@ module Server =
   let addServices
     (config: PerlaConfig aval)
     (vfs: VirtualFileSystem)
-    (fileChangedEvents: IObservable<FileChangedEvent * FileTransform>)
-    (compileErrorEvents: IObservable<string option>)
     (fsManager: PerlaFsManager)
     (builder: WebApplicationBuilder)
     =
@@ -709,14 +693,18 @@ module Server =
     app.MapGet(
       "/~perla~/livereload.js",
       Func<HttpContext, Task<IResult>>(fun ctx ->
-        Middleware.SendScript logger PerlaScript.LiveReload ctx)
+        Middleware.SendScript
+          logger
+          PerlaScript.LiveReload
+          ctx
+          ctx.RequestAborted)
     )
     |> ignore
 
     app.MapGet(
       "/~perla~/worker.js",
       Func<HttpContext, Task<IResult>>(fun ctx ->
-        Middleware.SendScript logger PerlaScript.Worker ctx)
+        Middleware.SendScript logger PerlaScript.Worker ctx ctx.RequestAborted)
     )
     |> ignore
 
@@ -731,7 +719,7 @@ module Server =
       app.MapGet(
         UMX.untag (AVal.force config).envPath,
         Func<HttpContext, Task<IResult>>(fun ctx ->
-          Middleware.SendScript logger PerlaScript.Env ctx)
+          Middleware.SendScript logger PerlaScript.Env ctx ctx.RequestAborted)
       )
       |> ignore
 
@@ -768,19 +756,19 @@ module Server =
       =
       app.MapGet(
         "/",
-        Func<HttpContext, Async<IResult>>(fun ctx ->
+        Func<HttpContext, Task<IResult>>(fun ctx ->
           let config = ctx.GetService<PerlaFsManager>().PerlaConfiguration
 
-          Middleware.TestingIndex config dependencies ctx)
+          Middleware.TestingIndex config dependencies ctx ctx.RequestAborted)
       )
       |> ignore
 
       app.MapGet(
         "/index.html",
-        Func<HttpContext, Async<IResult>>(fun ctx ->
+        Func<HttpContext, Task<IResult>>(fun ctx ->
           let config = ctx.GetService<PerlaFsManager>().PerlaConfiguration
 
-          Middleware.TestingIndex config dependencies ctx)
+          Middleware.TestingIndex config dependencies ctx ctx.RequestAborted)
       )
       |> ignore
 
@@ -798,7 +786,12 @@ module Server =
         "/~perla~/testing/helpers.js",
         Func<HttpContext, Task<IResult>>(fun ctx ->
           let logger = ctx.GetLogger("Perla:TestingHelpers")
-          Middleware.SendScript logger PerlaScript.TestingHelpers ctx)
+
+          Middleware.SendScript
+            logger
+            PerlaScript.TestingHelpers
+            ctx
+            ctx.RequestAborted)
       )
       |> ignore
 
@@ -888,13 +881,7 @@ type Server =
     let builder = WebApplication.CreateBuilder()
     builder.Logging.AddPerlaLogger() |> ignore
 
-    Server.addServices
-      config
-      vfs
-      fileChangedEvents
-      compileErrorEvents
-      fsManager
-      builder
+    Server.addServices config vfs fsManager builder
 
     let app = builder.Build()
 
@@ -924,13 +911,7 @@ type Server =
 
     let builder = WebApplication.CreateBuilder()
 
-    Server.addServices
-      config
-      vfs
-      fileChangedEvents
-      compileErrorEvents
-      fsManager
-      builder
+    Server.addServices config vfs fsManager builder
 
     let app = builder.Build()
 
@@ -985,7 +966,7 @@ type Server =
         UMX.untag (AVal.force config).envPath,
         Func<HttpContext, Task<IResult>>(fun ctx ->
           let logger = ctx.GetLogger("Perla:Env")
-          Middleware.SendScript logger PerlaScript.Env ctx)
+          Middleware.SendScript logger PerlaScript.Env ctx ctx.RequestAborted)
       )
       |> ignore
 
