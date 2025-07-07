@@ -121,7 +121,7 @@ module Scaffolding =
 
         member _.Add(user, repository, branch) = cancellableTask {
           match! fsManager.SetupTemplate(user, repository, branch) with
-          | Some(path, config, user, repository, branch) ->
+          | Some(path, config) ->
             return
               database.Templates.Add(path, config, user, repository, branch)
           | None ->
@@ -141,7 +141,7 @@ module Scaffolding =
           let branch = UMX.tag<Branch> template.Branch
 
           match! fsManager.SetupTemplate(user, repository, branch) with
-          | Some(path, config, _, _, _) ->
+          | Some(path, config) ->
             // Update template properties
             template.Path <- UMX.untag path
             template.Name <- config.name
