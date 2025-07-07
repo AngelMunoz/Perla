@@ -1,13 +1,7 @@
 ﻿module Perla.Configuration
 
-open FSharp.UMX
 open FSharp.Data.Adaptive
 open Perla.Types
-open Perla.Units
-open Perla.PackageManager.Types
-open Perla.Logger
-open System.Runtime.InteropServices
-open FsToolkit.ErrorHandling
 
 type DevServerField =
   | Port of int

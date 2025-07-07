@@ -18,6 +18,7 @@
     <PackageVersion Include="FSharp.UMX" Version="1.1.0" />
     <PackageVersion Include="FsHttp" Version="15.0.1" />
     <PackageVersion Include="FsToolkit.ErrorHandling" Version="5.0.0" />
+    <PackageVersion Include="FsToolkit.ErrorHandling.IcedTasks" Version="5.0.0" />
     <PackageVersion Include="Hellang.Middleware.SpaFallback" Version="2.0.0" />
     <PackageVersion Include="IcedTasks" Version="0.11.8" />
     <PackageVersion Include="LiteDB" Version="5.0.21" />

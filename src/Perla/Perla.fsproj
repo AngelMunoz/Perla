@@ -49,8 +49,8 @@
     <Compile Include="Server.fs" />
     <Compile Include="Configuration.fsi" />
     <Compile Include="Configuration.fs" />
-    <Compile Include="CliMiddleware.fsi" />
-    <Compile Include="CliMiddleware.fs" />
+    <Compile Include="Warmup.fsi" />
+    <Compile Include="Warmup.fs" />
     <Compile Include="Handlers.fsi" />
     <Compile Include="Handlers.fs" />
     <Compile Include="Commands.fsi" />
@@ -89,6 +89,7 @@
     <PackageReference Include="FSharp.Data.Adaptive" />
     <PackageReference Include="FSharp.SystemCommandLine" />
     <PackageReference Include="FsToolkit.ErrorHandling" />
+    <PackageReference Include="FsToolkit.ErrorHandling.IcedTasks" />
     <PackageReference Include="FSharp.UMX" />
     <PackageReference Include="Thoth.Json.Net" />
     <PackageReference Include="Fake.IO.FileSystem" />

@@ -21,6 +21,8 @@ type FableService =
 
   abstract member Monitor: config: FableConfig -> IAsyncEnumerable<FableEvent>
 
+  abstract member IsPresent: unit -> CancellableTask<bool>
+
 type FableArgs = {
   Platform: PlatformOps
   Logger: ILogger

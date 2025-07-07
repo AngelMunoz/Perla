@@ -28,6 +28,8 @@ type FableService =
 
   abstract member Monitor: config: FableConfig -> IAsyncEnumerable<FableEvent>
 
+  abstract member IsPresent: unit -> CancellableTask<bool>
+
 type FableArgs = {
   Platform: PlatformOps
   Logger: ILogger
@@ -125,5 +127,22 @@ module Fable =
               if exited.ExitCode <> 0 then
                 FableEvent.ErrLog $"Fable exited with code {exited.ExitCode}"
             | _ -> ()
+        }
+
+        member _.IsPresent() = cancellableTask {
+          let! token = CancellableTask.getCancellationToken()
+
+          let command =
+            let execBinName =
+              if args.Platform.IsWindows() then "dotnet.exe" else "dotnet"
+
+            Cli
+              .Wrap(execBinName)
+              .WithArguments([ "fable"; "--version" ])
+              .WithValidation(CommandResultValidation.None)
+              .ExecuteAsync(cancellationToken = token)
+
+          let! result = command.Task
+          return result.ExitCode = 0
         }
     }

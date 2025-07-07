@@ -11,8 +11,8 @@ open FSharp.UMX
 open LiteDB
 
 open Perla
-open Perla.CliMiddleware
-open Perla.CliMiddleware.Middleware.MiddlewareImpl
+open Perla.Warmup
+open Perla.Warmup.Middleware.MiddlewareImpl
 open FsToolkit.ErrorHandling
 
 
@@ -26,8 +26,8 @@ module private MiddlewareUtils =
         isBinPresent: bool
         throwInSetup: bool
       |})
-    : CliMiddleware.Esbuild =
-    { new Perla.CliMiddleware.Esbuild with
+    : Warmup.Esbuild =
+    { new Perla.Warmup.Esbuild with
         member _.EsbuildVersion: FSharp.UMX.string<Units.Semver> =
           UMX.tag "0.0.0"
 

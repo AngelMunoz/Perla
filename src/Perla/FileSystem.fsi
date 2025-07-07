@@ -69,13 +69,7 @@ type PerlaFsManager =
 
   abstract SetupTemplate:
     user: string * repository: string<Repository> * branch: string<Branch> ->
-      CancellableTask<
-        (string<SystemPath> *
-        DecodedTemplateConfiguration *
-        string *
-        string<Repository> *
-        string<Branch>) option
-       >
+      CancellableTask<(string<SystemPath> * DecodedTemplateConfiguration) option>
 
   abstract CopyGlobs:
     buildConfig: BuildConfig * tempDir: string<SystemPath> -> unit

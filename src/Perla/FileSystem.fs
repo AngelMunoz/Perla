@@ -93,11 +93,7 @@ type PerlaFsManager =
   abstract SetupTemplate:
     user: string * repository: string<Repository> * branch: string<Branch> ->
       CancellableTask<
-        (string<SystemPath> *
-        TemplateDecoders.DecodedTemplateConfiguration *
-        string *
-        string<Repository> *
-        string<Branch>) option
+        (string<SystemPath> * TemplateDecoders.DecodedTemplateConfiguration) option
        >
 
   abstract CopyGlobs:
@@ -567,11 +563,7 @@ module FileSystem =
             return
               decoded
               |> Option.map(fun config ->
-                UMX.tag<SystemPath> targetPath,
-                config,
-                user,
-                repository,
-                branch)
+                UMX.tag<SystemPath> targetPath, config)
           | None ->
             logger.LogWarning(
               "No Configuration File found in template {user}/{repository}@{branch}",

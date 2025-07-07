@@ -12,7 +12,7 @@ open Perla.Database
 open Perla.Configuration
 open Perla.Handlers
 open Perla.Commands
-open Perla.CliMiddleware
+open Perla.Warmup
 open Perla.Types
 
 [<RequireQualifiedAccess>]
