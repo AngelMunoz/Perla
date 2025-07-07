@@ -6,96 +6,50 @@ open System.CommandLine
 open System.CommandLine.Invocation
 open System.CommandLine.Parsing
 
-open FSharp.SystemCommandLine
-
-open FsToolkit.ErrorHandling
-open FSharp.UMX
-
 open Perla
-open Perla.PackageManager.Types
 open Perla.Types
 open Perla.Handlers
+
+open FSharp.SystemCommandLine
+open FSharp.SystemCommandLine.Input
+
 
 
 [<Class; Sealed>]
 type PerlaOptions =
 
-  static member BoolOption
-    (aliases: string seq, description: string)
-    : Option<bool option> =
-    let parser(result: ArgumentResult) =
-      let defaultValue = Some true
+  static member PackageSource =
 
-      let withToken =
-        result.Tokens
-        |> Seq.tryHead
-        |> Option.map(fun value ->
-          match value.Value.Trim().ToLowerInvariant() with
-          | "true" -> true
-          | "false" -> false
-          | _ -> false)
-
-      Option.orElse defaultValue withToken
-
-
-
-    Option<bool option>(
-      aliases |> Seq.toArray,
-      parseArgument = parser,
-      description = description,
-      Arity = ArgumentArity.ZeroOrOne
-    )
-
-  static member PackageSource: Option<PkgManager.DownloadProvider voption> =
-    let parser(result: ArgumentResult) =
+    let inline parser(result: ArgumentResult) =
       match result.Tokens |> Seq.tryHead with
       | Some token ->
         PkgManager.DownloadProvider.fromString token.Value |> ValueSome
       | None -> ValueNone
 
-    let opt =
-      Option<PkgManager.DownloadProvider voption>(
-        [| "--source"; "-s" |],
-        parseArgument = parser,
-        description = "Version of the package to install",
-        IsRequired = false
-      )
-
-    opt.FromAmong(
-      [|
-        "jspm"
-        "skypack"
-        "unpkg"
-        "jsdelivr"
-        "esm.sh"
-        "jspm.system"
-        "jspm#system"
-      |]
+    Option<PkgManager.DownloadProvider voption>(
+      "--source",
+      "-s",
+      CustomParser = parser,
+      Description = "The source to download packages from. Defaults to jspm.io",
+      Required = false
     )
-    |> ignore
+      .AcceptOnlyFromAmong("jspm.io", "unpkg", "jsdelivr")
 
-    opt
-
-  static member Browsers: Option<Browser array> =
-    let parser(result: ArgumentResult) =
+  static member Browsers =
+    let inline parser(result: ArgumentResult) =
       result.Tokens
       |> Seq.map(fun token -> token.Value |> Browser.FromString)
-      |> Seq.distinct
-      |> Seq.toArray
+      |> Set.ofSeq
 
-    let opt =
-      Option<Browser array>(
-        [| "--browsers"; "-b" |],
-        parseArgument = parser,
-        description = "Version of the package to install",
-        Arity = ArgumentArity.ZeroOrMore,
-        AllowMultipleArgumentsPerToken = true
-      )
-
-    opt.FromAmong([| "chromium"; "firefox"; "webkit"; "edge"; "chrome" |])
-    |> ignore
-
-    opt
+    Option<Browser Set>(
+      "--browsers",
+      "-b",
+      CustomParser = parser,
+      Description = "Version of the package to install",
+      Arity = ArgumentArity.ZeroOrMore,
+      AllowMultipleArgumentsPerToken = true
+    )
+      .AcceptOnlyFromAmong("chromium", "firefox", "webkit", "edge", "chrome")
 
   static member DisplayMode: Option<ListFormat> =
     let parser(result: ArgumentResult) =
@@ -107,33 +61,16 @@ type PerlaOptions =
         | _ -> ListFormat.HumanReadable
       | None -> ListFormat.HumanReadable
 
-    let opt =
-      Option<ListFormat>(
-        [| "--list"; "-ls" |],
-        parseArgument = parser,
-        description = "The chosen format to display the existing templates",
-        IsRequired = false
-      )
-
-    opt.FromAmong([| "table"; "text" |]) |> ignore
-
-    opt
+    Option<ListFormat>(
+      "--list-format",
+      CustomParser = parser,
+      Description = "The chosen format to display the existing templates",
+      Required = false
+    )
+      .AcceptOnlyFromAmong("table", "text")
 
 [<Class; Sealed>]
 type PerlaArguments =
-
-  static member ArgStringMaybe
-    (name: string, ?description: string)
-    : Argument<string option> =
-    let parser(result: ArgumentResult) =
-      result.Tokens |> Seq.tryHead |> Option.map(fun value -> value.Value)
-
-    Argument<string option>(
-      name,
-      parse = parser,
-      ?description = description,
-      Arity = ArgumentArity.ZeroOrOne
-    )
 
   static member Properties: Argument<string array> =
     let parser(result: ArgumentResult) =
@@ -144,8 +81,8 @@ type PerlaArguments =
 
     Argument<string array>(
       "properties",
-      parser,
-      description =
+      CustomParser = parser,
+      Description =
         "A property, properties or json path-like string names to describe",
       Arity = ArgumentArity.ZeroOrMore
     )
@@ -153,272 +90,201 @@ type PerlaArguments =
 [<RequireQualifiedAccess>]
 module SharedInputs =
 
-  let source: HandlerInput<Perla.PkgManager.DownloadProvider voption> =
-    PerlaOptions.PackageSource |> Input.OfOption
+  let source: ActionInput<Perla.PkgManager.DownloadProvider voption> =
+    PerlaOptions.PackageSource |> Input.ofOption
 
 [<RequireQualifiedAccess>]
 module DescribeInputs =
-  let perlaProperties: HandlerInput<string[] option> =
-    Argument<string[] option>(
-      "properties",
-      (fun (result: ArgumentResult) ->
-        match result.Tokens |> Seq.toArray with
-        | [||] -> None
-        | others -> Some(others |> Array.map(fun token -> token.Value))),
-      Description =
-        "A property, properties or json path-like string names to describe",
-      Arity = ArgumentArity.ZeroOrMore
+  let perlaProperties: ActionInput<string[]> =
+    Argument<string[]>(
+      "properties"
+      , CustomParser =
+        fun (result: ArgumentResult) -> [|
+          for token in result.Tokens -> token.Value
+        |]
+      , Description =
+        "A property, properties or json path-like string names to describe"
+      , Arity = ArgumentArity.ZeroOrMore
     )
-    |> HandlerInput.OfArgument
+    |> Input.ofArgument
 
-  let describeCurrent: HandlerInput<bool> =
-    Input.Option(
-      [ "--current"; "-c" ],
-      false,
+  let describeCurrent: ActionInput<bool> =
+    option "--current"
+    |> alias "-c"
+    |> description
       "Take my current perla.json file and print my current configuration"
-    )
-
-[<RequireQualifiedAccess>]
-module BuildInputs =
-  let enablePreloads: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "-epl"; "--enable-preload-links" ],
-      "enable adding modulepreload links in the final build"
-    )
-
-  let rebuildImportMap: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "-rim"; "--rebuild-importmap" ],
-      "discards the current import map (and custom resolutions)
-        and generates a new one based on the dependencies listed in the config file."
-    )
-
-  let preview: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "-prev"; "--preview" ],
-      "discards the current import map (and custom resolutions)
-        and generates a new one based on the dependencies listed in the config file."
-    )
 
 [<RequireQualifiedAccess>]
 module SetupInputs =
-  let installTemplates: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "--templates"; "-t" ],
-      "Install Default templates (defaults to true)"
-    )
+  let installTemplates: ActionInput<bool option> =
+    optionMaybe "--templates"
+    |> alias "-t"
+    |> description "Install Default templates (defaults to true)"
 
-  let skipPrompts: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "--skip"; "-s"; "-y" ],
-      "Skip Prompts and accept all defaults"
-    )
+  let skipPrompts: ActionInput<bool option> =
+    optionMaybe "--skip"
+    |> aliases [ "-s"; "-y" ]
+    |> description "Skip interactive prompts and use defaults"
+
 
 [<RequireQualifiedAccess>]
 module PackageInputs =
-  let package: HandlerInput<string> =
-    Input.Argument("package", "Name of the JS Package")
+  let package: ActionInput<string> =
+    argument "package" |> description "Name of the JS Package"
 
-  let import: HandlerInput<string> =
-    Input.Argument(
-      "import",
-      "Name to assign to this import e.g 'app/buttons' 'lodashv3'"
-    )
+  let version: ActionInput<string option> =
+    optionMaybe "--version"
+    |> alias "-v"
+    |> description "Version of the package to install"
 
-  let resolution: HandlerInput<string option> =
-    PerlaArguments.ArgStringMaybe(
-      "resolution",
-      "URL, or path (absolute or relative) to your import's actual source."
-    )
-    |> Input.OfArgument
+  let alias: ActionInput<string option> =
+    optionMaybe "--alias"
+    |> alias "-a"
+    |> description "Alias name for the package"
 
-  let addOrUpdate: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "--add"; "--update"; "-u"; "-a" ],
-      "Attempts to add or update an import in paths configuration."
-    )
-
-  let removeResolution: HandlerInput<bool> =
-    Input.Option(
-      [ "--remove-resolution"; "-r" ],
-      "Remove the resolution from the config file"
-    )
-
-  let currentPage: HandlerInput<int option> =
-    Input.OptionMaybe(
-      [| "--page"; "-p" |],
-      "change the page number in the search results"
-    )
-
-  let alias: HandlerInput<string option> =
-    Input.OptionMaybe(
-      [ "--alias"; "-a" ],
-      "the alias of the package if you added one"
-    )
-
-  let version: HandlerInput<string option> =
-    Input.OptionMaybe(
-      [ "--version"; "-v" ],
-      "The version of the package you want to add"
-    )
-
-  let showAsNpm: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "--npm"; "--as-package-json"; "-j" ],
-      "Show the packages similar to npm's package.json"
-    )
+  let showAsNpm: ActionInput<bool option> =
+    optionMaybe "--npm"
+    |> aliases [ "--as-package-json"; "-j" ]
+    |> description "Show the packages similar to npm's package.json"
 
 [<RequireQualifiedAccess>]
 module TemplateInputs =
-  let repositoryName: HandlerInput<string option> =
-    Input.ArgumentMaybe(
-      "templateRepositoryName",
-      "The User/repository name combination"
-    )
+  let repositoryName: ActionInput<string option> =
+    argumentMaybe "TemplateRepositoryName"
+    |> description "The User/repository name combination"
 
-  let addTemplate: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "--add"; "-a" ],
-      "Adds the template repository to Perla"
-    )
+  let addTemplate: ActionInput<bool option> =
 
-  let updateTemplate: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "--update"; "-u" ],
-      "If it exists, updates the template repository for Perla"
-    )
+    optionMaybe "--add"
+    |> alias "-a"
+    |> description "If it doesn't exist, adds the template repository to Perla"
 
-  let removeTemplate: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "--remove"; "-r" ],
-      "If it exists, removes the template repository for Perla"
-    )
+  let updateTemplate: ActionInput<bool option> =
+    optionMaybe "--update"
+    |> alias "-u"
+    |> description "If it exists, updates the template repository for Perla"
 
-  let displayMode: HandlerInput<ListFormat> =
-    PerlaOptions.DisplayMode |> Input.OfOption
+  let removeTemplate: ActionInput<bool option> =
+
+    optionMaybe "--remove"
+    |> alias "-r"
+    |> description "If it exists, removes the template repository for Perla"
+
+  let displayMode: ActionInput<ListFormat> =
+    PerlaOptions.DisplayMode |> Input.ofOption
 
 [<RequireQualifiedAccess>]
 module ProjectInputs =
 
-  let projectName: HandlerInput<string> =
-    Input.Argument("name", "Name of the new project")
+  let projectName: ActionInput<string> =
+    argument "name" |> description "Name of the new project"
 
-  let byId: HandlerInput<string option> =
-    Input.OptionMaybe(
-      [ "-id"; "--group-id" ],
+  let byId: ActionInput<string option> =
+    optionMaybe "--id"
+    |> alias "-i"
+    |> description
       "fully.qualified.name of the template, e.g. perla.templates.vanilla.js"
-    )
 
-  let byShortName: HandlerInput<string option> =
-    Input.OptionMaybe(
-      [ "-t"; "--template" ],
-      "shortname of the template, e.g. ff"
-    )
+  let byShortName: ActionInput<string option> =
+    optionMaybe "--template"
+    |> alias "-t"
+    |> description "shortname of the template, e.g. ff"
+
+
+[<RequireQualifiedAccess>]
+module BuildInputs =
+  let preview: ActionInput<bool option> =
+    optionMaybe "--preview"
+    |> alias "-p"
+    |> description
+      "Enable preview mode, which will build the application and start a static server"
 
 [<RequireQualifiedAccess>]
 module TestingInputs =
-  let browsers: HandlerInput<Browser array> =
-    PerlaOptions.Browsers |> Input.OfOption
+  let browsers: ActionInput<Browser Set> =
+    PerlaOptions.Browsers |> Input.ofOption
 
-  let files: HandlerInput<string array> =
-    Input.Option(
-      [ "--tests"; "-t" ],
-      [||],
+  let files: ActionInput<string array> =
+    option "--tests"
+    |> alias "-t"
+    |> defaultValue Array.empty
+    |> description
       "Specify a glob of tests to run. e.g '**/featureA/*.test.js' or 'tests/my-test.test.js'"
-    )
 
-  let skips: HandlerInput<string array> =
-    Input.Option(
-      [ "--skip"; "-s" ],
-      [||],
+
+  let skips: ActionInput<string array> =
+    option "--skip"
+    |> aliases [ "-s" ]
+    |> defaultValue Array.empty
+    |> description
       "Specify a glob of tests to skip. e.g '**/featureA/*.test.js' or 'tests/my-test.test.js'"
-    )
 
 
-  let headless: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "--headless"; "-hl" ],
+  let headless: ActionInput<bool option> =
+    optionMaybe "--headless"
+    |> alias "-hl"
+    |> description
       "Turn on or off the Headless mode and open the browser (useful for debugging tests)"
-    )
 
-  let watch: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "--watch"; "-w" ],
-      "Start the server and keep watching for file changes"
-    )
+  let watch: ActionInput<bool option> =
+    optionMaybe "--watch"
+    |> alias "-w"
+    |> description "Start the server and keep watching for file changes"
 
-  let sequential: HandlerInput<bool option> =
-    Input.OptionMaybe(
-      [ "--browser-sequential"; "-bs" ],
+  let sequential: ActionInput<bool option> =
+    optionMaybe "--browser-sequential"
+    |> alias "-bs"
+    |> description
       "Run each browser's test suite in sequence, rather than parallel"
-    )
 
 [<RequireQualifiedAccess>]
 module ServeInputs =
-  let port: HandlerInput<int option> =
-    Input.OptionMaybe([ "--port"; "-p" ], "Port where the application starts")
+  let port: ActionInput<int option> =
+    optionMaybe "--port"
+    |> alias "-p"
+    |> description "Port where the application starts"
 
-  let host: HandlerInput<string option> =
-    Input.OptionMaybe(
-      [ "--host" ],
-      "network ip address where the application will run"
-    )
+  let host: ActionInput<string option> =
+    optionMaybe "--host"
+    |> description "network ip address where the application will run"
 
-  let ssl: HandlerInput<bool option> =
-    Input.OptionMaybe([ "--ssl" ], "Run dev server with SSL")
+  let ssl: ActionInput<bool option> =
+    optionMaybe "--ssl" |> description "Run dev server with SSL"
 
 [<RequireQualifiedAccess>]
 module Commands =
-  type HandlerInput<'T> with
-
-    member this.GetValue(ctx: CommandResult) : 'T =
-      match this.Source with
-      | ParsedOption o -> o :?> Option<'T> |> ctx.GetValueForOption
-      | ParsedArgument a -> a :?> Argument<'T> |> ctx.GetValueForArgument
-      | Context -> failwith "Unable to get a result from context"
 
   let Build =
 
-    let handleCommand
-      (
-        context: InvocationContext,
-        enablePreloads: bool option,
-        rebuildImportMap: bool option,
-        enablePreview: bool option
-      ) =
+    let handleCommand(context: ActionContext, enablePreview: bool option) =
 
       let options = {
-        enablePreloads = defaultArg enablePreloads true
-        rebuildImportMap = defaultArg rebuildImportMap false
+        enablePreloads = false
+        rebuildImportMap = false
         enablePreview = defaultArg enablePreview false
       }
 
-      Handlers.runBuild options (context.GetCancellationToken())
+      Handlers.runBuild options context.CancellationToken
 
     command "build" {
       description "Builds the SPA application for distribution"
       addAlias "b"
 
-      inputs(
-        Input.Context(),
-        BuildInputs.enablePreloads,
-        BuildInputs.rebuildImportMap,
-        BuildInputs.preview
-      )
+      inputs(Input.context, BuildInputs.preview)
 
-      setHandler handleCommand
+      setAction handleCommand
     }
 
   let Serve =
     let handleCommand
       (
-        context: InvocationContext,
+        context: ActionContext,
         port: int option,
         host: string option,
         ssl: bool option
       ) =
       let options = { port = port; host = host; ssl = ssl }
-      Handlers.runServe options (context.GetCancellationToken())
+      Handlers.runServe options (context.CancellationToken)
 
     let desc =
       "Starts the development server and if fable projects are present it also takes care of it."
@@ -427,20 +293,15 @@ module Commands =
       description desc
       addAliases [ "s"; "start" ]
 
-      inputs(
-        Input.Context(),
-        ServeInputs.port,
-        ServeInputs.host,
-        ServeInputs.ssl
-      )
+      inputs(Input.context, ServeInputs.port, ServeInputs.host, ServeInputs.ssl)
 
-      setHandler handleCommand
+      setAction handleCommand
     }
 
   let Setup =
     let handleCommand
       (
-        ctx: InvocationContext,
+        ctx: ActionContext,
         installTemplates: bool option,
         skipPrompts: bool option
       ) =
@@ -449,41 +310,41 @@ module Commands =
         skipPrompts = defaultArg skipPrompts false
       }
 
-      Handlers.runSetup options (ctx.GetCancellationToken())
+      Handlers.runSetup options ctx.CancellationToken
 
 
     command "setup" {
-      description "Initialized a given directory or perla itself"
+      description "Initializes a given directory or perla itself"
 
       inputs(
-        Input.Context(),
+        Input.context,
         SetupInputs.installTemplates,
         SetupInputs.skipPrompts
       )
 
-      setHandler handleCommand
+      setAction handleCommand
     }
 
   let RemovePackage =
 
     let handleCommand
-      (ctx: InvocationContext, package: string, alias: string option)
+      (ctx: ActionContext, package: string, alias: string option)
       =
       let options = { package = package; alias = alias }
-      Handlers.runRemovePackage options (ctx.GetCancellationToken())
+      Handlers.runRemovePackage options ctx.CancellationToken
 
     command "remove" {
-      description "removes a package from the "
+      description "Removes a package from the project dependencies"
 
-      inputs(Input.Context(), PackageInputs.package, PackageInputs.alias)
-      setHandler handleCommand
+      inputs(Input.context, PackageInputs.package, PackageInputs.alias)
+      setAction handleCommand
     }
 
   let AddPackage =
 
     let handleCommand
       (
-        ctx: InvocationContext,
+        ctx: ActionContext,
         source: PkgManager.DownloadProvider voption,
         package: string,
         version: string option,
@@ -496,28 +357,27 @@ module Commands =
         alias = alias
       }
 
-      Handlers.runAddPackage options (ctx.GetCancellationToken())
+      Handlers.runAddPackage options ctx.CancellationToken
 
     command "add" {
-      description
-        "Shows information about a package if the name matches an existing one"
+      description "Adds a package to the project dependencies"
 
       addAlias "install"
 
       inputs(
-        Input.Context(),
+        Input.context,
         SharedInputs.source,
         PackageInputs.package,
         PackageInputs.version,
         PackageInputs.alias
       )
 
-      setHandler handleCommand
+      setAction handleCommand
     }
 
   let ListPackages =
 
-    let handleCommand(ctx: InvocationContext, asNpm: bool option) =
+    let handleCommand(ctx: ActionContext, asNpm: bool option) =
       let args = {
         format =
           asNpm
@@ -529,7 +389,7 @@ module Commands =
           |> Option.defaultValue ListFormat.HumanReadable
       }
 
-      Handlers.runListPackages args (ctx.GetCancellationToken())
+      Handlers.runListPackages args ctx.CancellationToken
 
     command "list" {
       addAlias "ls"
@@ -537,15 +397,15 @@ module Commands =
       description
         "Lists the current dependencies in a table or an npm style json string"
 
-      inputs(Input.Context(), PackageInputs.showAsNpm)
-      setHandler handleCommand
+      inputs(Input.context, PackageInputs.showAsNpm)
+      setAction handleCommand
     }
 
   let Template =
 
     let handleCommand
       (
-        ctx: InvocationContext,
+        ctx: ActionContext,
         name: string option,
         add: bool option,
         update: bool option,
@@ -586,7 +446,7 @@ module Commands =
         operation = operation
       }
 
-      Handlers.runTemplate options (ctx.GetCancellationToken())
+      Handlers.runTemplate options ctx.CancellationToken
 
     let template = command "templates" {
       addAlias "t"
@@ -595,7 +455,7 @@ module Commands =
         "Handles Template Repository operations such as list, add, update, and remove templates"
 
       inputs(
-        Input.Context(),
+        Input.context,
         TemplateInputs.repositoryName,
         TemplateInputs.addTemplate,
         TemplateInputs.updateTemplate,
@@ -603,7 +463,7 @@ module Commands =
         TemplateInputs.displayMode
       )
 
-      setHandler handleCommand
+      setAction handleCommand
     }
 
     template
@@ -612,7 +472,7 @@ module Commands =
 
     let handleCommand
       (
-        ctx: InvocationContext,
+        ctx: ActionContext,
         name: string,
         byId: string option,
         byShortName: string option
@@ -623,7 +483,7 @@ module Commands =
         byShortName = byShortName
       }
 
-      Handlers.runNew options (ctx.GetCancellationToken())
+      Handlers.runNew options ctx.CancellationToken
 
     command "new" {
       addAliases [ "n"; "create"; "generate" ]
@@ -632,21 +492,21 @@ module Commands =
         "Creates a new project based on the selected template if it exists"
 
       inputs(
-        Input.Context(),
+        Input.context,
         ProjectInputs.projectName,
         ProjectInputs.byId,
         ProjectInputs.byShortName
       )
 
-      setHandler handleCommand
+      setAction handleCommand
     }
 
   let Test =
 
     let handleCommand
       (
-        ctx: InvocationContext,
-        browsers: Browser array,
+        ctx: ActionContext,
+        browsers: Browser Set,
         files: string array,
         skips: string array,
         headless: bool option,
@@ -654,7 +514,7 @@ module Commands =
         sequential: bool option
       ) =
       let options = {
-        browsers = if Array.isEmpty browsers then None else Some browsers
+        browsers = if Set.isEmpty browsers then None else Some browsers
         files = if files |> Array.isEmpty then None else Some files
         skip = if skips |> Array.isEmpty then None else Some skips
         headless = headless
@@ -666,13 +526,13 @@ module Commands =
           |> Option.flatten
       }
 
-      Handlers.runTesting options (ctx.GetCancellationToken())
+      Handlers.runTesting options ctx.CancellationToken
 
     let cmd = command "test" {
       description "Runs client side tests in a headless browser"
 
       inputs(
-        Input.Context(),
+        Input.context,
         TestingInputs.browsers,
         TestingInputs.files,
         TestingInputs.skips,
@@ -681,23 +541,21 @@ module Commands =
         TestingInputs.sequential
       )
 
-      setHandler handleCommand
+      setAction handleCommand
     }
 
-    cmd.IsHidden <- true
+    cmd.Hidden <- true
     cmd
 
   let Describe =
 
-    let handleCommand
-      (ctx: InvocationContext, properties: string[] option, current: bool)
-      =
+    let handleCommand(ctx: ActionContext, properties: string[], current: bool) =
       let args = {
-        properties = properties
+        properties = Some properties
         current = current
       }
 
-      Handlers.runDescribePerla args (ctx.GetCancellationToken())
+      Handlers.runDescribePerla args ctx.CancellationToken
 
     command "describe" {
       addAlias "ds"
@@ -706,10 +564,11 @@ module Commands =
         "Describes the perla.json file or it's properties as requested"
 
       inputs(
-        Input.Context(),
+        Input.context,
         DescribeInputs.perlaProperties,
         DescribeInputs.describeCurrent
       )
 
-      setHandler handleCommand
+      setAction handleCommand
+
     }
