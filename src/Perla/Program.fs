@@ -1,9 +1,8 @@
 ﻿// Learn more about F# at http://docs.microsoft.com/dotnet/fsharp
 
-open System.CommandLine
 open FSharp.SystemCommandLine
 open Perla
-
+open Perla.Commands
 open Perla.Logger
 
 module Env =
@@ -67,5 +66,3 @@ let main argv =
 
     helpAction
   }
-  |> Async.AwaitTask
-  |> Async.RunSynchronously
