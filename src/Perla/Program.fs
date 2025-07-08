@@ -64,5 +64,7 @@ let main argv =
       Commands.NewProject
     ]
 
-    helpAction
+    helpActionAsync
   }
+  |> Async.AwaitTask
+  |> Async.RunSynchronously
