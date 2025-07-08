@@ -5,14 +5,16 @@ open System.IO
 
 open System.Threading
 open System.Threading.Tasks
+open Microsoft.Extensions.Logging
+open Microsoft.Playwright
 
 open AngleSharp
 open AngleSharp.Html.Parser
-open Microsoft.Playwright
 open Spectre.Console
 
 open FSharp.Control
 open FSharp.Control.Reactive
+open FSharp.Data.Adaptive
 
 open IcedTasks
 
@@ -22,6 +24,7 @@ open FsToolkit.ErrorHandling
 open Perla
 open Perla.Units
 open Perla.Types
+open Perla.Json
 open Perla.Database
 open Perla.FileSystem
 open Perla.Fable
@@ -31,6 +34,7 @@ open Perla.VirtualFs
 open Perla.Scaffolding
 open Perla.Configuration
 open Perla.PkgManager
+open Perla.PkgManager.PkgManager
 
 [<Struct; RequireQualifiedAccess>]
 type ListFormat =
@@ -58,6 +62,11 @@ type AddPackageOptions = {
 }
 
 type RemovePackageOptions = { package: string }
+
+type InstallOptions = {
+  offline: bool
+  source: Perla.PkgManager.DownloadProvider voption
+}
 
 type ListPackagesOptions = { format: ListFormat }
 
@@ -753,39 +762,6 @@ module Handlers =
       return 0
   }
 
-  let runSearchPackage(options: SearchOptions) = cancellableTask {
-    do! Dependencies.Search(options.package, options.page)
-    return 0
-  }
-
-  let runShowPackage(options: ShowPackageOptions) = cancellableTask {
-    do! Dependencies.Show(options.package)
-    return 0
-  }
-
-  let runAddResolution(options: PathsOptions) =
-    let config = ConfigurationManager.CurrentConfig
-
-    let importMap =
-      // remove existing custom resolutions from the import map
-      FileSystem.GetImportMap().RemoveResolutions(config.paths)
-
-    let updatedPaths =
-      match options.operation with
-      // Either adding or updating will overwrite the existing key in the custom resolution's map
-      | AddOrUpdate(bareImport, path) -> config.paths |> Map.add bareImport path
-      | Remove(removeImport) ->
-        config.paths |> Map.remove(UMX.tag<BareImport> removeImport)
-
-    // write updated values to both config and import map to disk
-    ConfigurationManager.WriteFieldsToFile(
-      [ PerlaWritableField.Paths updatedPaths ]
-    )
-    // add the updated custom resolutions to the import map
-    FileSystem.WriteImportMap(importMap.AddResolutions(updatedPaths)) |> ignore
-
-    CancellableTask.singleton 0
-
   let runAddPackage(options: AddPackageOptions) = cancellableTask {
     ConfigurationManager.UpdateFromCliArgs(?provider = options.source)
 
@@ -913,197 +889,213 @@ module Handlers =
       return 1
   }
 
-  let runListPackages(options: ListPackagesOptions) = cancellableTask {
-    let config = ConfigurationManager.CurrentConfig
+  let runInstall (container: AppContainer) (options: InstallOptions) = cancellableTask {
+    let! token = CancellableTask.getCancellationToken()
+    let config = container.Configuration.PerlaConfig
+    let logger = container.Logger
+    let pkgManager = container.PkgManager
+
+    let dependencies = config |> AVal.map _.dependencies |> AVal.force
+
+    let packages =
+      dependencies
+      |> Set.map(fun dep -> $"{dep.package}@{UMX.untag dep.version}")
+
+    let provider =
+      match options.source with
+      | ValueSome source -> source
+      | ValueNone -> config |> AVal.map _.provider |> AVal.force
+
+    let! map =
+      pkgManager.Install(
+        packages,
+        [
+          match provider with
+          | JsDelivr -> DefaultProvider Provider.JsDelivr
+          | Unpkg -> DefaultProvider Provider.Unpkg
+          | PkgManager.DownloadProvider.JspmIo ->
+            DefaultProvider Provider.JspmIo
+        ],
+        cancellationToken = token
+      )
+
+    let! map = cancellableTask {
+      if options.offline then
+        logger.LogWarning(
+          "Offline mode selected, we'll proceed to download the dependencies as local sources."
+        )
+
+        return!
+          pkgManager.GoOffline(
+            map.map,
+            [ DownloadOption.Provider provider ],
+            token
+          )
+      else
+        logger.LogInformation("Import map generated successfully.")
+        return map.map
+    }
+
+    let configUpdates = [
+      PerlaConfig.PerlaWritableField.UseLocalPkgs options.offline
+
+      match options.source with
+      | ValueSome source -> PerlaConfig.PerlaWritableField.Provider source
+      | ValueNone -> ()
+      // extract the dependencies before we save the offline map
+      map.ExtractDependencies()
+      |> Set.map(fun (name, version) ->
+        let dep: PkgDependency = {
+          package = name
+          version = version |> UMX.tag<Semver>
+        }
+
+        dep)
+      |> PerlaConfig.PerlaWritableField.Dependencies
+    ]
+
+    do! container.FsManager.SaveImportMap(map)
+    do! container.FsManager.SavePerlaConfig(configUpdates)
+    logger.LogInformation("Packages installed successfully.")
+
+    return 0
+  }
+
+  let runListPackages (container: AppContainer) (options: ListPackagesOptions) = cancellableTask {
+    let config = container.Configuration.PerlaConfig
+    let logger = container.Logger
+
+    let dependencies = config |> AVal.map _.dependencies |> AVal.force
 
     match options.format with
     | ListFormat.HumanReadable ->
-      Logger.log(
-        "[bold green]Installed packages[/] [yellow](alias: packageName@version)[/]\n",
-        escape = false
-      )
+      logger.LogInformation("Installed packages:")
 
-      let prodTable =
-        dependencyTable(config.dependencies, "Production Dependencies")
+      let prodTable = Table().AddColumn("Package").AddColumn("Version")
+
+      for dep in dependencies do
+        prodTable.AddRow(
+          Text(dep.package, Style(foreground = Color.Green)),
+          Text(UMX.untag dep.version, Style(foreground = Color.Blue))
+        )
+        |> ignore
+
 
       AnsiConsole.Write prodTable
       AnsiConsole.WriteLine()
 
     | ListFormat.TextOnly ->
 
-      config.dependencies |> Json.ToText |> AnsiConsole.Write
+      let dependencies =
+        dependencies
+        |> Set.map(fun dep -> dep.package, dep.version)
+        |> Map.ofSeq
+
+      AnsiConsole.Clear()
+      AnsiConsole.Write(Json.Json.ToText(dependencies, false))
 
     return 0
   }
 
-  let runRestoreImportMap(options: RestoreOptions) = cancellableTask {
-    ConfigurationManager.UpdateFromCliArgs(?provider = options.source)
+  let runDescribePerla
+    (container: AppContainer)
+    ({
+       properties = props
+       current = current
+     }: DescribeOptions)
+    =
+    cancellableTask {
 
-    let config = ConfigurationManager.CurrentConfig
+      let config = container.Configuration.PerlaConfig
 
-    Logger.log "Regenerating import map..."
+      let table = Table().AddColumn("Property")
 
-    match!
-      Logger.spinner(
-        "Fetching dependencies...",
-        Dependencies.Restore(config.dependencies |> Seq.map _.package)
-      )
-    with
-    | Ok response ->
+      AnsiConsole.Write(FigletText("Perla.json"))
 
-      FileSystem.WriteImportMap(response.AddResolutions(config.paths)) |> ignore
+      let! descriptions = container.FsManager.ResolveDescriptionsFile()
 
+      match props, current with
+      | props, true ->
+        table.AddColumns("Value", "Explanation") |> ignore
+        let config = config |> AVal.force
+
+        for prop in props do
+          let description =
+            descriptions |> Map.tryFind prop |> Option.defaultValue ""
+
+          match prop with
+          | TopLevelProp prop ->
+            table.AddRow(
+              Text(prop),
+              config[prop] |> Option.defaultValue(Text ""),
+              Text(description)
+            )
+            |> ignore
+          | NestedProp props ->
+            table.AddRow(
+              Text(prop),
+              config[props] |> Option.defaultValue(Text ""),
+              Text(description)
+            )
+            |> ignore
+          | TripleNestedProp props ->
+            table.AddRow(
+              Text(prop),
+              config[props] |> Option.defaultValue(Text ""),
+              Text(description)
+            )
+            |> ignore
+          | InvalidPropPath ->
+            table.AddRow(prop, "", "This is not a valid property") |> ignore
+
+      | props, false ->
+        table.AddColumns("Description", "Default Value") |> ignore
+
+        for prop in props do
+          let description =
+            descriptions |> Map.tryFind prop |> Option.defaultValue ""
+
+          match prop with
+          | TopLevelProp prop ->
+            table.AddRow(
+              Text(prop),
+              Text(description),
+              Defaults.PerlaConfig[prop] |> Option.defaultValue(Text "")
+            )
+            |> ignore
+          | NestedProp props ->
+            table.AddRow(
+              Text(prop),
+              Text(description),
+              Defaults.PerlaConfig[props] |> Option.defaultValue(Text "")
+            )
+            |> ignore
+          | TripleNestedProp props ->
+            table.AddRow(
+              Text(prop),
+              Text(description),
+              Defaults.PerlaConfig[props] |> Option.defaultValue(Text "")
+            )
+            |> ignore
+          | InvalidPropPath ->
+            table.AddRow(
+              Text(
+                prop,
+                Style(foreground = Color.Yellow, background = Color.Yellow)
+              ),
+              Text(""),
+              Text(
+                "This is not a valid property",
+                Style(foreground = Color.Yellow)
+              )
+            )
+            |> ignore
+
+      table.Caption <-
+        TableTitle(
+          "For more information visit: https://perla-docs.web.app/#/v1/docs/reference/perla"
+        )
+
+      table.DoubleBorder() |> AnsiConsole.Write
       return 0
-    | Error err ->
-      Logger.log(
-        $"[bold red]An error happened restoring the import map:[/]",
-        escape = false
-      )
-
-      Logger.log err
-      return 1
-  }
-
-  let runDescribePerla(options: DescribeOptions) = cancellableTask {
-    let {
-          properties = props
-          current = current
-        } =
-      options
-
-    let config = ConfigurationManager.CurrentConfig
-
-    let table = Table().AddColumn("Property")
-
-    AnsiConsole.Write(FigletText("Perla.json"))
-    let descriptions = FileSystem.DescriptionsFile
-
-    match props, current with
-    | Some props, true ->
-      table.AddColumns("Value", "Explanation") |> ignore
-
-      for prop in props do
-        let description =
-          descriptions.Value |> Map.tryFind prop |> Option.defaultValue ""
-
-        match prop with
-        | TopLevelProp prop ->
-          table.AddRow(
-            Text(prop),
-            config[prop] |> Option.defaultValue(Text ""),
-            Text(description)
-          )
-          |> ignore
-        | NestedProp props ->
-          table.AddRow(
-            Text(prop),
-            config[props] |> Option.defaultValue(Text ""),
-            Text(description)
-          )
-          |> ignore
-        | TripleNestedProp props ->
-          table.AddRow(
-            Text(prop),
-            config[props] |> Option.defaultValue(Text ""),
-            Text(description)
-          )
-          |> ignore
-        | InvalidPropPath ->
-          table.AddRow(prop, "", "This is not a valid property") |> ignore
-
-    | Some props, false ->
-      table.AddColumns("Description", "Default Value") |> ignore
-
-      for prop in props do
-        let description =
-          descriptions.Value |> Map.tryFind prop |> Option.defaultValue ""
-
-        match prop with
-        | TopLevelProp prop ->
-          table.AddRow(
-            Text(prop),
-            Text(description),
-            Defaults.PerlaConfig[prop] |> Option.defaultValue(Text "")
-          )
-          |> ignore
-        | NestedProp props ->
-          table.AddRow(
-            Text(prop),
-            Text(description),
-            Defaults.PerlaConfig[props] |> Option.defaultValue(Text "")
-          )
-          |> ignore
-        | TripleNestedProp props ->
-          table.AddRow(
-            Text(prop),
-            Text(description),
-            Defaults.PerlaConfig[props] |> Option.defaultValue(Text "")
-          )
-          |> ignore
-        | InvalidPropPath ->
-          table.AddRow(
-            Text(
-              prop,
-              Style(foreground = Color.Yellow, background = Color.Yellow)
-            ),
-            Text(""),
-            Text(
-              "This is not a valid property",
-              Style(foreground = Color.Yellow)
-            )
-          )
-          |> ignore
-
-    | None, false ->
-      table.AddColumn("Description") |> ignore
-
-      for KeyValue(key, value) in descriptions.Value do
-        table.AddRow(key, value) |> ignore
-    | None, true ->
-      table.AddColumns("Current Value", "Description") |> ignore
-
-      for KeyValue(key, description) in descriptions.Value do
-        match key with
-        | TopLevelProp prop ->
-          table.AddRow(
-            Text(prop),
-            Defaults.PerlaConfig[prop] |> Option.defaultValue(Text ""),
-            Text(description)
-          )
-          |> ignore
-        | NestedProp props ->
-          table.AddRow(
-            Text(key),
-            Defaults.PerlaConfig[props] |> Option.defaultValue(Text ""),
-            Text(description)
-          )
-          |> ignore
-        | TripleNestedProp props ->
-          table.AddRow(
-            Text(key),
-            Defaults.PerlaConfig[props] |> Option.defaultValue(Text ""),
-            Text(description)
-          )
-          |> ignore
-        | InvalidPropPath ->
-          table.AddRow(
-            Text(
-              key,
-              Style(foreground = Color.Yellow, background = Color.Yellow)
-            ),
-            Text(""),
-            Text(
-              "This is not a valid property",
-              Style(foreground = Color.Yellow)
-            )
-          )
-          |> ignore
-
-    table.Caption <-
-      TableTitle(
-        "For more information visit: https://perla-docs.web.app/#/v1/docs/reference/perla"
-      )
-
-    table.DoubleBorder() |> AnsiConsole.Write
-    return 0
-  }
+    }

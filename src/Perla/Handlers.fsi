@@ -34,6 +34,11 @@ type RemovePackageOptions = { package: string }
 
 type ListPackagesOptions = { format: ListFormat }
 
+type InstallOptions = {
+  offline: bool
+  source: Perla.PkgManager.DownloadProvider voption
+}
+
 [<RequireQualifiedAccess; Struct>]
 type RunTemplateOperation =
   | Add
@@ -77,6 +82,8 @@ module Handlers =
   val runServe: options: ServeOptions -> CancellableTask<int>
 
   val runTesting: options: TestingOptions -> CancellableTask<int>
+
+  val runInstall: options: InstallOptions -> CancellableTask<int>
 
   val runAddPackage: options: AddPackageOptions -> CancellableTask<int>
 

@@ -126,9 +126,15 @@ module SetupInputs =
     |> aliases [ "-s"; "-y" ]
     |> description "Skip interactive prompts and use defaults"
 
-
 [<RequireQualifiedAccess>]
 module PackageInputs =
+
+  let offline =
+    optionMaybe "--offline"
+    |> alias "-o"
+    |> description "Install packages without network access"
+
+
   let package: ActionInput<string> =
     argument "package" |> description "Name of the JS Package"
 
@@ -189,7 +195,6 @@ module ProjectInputs =
     optionMaybe "--template"
     |> alias "-t"
     |> description "shortname of the template, e.g. ff"
-
 
 [<RequireQualifiedAccess>]
 module BuildInputs =
@@ -328,7 +333,7 @@ module Commands =
     let handleCommand
       (ctx: ActionContext, package: string, alias: string option)
       =
-      let options = { package = package; alias = alias }
+      let options = { package = package }
       Handlers.runRemovePackage options ctx.CancellationToken
 
     command "remove" {
@@ -338,22 +343,33 @@ module Commands =
       setAction handleCommand
     }
 
-  let AddPackage =
-
+  let Install =
     let handleCommand
       (
         ctx: ActionContext,
-        source: PkgManager.DownloadProvider voption,
-        package: string,
-        version: string option,
-        alias: string option
+        offline: bool option,
+        source: PkgManager.DownloadProvider voption
       ) =
       let options = {
-        package = package
-        version = version
-        source = source |> Option.ofValueOption
-        alias = alias
+        offline = defaultArg offline false
+        source = source
       }
+
+      Handlers.runInstall options ctx.CancellationToken
+
+    command "install" {
+      description "Installs the project dependencies from the perla.json file"
+      addAlias "i"
+      inputs(Input.context, PackageInputs.offline, SharedInputs.source)
+      setAction handleCommand
+    }
+
+  let AddPackage =
+
+    let handleCommand
+      (ctx: ActionContext, package: string, version: string option)
+      =
+      let options = { package = package; version = version }
 
       Handlers.runAddPackage options ctx.CancellationToken
 
@@ -362,13 +378,7 @@ module Commands =
 
       addAlias "install"
 
-      inputs(
-        Input.context,
-        SharedInputs.source,
-        PackageInputs.package,
-        PackageInputs.version,
-        PackageInputs.alias
-      )
+      inputs(Input.context, PackageInputs.package, PackageInputs.version)
 
       setAction handleCommand
     }
@@ -549,7 +559,7 @@ module Commands =
 
     let handleCommand(ctx: ActionContext, properties: string[], current: bool) =
       let args = {
-        properties = Some properties
+        properties = properties
         current = current
       }
 

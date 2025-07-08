@@ -425,6 +425,7 @@ module PkgManager =
       return offlineMap
     }
 
+
   let create(dependencies: PkgManagerServiceArgs) : PkgManager =
     { new PkgManager with
         member _.Install(packages, options, cancellationToken) =
@@ -457,3 +458,39 @@ module PkgManager =
             map
             (defaultArg cancellationToken CancellationToken.None)
     }
+
+  type ImportMap with
+    member this.ExtractDependencies() =
+      // extract the package name and the version from the import map
+      let imports = this.imports |> Map.values
+
+      [
+        for value in imports do
+          let uri = Uri value
+
+          match ProviderOps.extractFromUri uri with
+          | Ok package ->
+            // Parse package@version into (packageName, version)
+            if package.StartsWith("@") then
+              // Scoped package: @scope/package@version -> (@scope/package, version)
+              let parts = package.Split('@')
+
+              if parts.Length > 2 then
+                let packageName = "@" + parts[1]
+                let version = parts[2]
+                (packageName, version)
+              else
+                (package, "")
+            else
+              // Regular package: package@version -> (package, version)
+              let parts = package.Split('@')
+
+              if parts.Length > 1 then
+                let packageName = parts[0]
+                let version = parts[1]
+                (packageName, version)
+              else
+                (package, "")
+          | Error _ -> ()
+      ]
+      |> Set
