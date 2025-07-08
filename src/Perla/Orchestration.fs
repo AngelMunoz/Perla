@@ -39,17 +39,21 @@ module Warmup =
       let plugins = config |> AVal.map(fun c -> c.plugins) |> AVal.force
 
       if plugins |> Seq.contains Constants.PerlaEsbuildPluginName then
-        Ok()
+        Continue
       else
         logger.LogWarning
           "The Perla esbuild plugin is not installed, this may cause issues with your build."
 
-        Error(Recover(set [ Esbuild ]))
+        Recover(set [ Esbuild ])
 
     let Setup
-      (db: PerlaDatabase, config: PerlaConfig aval, fable: Fable.FableService)
-      =
-      cancellableTaskResult {
+      (
+        logger: ILogger,
+        db: PerlaDatabase,
+        config: PerlaConfig aval,
+        fable: FableService
+      ) =
+      cancellableTask {
         let templates = db.Checks.AreTemplatesPresent()
 
         let esbuild =
@@ -57,47 +61,150 @@ module Warmup =
             config |> AVal.force |> _.esbuild.version
           )
 
-        let! fable = fable.IsPresent()
+        let needsFable = config |> AVal.force |> _.fable |> Option.isSome
 
-        let errors = [
+        let! fable =
+          // if there's no fable in the config, we don't need to check for it
+          if not needsFable then
+            CancellableTask.singleton true
+          else
+            fable.IsPresent()
+
+        let missingAssets = [
           if not templates then
             Templates
+
           if not esbuild then
             Esbuild
+
           if not fable then
             Fable
         ]
 
-        if Seq.isEmpty errors then
-          return ()
+        if Seq.isEmpty missingAssets then
+          return Continue
         else
-          return! Error(Recover(set errors))
+          logger.LogWarning
+            "Some required assets are missing: {missingAssets}. Attempting to recover."
+
+          return Recover(set missingAssets)
       }
 
     let Templates(db: PerlaDatabase, logger: ILogger) =
       db.Checks.AreTemplatesPresent()
       |> function
-        | true -> Ok()
+        | true -> Continue
         | false ->
           logger.LogWarning
             "The Perla templates are not installed, this may cause issues with your build."
 
-          Error(Recover(set [ Templates ]))
+          Recover(set [ Templates ])
 
-    let Fable(fable: Fable.FableService, logger: ILogger) = cancellableTask {
+    let Fable(fable: FableService, logger: ILogger) = cancellableTask {
       let! isPresent = fable.IsPresent()
 
       if isPresent then
-        return Ok()
+        return Continue
       else
         logger.LogWarning
           "The Fable compiler is not installed, this may cause issues with your build."
 
-        return Error(Recover(set [ Fable ]))
+        return Recover(set [ Fable ])
     }
 
 
   module Recover =
+
+    type SetupFailure =
+      | EsbuildFailed of string
+      | TemplatesFailed
+      | FableFailed
+
+    let esbuildSetup
+      (
+        config: PerlaConfig aval,
+        db: PerlaDatabase,
+        pfsm: PerlaFsManager,
+        logger: ILogger
+      ) =
+      cancellableTaskResult {
+        let! token = CancellableTaskResult.getCancellationToken()
+        let version = config |> AVal.force |> _.esbuild.version
+
+        logger.LogInformation("Installing esbuild: {version}...", version)
+
+        try
+          do!
+            pfsm.SetupEsbuild (config |> AVal.force |> _.esbuild.version) token
+
+          db.Checks.SaveEsbuildBinPresent(version) |> ignore
+          logger.LogInformation("Successfully installed esbuild.")
+          return! Ok()
+        with ex ->
+          logger.LogError("Failed to install esbuild, please try again.", ex)
+
+          logger.LogError
+            "If this keeps happening please report this issue on the Perla GitHub repository."
+          // If we fail to install esbuild we can't continue
+          return! Error(EsbuildFailed(UMX.untag version))
+      }
+
+    let templatesSetup
+      (db: PerlaDatabase, pfsm: PerlaFsManager, logger: ILogger)
+      =
+      cancellableTaskResult {
+        let! token = CancellableTaskResult.getCancellationToken()
+
+        logger.LogInformation "Installing templates..."
+
+        let user, repo, branch =
+          (parseFullRepositoryName(Some Constants.Default_Templates_Repository))
+            .Value
+
+        let! values =
+          pfsm.SetupTemplate (user, UMX.tag repo, UMX.tag branch) token
+
+        match values with
+        | None ->
+          logger.LogError
+            "Failed to install templates, please try again, if this keeps happening please report this issue."
+          // If we fail to install templates we can't continue
+          return! Error TemplatesFailed
+        | Some(targetPath, decoded) ->
+          logger.LogInformation "Successfully installed templates."
+
+          db.Templates.Add(
+            targetPath,
+            decoded,
+            user,
+            UMX.tag repo,
+            UMX.tag branch
+          )
+          |> ignore
+
+          db.Checks.SaveTemplatesPresent() |> ignore
+          logger.LogInformation "Templates saved to database."
+          return! Ok()
+      }
+
+    let fableSetup(pfsm: PerlaFsManager, logger: ILogger) = cancellableTaskResult {
+      let! token = CancellableTaskResult.getCancellationToken()
+
+      logger.LogInformation "Installing fable..."
+
+      try
+        do! pfsm.SetupFable () token
+        logger.LogInformation "Successfully installed fable."
+        return! Ok()
+      with ex ->
+        logger.LogError("Failed to install fable, please try again.", ex)
+
+        logger.LogError
+          "If this keeps happening please report this issue on the Perla GitHub repository."
+        // If we fail to install fable we can't continue
+        return! Error FableFailed
+    }
+
     let From
       (
         config: PerlaConfig aval,
@@ -114,86 +221,12 @@ module Warmup =
           recoverFrom
           |> Seq.traverseTaskResultM(fun asset -> taskResult {
             match asset with
-            | Esbuild ->
-              let version = config |> AVal.force |> _.esbuild.version
-
-              logger.LogInformation(
-                "Installing esbuild: {version}...",
-                version
-              )
-
-              try
-                do!
-                  pfsm.SetupEsbuild
-                    (config |> AVal.force |> _.esbuild.version)
-                    token
-
-                db.Checks.SaveEsbuildBinPresent(version) |> ignore
-                logger.LogInformation("Successfully installed esbuild.")
-                return! Ok()
-              with ex ->
-                logger.LogError(
-                  "Failed to install esbuild, please try again.",
-                  ex
-                )
-
-                logger.LogError
-                  "If this keeps happening please report this issue on the Perla GitHub repository."
-                // If we fail to install esbuild we can't continue
-                return! Error HardExit
-            | Templates ->
-              logger.LogInformation "Installing templates..."
-
-              let user, repo, branch =
-                (parseFullRepositoryName(
-                  Some Constants.Default_Templates_Repository
-                ))
-                  .Value
-
-              let! values =
-                pfsm.SetupTemplate (user, UMX.tag repo, UMX.tag branch) token
-
-              match values with
-              | None ->
-                logger.LogError
-                  "Failed to install templates, please try again, if this keeps happening please report this issue."
-                // If we fail to install templates we can't continue
-                return! Error HardExit
-              | Some(targetPath, decoded) ->
-                logger.LogInformation "Successfully installed templates."
-
-                db.Templates.Add(
-                  targetPath,
-                  decoded,
-                  user,
-                  UMX.tag repo,
-                  UMX.tag branch
-                )
-                |> ignore
-
-                db.Checks.SaveTemplatesPresent() |> ignore
-                logger.LogInformation "Templates saved to database."
-                return! Ok()
-            | Fable ->
-              logger.LogInformation "Installing fable..."
-
-              try
-                do! pfsm.SetupFable () token
-                logger.LogInformation "Successfully installed fable."
-                return! Ok()
-              with ex ->
-                logger.LogError(
-                  "Failed to install fable, please try again.",
-                  ex
-                )
-
-                logger.LogError
-                  "If this keeps happening please report this issue on the Perla GitHub repository."
-                // If we fail to install fable we can't continue
-                return! Error HardExit
+            | Esbuild -> return! esbuildSetup (config, db, pfsm, logger) token
+            | Templates -> return! templatesSetup (db, pfsm, logger) token
+            | Fable -> return! fableSetup (pfsm, logger) token
           })
 
-        return! Ok()
+        return ()
       }
 
 type HasLogger =

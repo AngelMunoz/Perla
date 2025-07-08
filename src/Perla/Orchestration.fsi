@@ -31,32 +31,38 @@ module Warmup =
     | Recover of RecoverableAssets Set
     | HardExit
 
+
   [<RequireQualifiedAccess>]
   module Check =
 
     val EsbuildPlugin:
-      config: PerlaConfig aval * logger: ILogger ->
-        Result<unit, MiddlewareResult>
+      config: PerlaConfig aval * logger: ILogger -> MiddlewareResult
 
-    val Setup:
-      db: PerlaDatabase * config: PerlaConfig aval * fable: Fable.FableService ->
-        CancellableTaskResult<unit, MiddlewareResult>
-
-    val Templates:
-      db: PerlaDatabase * logger: ILogger -> Result<unit, MiddlewareResult>
+    val Templates: db: PerlaDatabase * logger: ILogger -> MiddlewareResult
 
     val Fable:
-      fable: Fable.FableService * logger: ILogger ->
-        CancellableTask<Result<unit, MiddlewareResult>>
+      fable: FableService * logger: ILogger -> CancellableTask<MiddlewareResult>
+
+    val Setup:
+      logger: ILogger *
+      db: PerlaDatabase *
+      config: PerlaConfig aval *
+      fable: FableService ->
+        CancellableTask<MiddlewareResult>
 
   module Recover =
+    type SetupFailure =
+      | EsbuildFailed of string
+      | TemplatesFailed
+      | FableFailed
+
     val From:
       config: PerlaConfig aval *
       db: PerlaDatabase *
       pfsm: PerlaFsManager *
       logger: ILogger ->
         recoverFrom: RecoverableAssets seq ->
-          CancellableTaskResult<unit, MiddlewareResult>
+          CancellableTaskResult<unit, SetupFailure>
 
 type HasLogger =
   abstract member Logger: ILogger
