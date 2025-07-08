@@ -100,6 +100,7 @@ module Types =
   type PerlaConfig = {
     index: string<SystemPath>
     provider: PkgManager.DownloadProvider
+    useLocalPkgs: bool
     plugins: string list
     build: BuildConfig
     devServer: DevServerConfig
@@ -266,7 +267,8 @@ module Defaults =
   let PerlaConfig = {
     index = UMX.tag Constants.IndexFile
     provider = PkgManager.DownloadProvider.JspmIo
-    plugins = [ Constants.PerlaEsbuildPluginName ]
+    useLocalPkgs = false
+    plugins = []
     build = BuildConfig
     devServer = DevServerConfig
     esbuild = EsbuildConfig

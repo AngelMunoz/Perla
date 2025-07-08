@@ -4,7 +4,6 @@ open System
 open System.Text.Json
 open System.Text.Json.Serialization
 open System.Text.Json.Nodes
-open Perla.PackageManager.Types
 open Perla.Types
 open Perla.Units
 open Thoth.Json.Net
@@ -83,6 +82,7 @@ module ConfigDecoders =
   type DecodedPerlaConfig = {
     index: string<SystemPath> option
     provider: PkgManager.DownloadProvider option
+    useLocalPkgs: bool option
     plugins: string list option
     build: DecodedBuild option
     devServer: DecodedDevServer option
@@ -155,6 +155,7 @@ module PerlaConfig =
   type PerlaWritableField =
     | Provider of PkgManager.DownloadProvider
     | Dependencies of PkgDependency Set
+    | UseLocalPkgs of bool
     | Fable of FableField seq
     | Paths of Map<string<BareImport>, string<ResolutionUrl>>
 

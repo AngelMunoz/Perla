@@ -108,6 +108,7 @@ module Types =
   type PerlaConfig = {
     index: string<SystemPath>
     provider: PkgManager.DownloadProvider
+    useLocalPkgs: bool
     plugins: string list
     build: BuildConfig
     devServer: DevServerConfig

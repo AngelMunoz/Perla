@@ -20,27 +20,17 @@ open FSharp.UMX
 open FsToolkit.ErrorHandling
 
 open Perla
-open Perla.Types
 open Perla.Units
-open Perla.Server
-open Perla.Build
-open Perla.Logger
+open Perla.Types
+open Perla.Database
 open Perla.FileSystem
-open Perla.VirtualFs
+open Perla.Fable
 open Perla.Esbuild
 open Perla.Extensibility
-open Perla.Fable
-open Perla.Json
+open Perla.VirtualFs
 open Perla.Scaffolding
 open Perla.Configuration
-open Perla.Configuration
-
-open Perla.Plugins
-open Perla.Plugins.Registry
-open Perla.PackageManager
-open Perla.PackageManager.Types
-
-open Perla.Testing
+open Perla.PkgManager
 
 [<Struct; RequireQualifiedAccess>]
 type ListFormat =
@@ -53,34 +43,21 @@ type ServeOptions = {
   ssl: bool option
 }
 
-type BuildOptions = {
-  enablePreview: bool
-  enablePreloads: bool
-  rebuildImportMap: bool
-}
+type BuildOptions = { enablePreview: bool }
 
 type SetupOptions = {
   installTemplates: bool
   skipPrompts: bool
 }
 
-type SearchOptions = { package: string; page: int }
-
-type ShowPackageOptions = { package: string }
-
 type ListTemplatesOptions = { format: ListFormat }
 
 type AddPackageOptions = {
   package: string
   version: string option
-  source: PkgManager.DownloadProvider option
-  alias: string option
 }
 
-type RemovePackageOptions = {
-  package: string
-  alias: string option
-}
+type RemovePackageOptions = { package: string }
 
 type ListPackagesOptions = { format: ListFormat }
 
@@ -102,10 +79,6 @@ type ProjectOptions = {
   byShortName: string option
 }
 
-type RestoreOptions = {
-  source: PkgManager.DownloadProvider option
-}
-
 type TestingOptions = {
   browsers: Browser seq option
   files: string seq option
@@ -115,10 +88,7 @@ type TestingOptions = {
   browserMode: BrowserMode option
 }
 
-type DescribeOptions = {
-  properties: string[] option
-  current: bool
-}
+type DescribeOptions = { properties: string[]; current: bool }
 
 [<Struct>]
 type PathOperation =
@@ -129,426 +99,8 @@ type PathOperation =
 
 type PathsOptions = { operation: PathOperation }
 
-module Templates =
-
-  type FoundTemplate =
-    | Repository of PerlaTemplateRepository
-    | Existing of TemplateItem
-
-  type TemplateNotFoundCases =
-    | NoQueryParams
-    | ParentTemplateNotFound
-    | ChildTemplateNotFound
-
-  [<RequireQualifiedAccess; Struct>]
-  type TemplateOperation =
-    | Add of repoName: (string * string * string)
-    | Update of foundRepo: PerlaTemplateRepository
-
-  let private updateTemplate
-    (template: PerlaTemplateRepository)
-    (branch: string)
-    (context: StatusContext)
-    =
-    context.Status <-
-      $"Download and extracting template {template.ToFullNameWithBranch}"
-
-    Templates.Update({ template with branch = branch })
-
-  let private addTemplate
-    (user: string)
-    (repository: string)
-    (branch: string)
-    (context: StatusContext)
-    =
-    context.Status <-
-      $"Download and extracting template {user}/{repository}:{branch}"
-
-    Templates.Add(user, repository, branch)
-
-
-  let List(options: ListTemplatesOptions) =
-    let results =
-      Templates.ListTemplateItems()
-      |> List.groupBy(fun x -> x.parent)
-      |> List.choose(fun (parentId, children) ->
-        match Templates.FindOne(TemplateSearchKind.Id parentId) with
-        | Some parent -> Some(parent, children)
-        | None -> None)
-      |> List.collect(fun (parent, children) ->
-        children |> List.map(fun child -> (parent, child)))
-
-    match options.format with
-    | ListFormat.HumanReadable ->
-      let table =
-        Table()
-          .AddColumns(
-            [| "Name"; "perla new -t"; "perla new -id"; "Repository name" |]
-          )
-
-      for column in table.Columns do
-        column.Alignment <- Justify.Center
-
-      for parent, template in results do
-        let name: Rendering.IRenderable =
-          Markup($"[bold green]{template.name}[/]")
-
-        let shortname = Markup($"[bold yellow]{template.shortName}[/]")
-        let group = Markup($"[bold blue]{template.group}[/]")
-
-        let repositoryName =
-          Markup($"[bold blue]{parent.ToFullNameWithBranch}[/]")
-
-        table.AddRow([| name; shortname; group; repositoryName |]) |> ignore
-
-      AnsiConsole.Write table
-      0
-    | ListFormat.TextOnly ->
-      let columns = Columns([| "Name"; "perla new -t"; "perla new -id" |])
-
-      AnsiConsole.Write columns
-
-      let rows = [|
-        for parent, template in results do
-          let name = Markup($"[bold green]{template.name}[/]")
-          let shortname = Markup($"[bold yellow]{template.shortName}[/]")
-          let group = Markup($"[bold blue]{template.group}[/]")
-
-          let repositoryName =
-            TextPath(
-              UMX.untag parent.ToFullNameWithBranch,
-              LeafStyle = Style(Color.Green),
-              StemStyle = Style(Color.Yellow),
-              SeparatorStyle = Style(Color.Blue)
-            )
-
-          Columns(name, shortname, group, repositoryName)
-          :> Rendering.IRenderable
-      |]
-
-      rows |> Rows |> AnsiConsole.Write
-
-      0
-
-  let AddOrUpdate(operation: TemplateOperation) = taskResult {
-    let listTemplates() =
-      List { format = ListFormat.HumanReadable } |> ignore
-
-      Logger.log(
-        "[bold yellow]perla[/] [bold blue]new [/] [bold blue] <PROJECT_NAME>[/]",
-        escape = false
-      )
-
-      Logger.log "Feel free to create a new perla project"
-
-    match operation with
-    | TemplateOperation.Add repoName ->
-      let username, repository, branch = repoName
-
-      do!
-        Logger.spinner(
-          $"Adding templates from: {username}/{repository}:{branch}",
-          (addTemplate username repository branch)
-        )
-        |> TaskResult.ignore
-
-      listTemplates()
-      return ()
-    | TemplateOperation.Update template ->
-      do! taskResult {
-        let! result =
-          Logger.spinner(
-            $"Updating templates from: {template.ToFullNameWithBranch}",
-            (updateTemplate template template.branch)
-          )
-
-        if result then
-          return ()
-        else
-          return!
-            Error
-              "We were unable to update the existing [bold red]templates[/]."
-      }
-
-      listTemplates()
-      return ()
-  }
-
-  let Remove(template: PerlaTemplateRepository) : Result<unit, string> =
-    Templates.Delete(TemplateSearchKind.Id template._id)
-    |> Result.requireTrue
-      "There was an error while trying to delete this template."
-
-module Fable =
-  let StartFable(config: PerlaConfig, cancel: CancellationToken) = task {
-    match config.fable with
-    | Some fable -> do! Fable.Start(fable, cancellationToken = cancel) :> Task
-    | None ->
-      Logger.log(
-        "No Fable configuration provided, skipping fable",
-        target = PrefixKind.Build
-      )
-  }
-
-module FsMonitor =
-  let FirstCompileDone isWatch (observable: IObservable<FableEvent>) =
-    observable
-    |> Observable.choose (function
-      | FableEvent.WaitingForChanges -> Some()
-      | _ -> None)
-    |> (fun obs ->
-      if isWatch then
-        Observable.first obs
-      else
-        Observable.takeLast 1 obs)
-    |> AsyncSeq.ofObservableBuffered
-    |> AsyncSeq.iter ignore
-
-  let FileChanges
-    (index: string, mountDirectories, perlaFilesChanges, plugins: string list)
-    =
-    let perlaFilesChanges =
-      perlaFilesChanges
-      |> Observable.map(fun event ->
-        let name, path, extension =
-          match event with
-          | PerlaFileChange.Index ->
-            (Path.GetFileName index, Path.GetFullPath index, ".html")
-          | PerlaFileChange.PerlaConfig ->
-            (Constants.PerlaConfigName,
-             UMX.untag FileSystem.PerlaConfigPath,
-             ".json")
-          | PerlaFileChange.ImportMap ->
-            (Constants.ImportMapName,
-             UMX.untag(FileSystem.GetConfigPath Constants.ImportMapName None),
-             ".importmap")
-
-        {
-          serverPath = UMX.tag "/"
-          userPath = UMX.tag "/"
-          oldPath = None
-          oldName = None
-          changeType = ChangeKind.Changed
-          path = UMX.tag path
-          name = UMX.tag name
-        },
-        { content = ""; extension = extension })
-
-    VirtualFileSystem.GetFileChangeStream mountDirectories
-    |> VirtualFileSystem.ApplyVirtualOperations plugins
-    |> Observable.merge perlaFilesChanges
-
-module Esbuild =
-
-  let Run
-    (
-      config: PerlaConfig,
-      workingDirectory: UPath,
-      fs: IFileSystem,
-      (css, js, standalone):
-        string<ServerUrl> seq * string<ServerUrl> seq * string<ServerUrl> seq,
-      externals: string seq,
-      cancel: CancellationToken
-    ) =
-    let js = seq {
-      yield! js
-      yield! standalone
-    }
-
-    let taggedCwd = fs.ConvertPathToInternal workingDirectory
-
-    let cssTasks = backgroundTask {
-      for css in css do
-        let path =
-          UPath.Combine(workingDirectory, UMX.untag css)
-          |> fs.ConvertPathToInternal
-
-        let targetPath =
-          Path.Combine(UMX.untag config.build.outDir, UMX.untag css)
-          |> Path.GetFullPath
-          |> Path.GetDirectoryName
-
-        let tsk =
-          Esbuild
-            .ProcessCss(taggedCwd, path, config.esbuild, targetPath)
-            .ExecuteAsync(cancel)
-
-        do! tsk.Task :> Task
-    }
-
-    let jsTasks = backgroundTask {
-      let aliases =
-        // remove all the paths that are not relative
-        let aliases =
-          config.paths |> Map.filter(fun _ v -> (UMX.untag v).StartsWith("./"))
-
-        // if the env is enabled, also check if we want to produce the file
-        // if the user doesn't want to produce the file it is likely that they
-        // will provide said file at runtime and we don't want to make esbuild remove that import
-        if config.enableEnv && config.build.emitEnvFile then
-          // envPaths should be at the root of the server "/" so we can prefix it with a dot
-          // to make it relative to the root of the server, when build command runs it will
-          // be produced there
-          let path = UMX.tag $".{config.envPath}"
-          Map.add (UMX.tag Constants.EnvBareImport) path aliases
-        else
-          aliases
-
-      for js in js do
-        let path =
-          UPath.Combine(workingDirectory, UMX.untag js)
-          |> fs.ConvertPathToInternal
-
-        let targetPath =
-          Path.Combine(UMX.untag config.build.outDir, UMX.untag js)
-          |> Path.GetFullPath
-          |> Path.GetDirectoryName
-
-        let tsk =
-          Esbuild
-            .ProcessJS(
-              taggedCwd,
-              path,
-              config.esbuild,
-              targetPath,
-              externals,
-              aliases
-            )
-            .ExecuteAsync(cancel)
-
-        do! tsk.Task :> Task
-    }
-
-    Task.WhenAll(cssTasks, jsTasks)
-
-module Testing =
-  let RunOnce
-    (
-      pl: IPlaywright,
-      browserMode: BrowserMode,
-      browsers: Browser seq,
-      isHeadless: bool,
-      url: string
-    ) =
-    let browsers = asyncSeq {
-      for browser in browsers do
-        let! iBrowser =
-          Testing.GetBrowser(pl, browser, isHeadless) |> Async.AwaitTask
-
-        browser, iBrowser
-    }
-
-    let runTest(browser, iBrowser) = async {
-      let executor = Testing.GetExecutor(url, browser)
-      do! executor iBrowser |> Async.AwaitTask
-      do! iBrowser.CloseAsync() |> Async.AwaitTask
-      return! iBrowser.DisposeAsync().AsTask() |> Async.AwaitTask
-    }
-
-    match browserMode with
-    | BrowserMode.Parallel ->
-      browsers |> AsyncSeq.iterAsyncParallelThrottled 2 runTest
-    | BrowserMode.Sequential -> browsers |> AsyncSeq.iterAsync runTest
-
-  let LiveRun
-    (
-      pl: IPlaywright,
-      browser: Browser,
-      isHeadless: bool,
-      url: string,
-      fileChanges: IObservable<unit>,
-      broadcast: IObservable<TestEvent>,
-      cancel: CancellationToken
-    ) =
-    task {
-
-      let! iBrowser = Testing.GetBrowser(pl, browser, isHeadless)
-
-      let liveExecutor =
-        Testing.GetLiveExecutor(
-          url,
-          browser,
-          fileChanges |> Observable.map ignore
-        )
-
-      use _ = Testing.PrintReportLive broadcast
-      let! pageReloads = liveExecutor iBrowser
-
-      use _ =
-        pageReloads
-        |> Observable.subscribeSafe(fun _ ->
-          Logger.log $"Live Reload: Page Reloaded After Change")
-
-      while not cancel.IsCancellationRequested do
-        do! Async.Sleep(TimeSpan.FromSeconds(1.))
-    }
-
 [<RequireQualifiedAccess>]
 module Handlers =
-  open Perla.Database
-
-  let runSetup(options: SetupOptions) = cancellableTask {
-    let! token = CancellableTask.getCancellationToken()
-    Logger.log "Perla will set up the following resources:"
-    Logger.log "- Esbuild"
-    Logger.log "- Default Templates"
-
-    Logger.log
-      "After that you should be able to run perla commands without extra effort."
-
-    do! FileSystem.SetupEsbuild(UMX.tag Constants.Esbuild_Version, token)
-
-    Checks.SaveEsbuildBinPresent(UMX.tag Constants.Esbuild_Version) |> ignore
-
-    Logger.log("[bold green]esbuild[/] has been setup!", escape = false)
-
-    let username, repository, branch =
-      PerlaTemplateRepository.DefaultTemplatesRepository
-
-    let getTemplate() =
-      TemplateSearchKind.FullName(username, repository)
-      |> Templates.FindOne
-      |> Option.map(fun template ->
-        Templates.AddOrUpdate(Templates.TemplateOperation.Update template))
-      |> Option.defaultWith(fun () ->
-        Templates.AddOrUpdate(
-          Templates.TemplateOperation.Add(username, repository, branch)
-        ))
-
-    match options.skipPrompts, options.installTemplates with
-    | false, true
-    | true, true ->
-      let! operation = getTemplate()
-
-      match operation with
-      | Ok() ->
-        Checks.SaveTemplatesPresent() |> ignore
-        Checks.SaveSetup() |> ignore
-        return 0
-      | Error err ->
-        Logger.log err
-        return 1
-    | true, false ->
-      if AnsiConsole.Confirm("Add default templates?", false) then
-        let! operation = getTemplate()
-
-        match operation with
-        | Ok() ->
-          Checks.SaveTemplatesPresent() |> ignore
-          Checks.SaveSetup() |> ignore
-          return 0
-        | Error err ->
-          Logger.log err
-          return 1
-      else
-        Logger.log "Skip installing templates"
-        Checks.SaveSetup() |> ignore
-        return 0
-    | false, false ->
-      Logger.log "Skip installing templates"
-      Checks.SaveSetup() |> ignore
-      return 0
-  }
 
   let runNew(options: ProjectOptions) = cancellableTask {
     let! cancellationToken = CancellableTask.getCancellationToken()

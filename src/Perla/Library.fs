@@ -4,7 +4,6 @@ open Spectre.Console.Rendering
 
 open FSharp.UMX
 open Perla.Units
-open Perla.PackageManager.Types
 open FsToolkit.ErrorHandling
 
 [<AutoOpen>]
@@ -338,6 +337,8 @@ module Lib =
           Text(this.provider |> PkgManager.DownloadProvider.asString)
           :> IRenderable
           |> Some
+        | "uselocalpkgs" ->
+          $"{this.useLocalPkgs}" |> Text :> IRenderable |> Some
         | "plugins" ->
           this.plugins
           |> Seq.fold (fun current next -> $"{next};{current}") ""

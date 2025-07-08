@@ -55,13 +55,14 @@ module Warmup =
       | EsbuildFailed of string
       | TemplatesFailed
       | FableFailed
+      | HardExitRequested
 
     val From:
       config: PerlaConfig aval *
       db: PerlaDatabase *
       pfsm: PerlaFsManager *
       logger: ILogger ->
-        recoverFrom: RecoverableAssets seq ->
+        result: MiddlewareResult ->
           CancellableTaskResult<unit, SetupFailure>
 
 type HasLogger =

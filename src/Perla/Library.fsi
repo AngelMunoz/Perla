@@ -7,7 +7,6 @@ open Spectre.Console.Rendering
 open FSharp.UMX
 open Perla.Units
 open Perla.Types
-open Perla.PackageManager.Types
 
 [<AutoOpen>]
 module Lib =

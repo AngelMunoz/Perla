@@ -259,8 +259,6 @@ module Commands =
     let handleCommand(context: ActionContext, enablePreview: bool option) =
 
       let options = {
-        enablePreloads = false
-        rebuildImportMap = false
         enablePreview = defaultArg enablePreview false
       }
 

@@ -26,7 +26,6 @@ open Microsoft.AspNetCore.StaticFiles
 open Microsoft.Net.Http.Headers
 open Microsoft.Extensions.Logging
 
-open Perla.PackageManager.Types
 open Yarp.ReverseProxy
 open Yarp.ReverseProxy.Configuration
 open Yarp.ReverseProxy.Forwarder

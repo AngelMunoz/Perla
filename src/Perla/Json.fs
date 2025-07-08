@@ -127,6 +127,7 @@ module ConfigDecoders =
   type DecodedPerlaConfig = {
     index: string<SystemPath> option
     provider: PkgManager.DownloadProvider option
+    useLocalPkgs: bool option
     plugins: string list option
     build: DecodedBuild option
     devServer: DecodedDevServer option
@@ -268,6 +269,7 @@ module ConfigDecoders =
           get.Optional.Field "index" Decode.string
           |> Option.map UMX.tag<SystemPath>
         provider = get.Optional.Field "provider" providerDecoder
+        useLocalPkgs = get.Optional.Field "offline" Decode.bool
         plugins = get.Optional.Field "plugins" (Decode.list Decode.string)
         build = get.Optional.Field "build" BuildDecoder
         devServer = get.Optional.Field "devServer" DevServerDecoder
@@ -524,15 +526,6 @@ module PerlaConfig =
       }
     }
 
-    let GetPlugins(plugins: string list option) = option {
-      let! plugins = plugins
-
-      if plugins.Length = 0 then
-        return [ Constants.PerlaEsbuildPluginName ]
-      else
-        return plugins
-    }
-
   [<RequireQualifiedAccess>]
   module FromFields =
     type DevServerField =
@@ -621,6 +614,7 @@ module PerlaConfig =
     let userIndex = userConfig |> Option.map _.index |> Option.flatten
     let userProvider = userConfig |> Option.map _.provider |> Option.flatten
     let userEnvPath = userConfig |> Option.map _.envPath |> Option.flatten
+    let useLocalPkgs = userConfig |> Option.map _.useLocalPkgs |> Option.flatten
 
     let userDependencies =
       userConfig |> Option.map _.dependencies |> Option.flatten
@@ -650,13 +644,13 @@ module PerlaConfig =
       |> Option.defaultValue Defaults.TestConfig
 
     let plugins =
-      FromDecoders.GetPlugins(userPlugins)
-      |> Option.defaultValue Defaults.PerlaConfig.plugins
+      userPlugins |> Option.defaultValue Defaults.PerlaConfig.plugins
 
     {
       config with
           index = defaultArg userIndex config.index
           provider = defaultArg userProvider config.provider
+          useLocalPkgs = defaultArg useLocalPkgs config.useLocalPkgs
           mountDirectories =
             defaultArg userMountDirectories config.mountDirectories
           enableEnv = defaultArg userEnableEnv config.enableEnv
@@ -680,6 +674,7 @@ module PerlaConfig =
   type PerlaWritableField =
     | Provider of PkgManager.DownloadProvider
     | Dependencies of PkgDependency Set
+    | UseLocalPkgs of bool
     | Fable of FableField seq
     | Paths of Map<string<BareImport>, string<ResolutionUrl>>
 
@@ -695,6 +690,13 @@ module PerlaConfig =
         | Provider config -> Some config
         | _ -> None)
       |> Option.map PkgManager.DownloadProvider.asString
+
+    let useLocalPkgs =
+      fields
+      |> Seq.tryPick(fun f ->
+        match f with
+        | UseLocalPkgs useLocalPkgs -> Some useLocalPkgs
+        | _ -> None)
 
     let dependencies =
       fields
@@ -743,6 +745,14 @@ module PerlaConfig =
 
       content
 
+    let addUseLocalPkgs(content: JsonObject) =
+      match useLocalPkgs with
+      | Some useLocalPkgs ->
+        content["useLocalPkgs"] <- Json.ToNode(useLocalPkgs)
+      | None -> ()
+
+      content
+
     let addDeps(content: JsonObject) =
       match dependencies with
       | Some deps ->
@@ -785,4 +795,4 @@ module PerlaConfig =
     | Some _ -> ()
     | None -> content["$schema"] <- Json.ToNode(Constants.JsonSchemaUrl)
 
-    content |> addProvider |> addDeps |> addFable |> addPaths
+    content |> addProvider |> addUseLocalPkgs |> addDeps |> addFable |> addPaths

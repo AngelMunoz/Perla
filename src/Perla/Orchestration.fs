@@ -119,6 +119,7 @@ module Warmup =
       | EsbuildFailed of string
       | TemplatesFailed
       | FableFailed
+      | HardExitRequested
 
     let esbuildSetup
       (
@@ -212,21 +213,45 @@ module Warmup =
         pfsm: PerlaFsManager,
         logger: ILogger
       )
-      (recoverFrom: RecoverableAssets seq)
+      (result: MiddlewareResult)
       =
       cancellableTaskResult {
         let! token = CancellableTaskResult.getCancellationToken()
 
-        let! _ =
-          recoverFrom
-          |> Seq.traverseTaskResultM(fun asset -> taskResult {
-            match asset with
-            | Esbuild -> return! esbuildSetup (config, db, pfsm, logger) token
-            | Templates -> return! templatesSetup (db, pfsm, logger) token
-            | Fable -> return! fableSetup (pfsm, logger) token
-          })
+        match result with
+        | Continue -> return ()
+        | HardExit ->
+          logger.LogError "Setup failed, exiting."
+          return! Error(HardExitRequested)
+        | Recover recoverFrom ->
+          logger.LogInformation "Recovering from missing assets: {recoverFrom}."
 
-        return ()
+          let! result =
+            Spectre.Console.AnsiConsole.ConfirmAsync(
+              "Some required assets are missing. Do you want to install them?",
+              true
+            )
+
+          if not result then
+            logger.LogWarning
+              "You chose not to recover from missing assets, this may cause issues with some of your commands."
+
+            return ()
+          else
+            logger.LogInformation
+              "Starting setup for missing assets: {recoverFrom}."
+
+            let! _ =
+              recoverFrom
+              |> Seq.traverseTaskResultM(fun asset -> taskResult {
+                match asset with
+                | Esbuild ->
+                  return! esbuildSetup (config, db, pfsm, logger) token
+                | Templates -> return! templatesSetup (db, pfsm, logger) token
+                | Fable -> return! fableSetup (pfsm, logger) token
+              })
+
+            return ()
       }
 
 type HasLogger =

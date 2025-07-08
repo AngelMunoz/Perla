@@ -1,9 +1,7 @@
 ﻿namespace Perla.Handlers
 
 open IcedTasks
-open FSharp.UMX
-
-open Perla.Units
+open FsToolkit.ErrorHandling
 open Perla.Types
 
 
@@ -18,34 +16,21 @@ type ServeOptions = {
   ssl: bool option
 }
 
-type BuildOptions = {
-  enablePreview: bool
-  enablePreloads: bool
-  rebuildImportMap: bool
-}
+type BuildOptions = { enablePreview: bool }
 
 type SetupOptions = {
   installTemplates: bool
   skipPrompts: bool
 }
 
-type SearchOptions = { package: string; page: int }
-
-type ShowPackageOptions = { package: string }
-
 type ListTemplatesOptions = { format: ListFormat }
 
 type AddPackageOptions = {
   package: string
   version: string option
-  source: Perla.PkgManager.DownloadProvider option
-  alias: string option
 }
 
-type RemovePackageOptions = {
-  package: string
-  alias: string option
-}
+type RemovePackageOptions = { package: string }
 
 type ListPackagesOptions = { format: ListFormat }
 
@@ -67,10 +52,6 @@ type ProjectOptions = {
   byShortName: string option
 }
 
-type RestoreOptions = {
-  source: Perla.PkgManager.DownloadProvider option
-}
-
 type TestingOptions = {
   browsers: Browser seq option
   files: string seq option
@@ -80,19 +61,8 @@ type TestingOptions = {
   browserMode: BrowserMode option
 }
 
-type DescribeOptions = {
-  properties: string[] option
-  current: bool
-}
+type DescribeOptions = { properties: string[]; current: bool }
 
-[<Struct>]
-type PathOperation =
-  | AddOrUpdate of
-    addImport: string<BareImport> *
-    addPath: string<ResolutionUrl>
-  | Remove of removeImport: string
-
-type PathsOptions = { operation: PathOperation }
 
 module Handlers =
 
