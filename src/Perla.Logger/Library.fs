@@ -317,6 +317,8 @@ module ILoggerExtensions =
   open Serilog.Context
 
   type Microsoft.Extensions.Logging.ILogger with
+
+
     member _.Spinner<'Operation>
       (title: string, task: Task<'Operation>)
       : Task<'Operation> =
@@ -326,56 +328,12 @@ module ILoggerExtensions =
 
     member _.Spinner<'Operation>
       (title: string, task: Async<'Operation>)
-      : Task<'Operation> =
+      : Async<'Operation> =
       let status = AnsiConsole.Status()
       status.Spinner <- Spinner.Known.Dots
+
       status.StartAsync(title, (fun _ -> task |> Async.StartAsTask))
-
-    member inline _.Spinner<'Operation>
-      (
-        title: string,
-        [<InlineIfLambda>] operation: StatusContext -> Task<'Operation>,
-        ?target: PrefixKind
-      ) : Task<'Operation> =
-      let prefix =
-        defaultArg target Log
-        |> function
-          | Log -> [ Log ]
-          | Scaffold -> [ Log; Scaffold ]
-          | Build -> [ Log; Build ]
-          | Serve -> [ Log; Serve ]
-          | Esbuild -> [ Log; Esbuild ]
-          | Browser -> [ Log; Browser ]
-
-      let title = Internals.format prefix title
-      let status = AnsiConsole.Status()
-      status.Spinner <- Spinner.Known.Dots
-      status.StartAsync(title.ToString(), operation)
-
-    member inline _.Spinner<'Operation>
-      (
-        title: string,
-        [<InlineIfLambda>] operation: StatusContext -> Async<'Operation>,
-        ?target: PrefixKind
-      ) : Task<'Operation> =
-      let prefix =
-        defaultArg target Log
-        |> function
-          | Log -> [ Log ]
-          | Scaffold -> [ Log; Scaffold ]
-          | Build -> [ Log; Build ]
-          | Serve -> [ Log; Serve ]
-          | Esbuild -> [ Log; Esbuild ]
-          | Browser -> [ Log; Browser ]
-
-      let title = Internals.format prefix title
-      let status = AnsiConsole.Status()
-      status.Spinner <- Spinner.Known.Dots
-
-      status.StartAsync(
-        title.ToString(),
-        (fun ctx -> operation ctx |> Async.StartAsTask)
-      )
+      |> Async.AwaitTask
 
     member inline this.LogScaffold
       (message: string, logLevel: LogLevel, [<ParamArray>] args: obj[])

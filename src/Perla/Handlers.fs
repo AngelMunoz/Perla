@@ -33,6 +33,7 @@ open Perla.Extensibility
 open Perla.VirtualFs
 open Perla.Scaffolding
 open Perla.Configuration
+open Perla.Logger
 open Perla.PkgManager
 open Perla.PkgManager.PkgManager
 
@@ -762,97 +763,77 @@ module Handlers =
       return 0
   }
 
-  let runAddPackage(options: AddPackageOptions) = cancellableTask {
-    ConfigurationManager.UpdateFromCliArgs(?provider = options.source)
+  let runAddPackage (container: AppContainer) (options: AddPackageOptions) = cancellableTask {
+    let! token = CancellableTask.getCancellationToken()
+    let pkgManager = container.PkgManager
+    let logger = container.Logger
 
-    let config = ConfigurationManager.CurrentConfig
-    let package, packageVersion = parsePackageName options.package
+    let config = container.Configuration.PerlaConfig |> AVal.force
+    let importMap = container.FsManager.ResolveImportMap |> AVal.force
 
-    let version =
-      match packageVersion with
-      | Some version -> $"@{version}"
-      | None -> ""
+    let package, version = options.package |> parsePackageName
+    let version = version |> Option.orElseWith(fun _ -> options.version)
+    let packages = importMap.ExtractDependencies()
+    let packages = packages |> Set.add(package, version)
 
-    let looksLikeCustomResolution =
-      package
-      |> Seq.filter(fun c -> c = '/')
-      // This should account for packages like:
-      // - @shoelace-style/shoelace/dist/components/button/button.js
-      // - lit/directives/join.js
-      |> Seq.length > 1
+    logger.LogInformation(
+      "Adding package '{name}' with version '{version}'",
+      package,
+      version
+    )
 
-    let addAsResolution =
-      if options.alias.IsSome then
-        true
-      else
-        looksLikeCustomResolution
-        && AnsiConsole.Confirm(
-          $"[bold yellow]{package}[/] looks like a nested or a custom import. Do you want to add it as a custom path?",
-          true
+    let provider =
+      match config.provider with
+      | JsDelivr -> Provider.JsDelivr
+      | Unpkg -> Provider.Unpkg
+      | JspmIo -> Provider.JspmIo
+
+    let! installResponse =
+      logger.Spinner(
+        "Generating Import Map...",
+        pkgManager.Install(
+          packages |> Set.map(fun (name, version) -> $"{name}@{version}"),
+          [ DefaultProvider provider ],
+          cancellationToken = token
         )
-
-    let importMap = FileSystem.GetImportMap().RemoveResolutions(config.paths)
-
-    Logger.log "Updating Import Map..."
-
-    let! map =
-      Logger.spinner(
-        $"Adding: [bold yellow]{package}{version}[/]",
-        Dependencies.Add($"{package}{version}", importMap)
       )
 
-    match map, addAsResolution with
-    | Ok map, true ->
-      match map.imports |> Map.tryFind package with
-      | Some resolution ->
-        let name = defaultArg options.alias package
-
-        let deps, devDeps =
-          Dependencies.LocateDependenciesFromMapAndConfig(map, config)
-
-        ConfigurationManager.WriteFieldsToFile [
-          PerlaWritableField.Dependencies deps
-        ]
-
-        return!
-          runAddResolution {
-            operation =
-              AddOrUpdate(
-                UMX.tag<BareImport> name,
-                UMX.tag<ResolutionUrl> resolution
-              )
-          }
-      | None ->
-        Logger.log
-          "We were unable to find the package in the import map. This is likely a bug, please report it."
-
-        return 1
-    | Ok map, false ->
-      let newDep = {
-        package = package
-        version =
-          packageVersion |> Option.defaultValue "0.0.0" |> UMX.tag<Semver>
-      }
-
-      let dependencies =
-        let config = {
-          config with
-              dependencies = [ yield! config.dependencies; newDep ] |> Set
+    let packageUpdates =
+      // extract the dependencies before we save the offline map
+      installResponse.map.ExtractDependencies()
+      |> Set.map(fun (name, version) ->
+        let dep: PkgDependency = {
+          package = name
+          // dependencies from a GeneratorResponse have embedded versions even if they are not specified
+          version = version.Value |> UMX.tag<Semver>
         }
 
-        let deps, _ =
-          Dependencies.LocateDependenciesFromMapAndConfig(map, config)
+        dep)
+      |> PerlaConfig.PerlaWritableField.Dependencies
 
-        PerlaWritableField.Dependencies deps
+    let configUpdates = ResizeArray()
+    configUpdates.Add packageUpdates
 
-      ConfigurationManager.WriteFieldsToFile [ dependencies ]
+    if config.useLocalPkgs then
+      let! result =
+        logger.Spinner(
+          "Downloading Sources...",
+          pkgManager.GoOffline(
+            installResponse.map,
+            [ Provider config.provider ],
+            token
+          )
+        )
 
-      FileSystem.WriteImportMap(map.AddResolutions(config.paths)) |> ignore
+      do! container.FsManager.SaveImportMap result
+    else
+      do! container.FsManager.SaveImportMap installResponse.map
 
-      return 0
-    | Error err, _ ->
-      Logger.log($"[bold red]{err}[/]", escape = false)
-      return 1
+    do! container.FsManager.SavePerlaConfig configUpdates
+    logger.LogInformation("Package '{name}' installed successfully.", package)
+
+    return 0
+
   }
 
   let runRemovePackage
@@ -875,18 +856,21 @@ module Handlers =
         return 1
       | Some(name, _) ->
         let! uninstallResponse =
-          container.PkgManager.Uninstall(
-            map,
-            [ name ],
-            [
-              DefaultProvider(
-                match config.provider with
-                | JsDelivr -> Provider.JsDelivr
-                | Unpkg -> Provider.Unpkg
-                | JspmIo -> Provider.JspmIo
-              )
-            ],
-            token
+          logger.Spinner(
+            $"Uninstalling package '{name}'...",
+            container.PkgManager.Uninstall(
+              map,
+              [ name ],
+              [
+                DefaultProvider(
+                  match config.provider with
+                  | JsDelivr -> Provider.JsDelivr
+                  | Unpkg -> Provider.Unpkg
+                  | JspmIo -> Provider.JspmIo
+                )
+              ],
+              token
+            )
           )
 
         let packageUpdates =
@@ -907,10 +891,13 @@ module Handlers =
 
         if config.useLocalPkgs then
           let! result =
-            container.PkgManager.GoOffline(
-              uninstallResponse.map,
-              [ Provider config.provider ],
-              token
+            logger.Spinner(
+              "Consolidating local packages...",
+              container.PkgManager.GoOffline(
+                uninstallResponse.map,
+                [ Provider config.provider ],
+                token
+              )
             )
 
           do! container.FsManager.SaveImportMap result
@@ -981,16 +968,19 @@ module Handlers =
         | ValueNone -> config |> AVal.map _.provider |> AVal.force
 
       let! map =
-        pkgManager.Install(
-          packages,
-          [
-            match provider with
-            | JsDelivr -> DefaultProvider Provider.JsDelivr
-            | Unpkg -> DefaultProvider Provider.Unpkg
-            | PkgManager.DownloadProvider.JspmIo ->
-              DefaultProvider Provider.JspmIo
-          ],
-          cancellationToken = token
+        logger.Spinner(
+          "Generating Import Map...",
+          pkgManager.Install(
+            packages,
+            [
+              match provider with
+              | JsDelivr -> DefaultProvider Provider.JsDelivr
+              | Unpkg -> DefaultProvider Provider.Unpkg
+              | PkgManager.DownloadProvider.JspmIo ->
+                DefaultProvider Provider.JspmIo
+            ],
+            cancellationToken = token
+          )
         )
 
       let packageUpdates =
@@ -1013,10 +1003,13 @@ module Handlers =
           )
 
           return!
-            pkgManager.GoOffline(
-              map.map,
-              [ DownloadOption.Provider provider ],
-              token
+            logger.Spinner(
+              "Downloading Sources...",
+              pkgManager.GoOffline(
+                map.map,
+                [ DownloadOption.Provider provider ],
+                token
+              )
             )
         else
           logger.LogInformation("Import map generated successfully.")
