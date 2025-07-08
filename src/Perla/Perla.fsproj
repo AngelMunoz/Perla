@@ -73,7 +73,7 @@
     <None Include="mocha-runner.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="templates/**/*">
+    <None Include="offline-tempaltes/**/*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
