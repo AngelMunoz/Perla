@@ -1,0 +1,14 @@
+[
+    {
+        "title": "Wash Clothes",
+        "done": false
+    },
+    {
+        "title": "Buy Groceries",
+        "done": true
+    },
+    {
+        "title": "Think about more todos",
+        "done": false
+    }
+]

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/fs-rework/perla.schema.json",
+  "schema-version": "2025-07",
+  "fable": {
+    "project": "./src/App.fsproj",
+    "sourceMaps": true
+  },
+  "dependencies": {
+    "date-fns": "2.29.3",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  }
+}

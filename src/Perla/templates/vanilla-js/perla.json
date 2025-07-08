@@ -1,0 +1,8 @@
+{
+  "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/fs-rework/perla.schema.json",
+  "schema-version": "2025-07",
+  "provider": "jspm",
+  "build": {
+    "includes": ["./src/todos.json"]
+  }
+}

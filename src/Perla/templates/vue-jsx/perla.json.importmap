@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "vue": "https://ga.jspm.io/npm:vue@3.5.17/dist/vue.runtime.esm-browser.js"
+  }
+}

@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Types.fs" />
+    <Compile Include="Components/Counter.fs" />
+    <Compile Include="Components/Navbar.fs" />
+    <Compile Include="Notes.fs" />
+    <Compile Include="Home.fs" />
+    <Compile Include="App.fs" />
+    <Compile Include="Main.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Fable.Lit" Version="1.4.1" />
+    <PackageReference Include="Fable.Lit.Elmish" Version="1.4.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/fs-rework/perla.schema.json",
+  "schema-version": "2025-07",
+  "index": "./index.html",
+  "build": {
+    "includes": ["src/todos.json"]
+  },
+  "dependencies": {
+    "lit": "2.5.0",
+    "lit-html": "2.5.0"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "solid-js": "https://ga.jspm.io/npm:solid-js@1.9.7/dist/dev.js",
+    "solid-js/html": "https://ga.jspm.io/npm:solid-js@1.9.7/html/dist/html.js",
+    "solid-js/web": "https://ga.jspm.io/npm:solid-js@1.9.7/web/dist/dev.js"
+  }
+}

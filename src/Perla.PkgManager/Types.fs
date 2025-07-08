@@ -87,6 +87,7 @@ module DownloadProvider =
 
   let fromString(value: string) =
     match value.ToLowerInvariant() with
+    | "jspm" // Legacy support for "jspm" as a value
     | "jspm.io" -> JspmIo
     | "jsdelivr" -> JsDelivr
     | "unpkg" -> Unpkg

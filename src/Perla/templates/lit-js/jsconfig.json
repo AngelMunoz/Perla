@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+        "allowJs": true,
+        "allowSyntheticDefaultImports": true,
+        "esModuleInterop": true,
+        "checkJs": true,
+        "strict": true,
+        "noImplicitAny": false,
+        "isolatedModules": true,
+        "resolveJsonModule": true,
+        "target": "es2020",
+        "moduleResolution": "bundler"
+    },
+    "include": [
+        "src"
+    ],
+    "typeAcquisition": {
+        "enable": true
+    }
+}

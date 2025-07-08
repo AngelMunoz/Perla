@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/fs-rework/perla.schema.json",
+  "schema-version": "2025-07",
+  "provider": "jspm",
+  "plugins": ["perla-esbuild-plugin"],
+  "esbuild": {
+    "jsxAutomatic": true,
+    "jsxImportSource": "vue"
+  },
+  "dependencies": {
+    "vue": "3.5.17"
+  }
+}

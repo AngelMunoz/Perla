@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/fs-rework/perla.schema.json",
+  "schema-version": "2025-07",
+  "index": "./index.html",
+  "fable": {
+    "project": "./src/App.fsproj",
+    "sourceMaps": true
+  }
+}

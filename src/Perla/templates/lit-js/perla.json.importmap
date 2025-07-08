@@ -1,0 +1,13 @@
+{
+  "imports": {
+    "lit": "https://ga.jspm.io/npm:lit@2.2.5/index.js",
+    "lit-html": "https://ga.jspm.io/npm:lit-html@2.2.5/development/lit-html.js"
+  },
+  "scopes": {
+    "https://ga.jspm.io/": {
+      "@lit/reactive-element": "https://ga.jspm.io/npm:@lit/reactive-element@1.6.3/development/reactive-element.js",
+      "lit-element/lit-element.js": "https://ga.jspm.io/npm:lit-element@3.3.3/development/lit-element.js",
+      "lit-html": "https://ga.jspm.io/npm:lit-html@2.8.0/development/lit-html.js"
+    }
+  }
+}

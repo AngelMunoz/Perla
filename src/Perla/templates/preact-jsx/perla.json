@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/fs-rework/perla.schema.json",
+  "schema-version": "2025-07",
+  "esbuild": {
+    "jsxAutomatic": true,
+    "jsxImportSource": "preact"
+  },
+  "dependencies": {
+    "preact": "10.11.3"
+  },
+  "plugins": ["perla-esbuild-plugin"]
+}

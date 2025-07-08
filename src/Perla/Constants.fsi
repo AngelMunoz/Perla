@@ -54,12 +54,5 @@ val PerlaEsbuildPluginName: string = "perla-esbuild-plugin"
 [<Literal>]
 val ArtifactsDirectoryname: string = "perla"
 
-module CliDirectives =
-  [<Literal>]
-  val Preview: string = "preview"
-
-  [<Literal>]
-  val NoEsbuildPlugin: string = "no-esbuild-plugin"
-
-  [<Literal>]
-  val CiRun: string = "ci-run"
+[<Literal>]
+val SchemaVersion: string = "2025-07"

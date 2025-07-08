@@ -4,6 +4,11 @@
   "description": "A Node'less dev server for frontend developers",
   "type": "object",
   "properties": {
+    "schema-version": {
+      "description": "The version of the schema used for this configuration file",
+      "type": "string",
+      "default": "2025-07"
+    },
     "index": {
       "description": "The main index file to be processed by perla, this file should be outside of the static mounted paths.",
       "type": "string"
@@ -18,7 +23,7 @@
       "default": false
     },
     "plugins": {
-      "description": "The list of plugins to use by perla, if the list is not specified, the default esbuild plugin will be used",
+      "description": "The list of plugins to use by perla. For projects that use non-standard web browser features, you should provide the 'perla-esbuild-plugin' plugin to enable esbuild transformations.",
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
