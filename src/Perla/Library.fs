@@ -63,39 +63,43 @@ module Lib =
     else
       Package package
 
-  let parsePackageName(name: string) =
+  let parsePackageName(name: string) : string * string * string option =
+    // Handles cases like:
+    // solid-js@1.9.7
+    // solid-js/web
+    // solid-js/web@1.9.7
+    // @scope/pkg@1.2.3
+    // @scope/pkg/deep@1.2.3
+    let basePkg, fullImport, version =
+      let namePart, version =
+        let atIdx = name.LastIndexOf("@")
 
-    let getVersion parts =
-
-      let version =
-        let version = parts |> Seq.tryLast |> Option.defaultValue ""
-
-        if String.IsNullOrWhiteSpace version then
-          None
+        if atIdx > 0 && not(name.StartsWith("@")) then
+          let before = name.Substring(0, atIdx)
+          let after = name.Substring(atIdx + 1)
+          before, Some after
         else
-          Some version
+          name, None
 
-      version
+      let parts = namePart.Split('/')
 
-    match name with
-    | ScopedPackage name ->
-      // check if the user is looking to install a particular version
-      // i.e. package@5.0.0
-      if name.Contains("@") then
-        let parts = name.Split("@")
-        let version = getVersion parts
+      if parts.Length > 1 then
+        // deep import
+        let basePkg =
+          if namePart.StartsWith("@") then
+            // scoped: @scope/pkg/deep
+            if parts.Length >= 2 then
+              $"{parts[0]}/{parts[1]}"
+            else
+              namePart
+          else
+            parts[0]
 
-        $"@{parts[0]}", version
+        basePkg, namePart, version
       else
-        $"@{name}", None
-    | Package name ->
-      if name.Contains("@") then
-        let parts = name.Split("@")
+        namePart, namePart, version
 
-        let version = getVersion parts
-        parts[0], version
-      else
-        name, None
+    basePkg, fullImport, version
 
   let (|Log|Debug|Info|Err|Warning|Clear|) level =
     match level with

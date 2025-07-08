@@ -771,14 +771,26 @@ module Handlers =
     let config = container.Configuration.PerlaConfig |> AVal.force
     let importMap = container.FsManager.ResolveImportMap |> AVal.force
 
-    let package, version = options.package |> parsePackageName
+    let basePkg, fullImport, version = options.package |> parsePackageName
     let version = version |> Option.orElseWith(fun _ -> options.version)
     let packages = importMap.ExtractDependencies()
-    let packages = packages |> Set.add(package, version)
+
+    // Remove any existing entries for this full import or base package
+    let packages =
+      packages
+      |> Set.filter(fun (name, _) -> name <> fullImport && name <> basePkg)
+      // Add both the base package and the full import (if different)
+      |> fun pkgs ->
+          let pkgs = pkgs |> Set.add(basePkg, version)
+
+          if fullImport <> basePkg then
+            Set.add (fullImport, version) pkgs
+          else
+            pkgs
 
     logger.LogInformation(
       "Adding package '{name}' with version '{version}'",
-      package,
+      fullImport,
       version
     )
 
@@ -788,11 +800,23 @@ module Handlers =
       | Unpkg -> Provider.Unpkg
       | JspmIo -> Provider.JspmIo
 
+    // Map to install strings: base@version and base@version/deep
+    let installSet =
+      packages
+      |> Set.map(fun (name, version) ->
+        let basePkg, full, _ = parsePackageName name
+
+        match version with
+        | Some v when full <> basePkg ->
+          $"{basePkg}@{v}/{full.Substring(basePkg.Length + 1)}"
+        | Some v -> $"{basePkg}@{v}"
+        | None -> full)
+
     let! installResponse =
       logger.Spinner(
         "Generating Import Map...",
         pkgManager.Install(
-          packages |> Set.map(fun (name, version) -> $"{name}@{version}"),
+          installSet,
           [ DefaultProvider provider ],
           cancellationToken = token
         )
@@ -830,10 +854,13 @@ module Handlers =
       do! container.FsManager.SaveImportMap installResponse.map
 
     do! container.FsManager.SavePerlaConfig configUpdates
-    logger.LogInformation("Package '{name}' installed successfully.", package)
+
+    logger.LogInformation(
+      "Package '{name}' installed successfully.",
+      fullImport
+    )
 
     return 0
-
   }
 
   let runRemovePackage

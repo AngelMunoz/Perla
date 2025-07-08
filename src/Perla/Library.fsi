@@ -26,7 +26,7 @@ module Lib =
   val internal (|ScopedPackage|Package|):
     package: string -> Choice<string, string>
 
-  val internal parsePackageName: name: string -> string * string option
+  val internal parsePackageName: name: string -> string * string * string option
 
   val internal (|Log|Debug|Info|Err|Warning|Clear|):
     string -> Choice<unit, unit, unit, unit, unit, unit>
