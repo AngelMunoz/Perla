@@ -142,3 +142,75 @@ module ProviderOps =
 
       logger.LogWarning("Unable to extract file path: {Error}", errorMsg)
       uri.ToString()
+
+  /// Extract package name and version from a package string
+  /// Returns Some(packageName, version option) if a valid package is found, None if invalid
+  /// Examples:
+  /// - "package@1.0.0" -> Some("package", Some "1.0.0")
+  /// - "@scope/package@1.0.0" -> Some("@scope/package", Some "1.0.0")
+  /// - "package" -> Some("package", None)
+  /// - "@scope/package" -> Some("@scope/package", None)
+  /// - "" -> None
+  /// - "@" -> None
+  let extractPkgAndVersion(package: string) : (string * string option) option =
+    if String.IsNullOrWhiteSpace(package) then
+      None
+    elif package.StartsWith("@") then
+      // Scoped package: @scope/package@version -> (@scope/package, Some version)
+      let parts = package.Split('@')
+
+      if parts.Length > 2 then
+        let packageName = "@" + parts[1]
+        let version = parts[2]
+        // Validate that we have a proper scoped package name
+        if String.IsNullOrWhiteSpace(parts[1]) then
+          None
+        else
+          Some(packageName, Some version)
+      elif parts.Length = 2 && not(String.IsNullOrWhiteSpace(parts[1])) then
+        // @scope/package without version
+        let packageName = "@" + parts[1]
+        Some(packageName, None)
+      else
+        None
+    else
+      // Regular package: package@version -> (package, Some version)
+      let parts = package.Split('@')
+
+      if parts.Length > 1 then
+        let packageName = parts[0]
+        let version = parts[1]
+        // Validate that we have a proper package name
+        if String.IsNullOrWhiteSpace(packageName) then
+          None
+        else
+          Some(packageName, Some version)
+      elif not(String.IsNullOrWhiteSpace(parts[0])) then
+        // Regular package without version
+        Some(package, None)
+      else
+        None
+
+  /// Extract package name with version for flat directory structure
+  /// For scoped packages, keeps the full string; for regular packages, removes version
+  /// This is used specifically for creating flat directory structures in node_modules
+  let extractPackageNameForFlatStructure(package: string) : string =
+    if package.StartsWith("@") then
+      // Scoped package: @scope/package@version -> @scope/package@version (keep full)
+      let parts = package.Split('@')
+
+      if parts.Length > 2 then
+        "@" + parts[1] + "@" + parts[2]
+      else
+        package
+    else
+      // Regular package: package@version -> package (remove version)
+      match extractPkgAndVersion package with
+      | Some(packageName, _) -> packageName
+      | None -> package // fallback to original string if parsing fails
+
+  let extractPackageNameFromKeys (packageName: string) (map: Map<string, _>) =
+    // Find the first key that matches the package name
+    map
+    |> Map.tryFindKey(fun key _ ->
+      key.Equals(packageName, StringComparison.InvariantCultureIgnoreCase))

@@ -7,6 +7,7 @@ open Perla.Logger
 open Xunit
 open IcedTasks
 open Perla.PkgManager
+open Perla.PkgManager.PkgManager
 open Perla.PkgManager.RequestHandler
 
 /// Fake implementation of JspmService for testing
@@ -245,3 +246,121 @@ module ImportMapTests =
     )
 
     Assert.Equal<string>("sha384-abc123", importMap.integrity["react"])
+
+  [<Fact>]
+  let ``FindDependency should return exact package match with version``() =
+    // Arrange
+    let importMap: ImportMap = {
+      imports =
+        Map.ofList [
+          ("react", "https://ga.jspm.io/npm:react@18.2.0/index.js")
+          ("react-dom", "https://ga.jspm.io/npm:react-dom@18.2.0/index.js")
+          ("@babel/core",
+           "https://ga.jspm.io/npm:@babel/core@7.20.0/lib/index.js")
+        ]
+      scopes = Map.empty
+      integrity = Map.empty
+    }
+
+    // Act & Assert - Exact matches
+    let reactResult = importMap.FindDependency("react")
+    Assert.True(reactResult.IsSome)
+    let (name, version) = reactResult.Value
+    Assert.Equal("react", name)
+    Assert.Equal("18.2.0", version)
+
+    let reactDomResult = importMap.FindDependency("react-dom")
+    Assert.True(reactDomResult.IsSome)
+    let (name2, version2) = reactDomResult.Value
+    Assert.Equal("react-dom", name2)
+    Assert.Equal("18.2.0", version2)
+
+    let babelResult = importMap.FindDependency("@babel/core")
+    Assert.True(babelResult.IsSome)
+    let (name3, version3) = babelResult.Value
+    Assert.Equal("@babel/core", name3)
+    Assert.Equal("7.20.0", version3)
+
+  [<Fact>]
+  let ``FindDependency should return None for partial matches``() =
+    // Arrange
+    let importMap: ImportMap = {
+      imports =
+        Map.ofList [
+          ("react", "https://ga.jspm.io/npm:react@18.2.0/index.js")
+          ("react-dom", "https://ga.jspm.io/npm:react-dom@18.2.0/index.js")
+          ("@babel/core",
+           "https://ga.jspm.io/npm:@babel/core@7.20.0/lib/index.js")
+        ]
+      scopes = Map.empty
+      integrity = Map.empty
+    }
+
+    // Act & Assert - Partial matches should return None
+    Assert.True(importMap.FindDependency("reac").IsNone) // partial match should fail
+    Assert.True(importMap.FindDependency("react-").IsNone) // partial match should fail
+    Assert.True(importMap.FindDependency("@babel").IsNone) // partial scoped match should fail
+    Assert.True(importMap.FindDependency("core").IsNone) // part of scoped package should fail
+    Assert.True(importMap.FindDependency("nonexistent").IsNone) // non-existent should fail
+
+  [<Fact>]
+  let ``FindDependency should be case insensitive``() =
+    // Arrange
+    let importMap: ImportMap = {
+      imports =
+        Map.ofList [
+          ("React", "https://ga.jspm.io/npm:react@18.2.0/index.js")
+          ("LODASH", "https://ga.jspm.io/npm:lodash@4.17.21/lodash.js")
+        ]
+      scopes = Map.empty
+      integrity = Map.empty
+    }
+
+    // Act & Assert - Case insensitive matching
+    let reactResult = importMap.FindDependency("react")
+    Assert.True(reactResult.IsSome)
+    let (name, version) = reactResult.Value
+    Assert.Equal("react", name) // Should return the extracted name, not the search term
+    Assert.Equal("18.2.0", version)
+
+    let lodashResult = importMap.FindDependency("lodash")
+    Assert.True(lodashResult.IsSome)
+    let (name2, version2) = lodashResult.Value
+    Assert.Equal("lodash", name2)
+    Assert.Equal("4.17.21", version2)
+
+  [<Fact>]
+  let ``FindDependency should return None for packages without version``() =
+    // Arrange
+    let importMap: ImportMap = {
+      imports =
+        Map.ofList [
+          ("react", "https://ga.jspm.io/npm:react/index.js") // no version
+          ("lodash", "https://ga.jspm.io/npm:lodash@4.17.21/lodash.js") // with version
+        ]
+      scopes = Map.empty
+      integrity = Map.empty
+    }
+
+    // Act & Assert
+    let reactResult = importMap.FindDependency("react")
+    Assert.True(reactResult.IsNone) // Should return None because no version found
+
+    let lodashResult = importMap.FindDependency("lodash")
+    Assert.True(lodashResult.IsSome) // Should find this one with version
+    let (name, version) = lodashResult.Value
+    Assert.Equal("lodash", name)
+    Assert.Equal("4.17.21", version)
+
+  [<Fact>]
+  let ``FindDependency should handle empty ImportMap``() =
+    // Arrange
+    let importMap: ImportMap = {
+      imports = Map.empty
+      scopes = Map.empty
+      integrity = Map.empty
+    }
+
+    // Act & Assert
+    Assert.True(importMap.FindDependency("react").IsNone)
+    Assert.True(importMap.FindDependency("").IsNone)

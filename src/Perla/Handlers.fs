@@ -855,39 +855,73 @@ module Handlers =
       return 1
   }
 
-  let runRemovePackage(options: RemovePackageOptions) = cancellableTask {
-    let name = options.package
-    Logger.log($"Removing: [red]{name}[/]", escape = false)
-    let config = ConfigurationManager.CurrentConfig
+  let runRemovePackage
+    (container: AppContainer)
+    (options: RemovePackageOptions)
+    =
+    cancellableTask {
+      let! token = CancellableTask.getCancellationToken()
+      let config = container.Configuration.PerlaConfig |> AVal.force
+      let logger = container.Logger
+      let map = container.FsManager.ResolveImportMap |> AVal.force
 
-    let map = FileSystem.GetImportMap().RemoveResolutions(config.paths)
-
-    let dependencies, _ =
-      let deps, devDeps =
-        Dependencies.LocateDependenciesFromMapAndConfig(
-          map,
-          {
-            config with
-                dependencies =
-                  config.dependencies |> Set.filter(fun d -> d.package <> name)
-          }
+      match map.FindDependency options.package with
+      | None ->
+        logger.LogError(
+          "Package '{name}' not found in the import map.",
+          options.package
         )
 
-      deps, devDeps
+        return 1
+      | Some(name, _) ->
+        let! uninstallResponse =
+          container.PkgManager.Uninstall(
+            map,
+            [ name ],
+            [
+              DefaultProvider(
+                match config.provider with
+                | JsDelivr -> Provider.JsDelivr
+                | Unpkg -> Provider.Unpkg
+                | JspmIo -> Provider.JspmIo
+              )
+            ],
+            token
+          )
 
-    ConfigurationManager.WriteFieldsToFile [
-      PerlaWritableField.Dependencies dependencies
-    ]
+        let packageUpdates =
+          // extract the dependencies before we save the offline map
+          uninstallResponse.map.ExtractDependencies()
+          |> Set.map(fun (name, version) ->
+            let dep: PkgDependency = {
+              package = name
+              // dependencies from a GeneratorResponse have embedded versions even if they are not specified
+              version = version.Value |> UMX.tag<Semver>
+            }
 
-    match! Dependencies.Restore(dependencies |> Seq.map _.package) with
-    | Ok map ->
-      FileSystem.WriteImportMap(map.AddResolutions(config.paths)) |> ignore
+            dep)
+          |> PerlaConfig.PerlaWritableField.Dependencies
 
-      return 0
-    | Error err ->
-      Logger.log $"[bold red]{err}[/]"
-      return 1
-  }
+        let configUpdates = ResizeArray()
+        configUpdates.Add packageUpdates
+
+        if config.useLocalPkgs then
+          let! result =
+            container.PkgManager.GoOffline(
+              uninstallResponse.map,
+              [ Provider config.provider ],
+              token
+            )
+
+          do! container.FsManager.SaveImportMap result
+        else
+          do! container.FsManager.SaveImportMap uninstallResponse.map
+
+        do! container.FsManager.SavePerlaConfig configUpdates
+        logger.LogInformation("Packages installed successfully.")
+        return 0
+
+    }
 
   let runInstall (container: AppContainer) (options: InstallOptions) = cancellableTask {
     let! token = CancellableTask.getCancellationToken()
@@ -897,68 +931,111 @@ module Handlers =
 
     let dependencies = config |> AVal.map _.dependencies |> AVal.force
 
-    let packages =
-      dependencies
-      |> Set.map(fun dep -> $"{dep.package}@{UMX.untag dep.version}")
+    if Set.isEmpty dependencies then
+      logger.LogWarning("No dependencies found.")
 
-    let provider =
-      match options.source with
-      | ValueSome source -> source
-      | ValueNone -> config |> AVal.map _.provider |> AVal.force
-
-    let! map =
-      pkgManager.Install(
-        packages,
-        [
-          match provider with
-          | JsDelivr -> DefaultProvider Provider.JsDelivr
-          | Unpkg -> DefaultProvider Provider.Unpkg
-          | PkgManager.DownloadProvider.JspmIo ->
-            DefaultProvider Provider.JspmIo
-        ],
-        cancellationToken = token
+      logger.LogInformation(
+        "You can add dependencies with 'perla add <package>'."
       )
 
-    let! map = cancellableTask {
-      if options.offline then
-        logger.LogWarning(
-          "Offline mode selected, we'll proceed to download the dependencies as local sources."
+      let useLocalPkgs = config |> AVal.map _.useLocalPkgs |> AVal.force
+      let provider = config |> AVal.map _.provider |> AVal.force
+
+      let changes = ResizeArray()
+
+      if options.offline <> useLocalPkgs then
+        let msg = if options.offline then "Enabling" else "Disabling"
+        logger.LogInformation($"{msg} local packages.")
+
+        if options.offline then
+          logger.LogInformation(
+            "Perla will generate a local node_modules directory and the import map will point at the dependencies there."
+          )
+        else
+          logger.LogInformation(
+            "Perla will use an import map that points to the provider's CDN."
+          )
+
+        changes.Add(PerlaConfig.PerlaWritableField.UseLocalPkgs options.offline)
+
+      if options.source.IsSome && options.source.Value <> provider then
+        logger.LogInformation(
+          $"Changing the provider to {DownloadProvider.asString options.source.Value}."
         )
 
-        return!
-          pkgManager.GoOffline(
-            map.map,
-            [ DownloadOption.Provider provider ],
-            token
+        changes.Add(
+          PerlaConfig.PerlaWritableField.Provider options.source.Value
+        )
+
+      do! container.FsManager.SavePerlaConfig(changes)
+      return 0
+    else
+
+      let packages =
+        dependencies
+        |> Set.map(fun dep -> $"{dep.package}@{UMX.untag dep.version}")
+
+      let provider =
+        match options.source with
+        | ValueSome source -> source
+        | ValueNone -> config |> AVal.map _.provider |> AVal.force
+
+      let! map =
+        pkgManager.Install(
+          packages,
+          [
+            match provider with
+            | JsDelivr -> DefaultProvider Provider.JsDelivr
+            | Unpkg -> DefaultProvider Provider.Unpkg
+            | PkgManager.DownloadProvider.JspmIo ->
+              DefaultProvider Provider.JspmIo
+          ],
+          cancellationToken = token
+        )
+
+      let packageUpdates =
+        // extract the dependencies before we save the offline map
+        map.map.ExtractDependencies()
+        |> Set.map(fun (name, version) ->
+          let dep: PkgDependency = {
+            package = name
+            // dependencies from a GeneratorResponse have embedded versions even if they are not specified
+            version = version.Value |> UMX.tag<Semver>
+          }
+
+          dep)
+        |> PerlaConfig.PerlaWritableField.Dependencies
+
+      let! map = cancellableTask {
+        if options.offline then
+          logger.LogWarning(
+            "Offline mode selected, we'll proceed to download the dependencies as local sources."
           )
-      else
-        logger.LogInformation("Import map generated successfully.")
-        return map.map
-    }
 
-    let configUpdates = [
-      PerlaConfig.PerlaWritableField.UseLocalPkgs options.offline
+          return!
+            pkgManager.GoOffline(
+              map.map,
+              [ DownloadOption.Provider provider ],
+              token
+            )
+        else
+          logger.LogInformation("Import map generated successfully.")
+          return map.map
+      }
 
-      match options.source with
-      | ValueSome source -> PerlaConfig.PerlaWritableField.Provider source
-      | ValueNone -> ()
-      // extract the dependencies before we save the offline map
-      map.ExtractDependencies()
-      |> Set.map(fun (name, version) ->
-        let dep: PkgDependency = {
-          package = name
-          version = version |> UMX.tag<Semver>
-        }
+      let configUpdates = [
+        packageUpdates
+        PerlaConfig.PerlaWritableField.UseLocalPkgs options.offline
+        match options.source with
+        | ValueSome source -> PerlaConfig.PerlaWritableField.Provider source
+        | ValueNone -> ()
+      ]
 
-        dep)
-      |> PerlaConfig.PerlaWritableField.Dependencies
-    ]
+      do! container.FsManager.SaveImportMap(map)
+      do! container.FsManager.SavePerlaConfig(configUpdates)
+      logger.LogInformation("Packages installed successfully.")
 
-    do! container.FsManager.SaveImportMap(map)
-    do! container.FsManager.SavePerlaConfig(configUpdates)
-    logger.LogInformation("Packages installed successfully.")
-
-    return 0
+      return 0
   }
 
   let runListPackages (container: AppContainer) (options: ListPackagesOptions) = cancellableTask {

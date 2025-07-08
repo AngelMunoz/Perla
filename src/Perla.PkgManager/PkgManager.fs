@@ -45,6 +45,12 @@ type PkgManager =
     ?cancellationToken: CancellationToken ->
       Task<ImportMap>
 
+module Result =
+  let toOption result =
+    match result with
+    | Ok value -> Some value
+    | Error _ -> None
+
 module PkgManager =
 
   /// strictly speaking, these are not node modules; however, I think
@@ -102,18 +108,7 @@ module PkgManager =
 
           // Extract the package name without a version for flat structure
           let packageName =
-            if package.StartsWith("@") then
-              // Scoped package: @scope/package@version -> @scope/package
-              let parts = package.Split('@')
-
-              if parts.Length > 2 then
-                "@" + parts[1] + "@" + parts[2]
-              else
-                package
-            else
-              // Regular package: package@version -> package
-              let parts = package.Split('@')
-              if parts.Length > 1 then parts[0] else package
+            ProviderOps.extractPackageNameForFlatStructure package
 
           let flatPkgPath = Path.Combine(localCacheDir.FullName, packageName)
 
@@ -335,9 +330,10 @@ module PkgManager =
       let localPrefix = LOCAL_CACHE_PREFIX
 
       // Helper function to extract the package name from a key
-      let extractPackageName(key: string) =
-        let parts = key.Split('@')
-        if parts.Length > 2 then "@" + parts[1] else parts[0]
+      let extractPackageName(package: string) =
+        match ProviderOps.extractPkgAndVersion package with
+        | Some(packageName, _) -> packageName
+        | None -> package // fallback to original string if parsing fails
 
       // Helper function to find a matching package key
       let findMatchingKey (pkgName: string) (importUrl: string) =
@@ -365,16 +361,7 @@ module PkgManager =
               else
                 // Non-scoped packages point to a flat structure
                 let packageName =
-                  if key.StartsWith("@") then
-                    let parts = key.Split('@')
-
-                    if parts.Length > 2 then
-                      "@" + parts[1] + "@" + parts[2]
-                    else
-                      key
-                  else
-                    let parts = key.Split('@')
-                    if parts.Length > 1 then parts[0] else key
+                  ProviderOps.extractPackageNameForFlatStructure key
 
                 Path.Combine(localPrefix, packageName)
 
@@ -462,35 +449,37 @@ module PkgManager =
   type ImportMap with
     member this.ExtractDependencies() =
       // extract the package name and the version from the import map
-      let imports = this.imports |> Map.values
+      this.imports
+      |> Map.toSeq
+      |> Seq.map(fun (key, value) ->
+        let uri = Uri value
 
-      [
-        for value in imports do
-          let uri = Uri value
-
-          match ProviderOps.extractFromUri uri with
-          | Ok package ->
-            // Parse package@version into (packageName, version)
-            if package.StartsWith("@") then
-              // Scoped package: @scope/package@version -> (@scope/package, version)
-              let parts = package.Split('@')
-
-              if parts.Length > 2 then
-                let packageName = "@" + parts[1]
-                let version = parts[2]
-                (packageName, version)
-              else
-                (package, "")
-            else
-              // Regular package: package@version -> (package, version)
-              let parts = package.Split('@')
-
-              if parts.Length > 1 then
-                let packageName = parts[0]
-                let version = parts[1]
-                (packageName, version)
-              else
-                (package, "")
-          | Error _ -> ()
-      ]
+        match ProviderOps.extractFromUri uri with
+        | Ok package ->
+          ProviderOps.extractPkgAndVersion package
+          |> Option.defaultWith(fun () ->
+            // if we can't extract the package name and version, return the key as is
+            key, None)
+        | Error _ -> key, None)
       |> Set
+
+    member this.FindDependency(packageName: string) =
+      let imports = this.imports |> Map.toSeq
+
+      imports
+      |> Seq.tryPick(fun (key, value) ->
+        let uri = Uri value
+
+        ProviderOps.extractFromUri uri
+        |> Result.toOption
+        |> Option.bind(fun package -> ProviderOps.extractPkgAndVersion package)
+        |> Option.orElseWith(fun () ->
+          if
+            key.Equals(
+              packageName,
+              StringComparison.InvariantCultureIgnoreCase
+            )
+          then
+            Some(key, None)
+          else
+            None))

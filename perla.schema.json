@@ -12,6 +12,11 @@
       "type": "string",
       "enum": ["jspm", "unpkg", "jsdelivr"]
     },
+    "useLocalPkgs": {
+      "description": "Whether to use local packages or not, if set to true, perla will use the local packages in the node_modules directory",
+      "type": "boolean",
+      "default": false
+    },
     "plugins": {
       "description": "The list of plugins to use by perla, if the list is not specified, the default esbuild plugin will be used",
       "type": "array",
