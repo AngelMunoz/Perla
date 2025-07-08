@@ -40,6 +40,9 @@ val TemplatesDatabase: string = "templates.db"
 val TemplatesDirectory: string = "templates"
 
 [<Literal>]
+val OfflineTemplatesDirectory: string = "offline-templates"
+
+[<Literal>]
 val ImportMapName: string = "perla.json.importmap"
 
 [<Literal>]

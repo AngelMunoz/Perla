@@ -24,6 +24,7 @@ type PerlaDirectories =
   abstract PerlaArtifactsRoot: string<SystemPath> with get
   abstract Database: string<SystemPath> with get
   abstract Templates: string<SystemPath> with get
+  abstract OfflineTemplates: string<SystemPath> with get
   abstract PerlaConfigPath: string<SystemPath> with get
   abstract CurrentWorkingDirectory: string<SystemPath> with get
   abstract SetCwdToProject: ?fromPath: string<SystemPath> -> unit
@@ -42,6 +43,9 @@ type PerlaFsManager =
   abstract ResolveImportMap: Perla.PkgManager.ImportMap aval
 
   abstract ResolveTsConfig: string option aval
+
+  abstract ResolveOfflineTemplatesConfig:
+    unit -> CancellableTask<DecodedTemplateConfiguration>
 
   abstract ResolveDescriptionsFile: unit -> CancellableTask<Map<string, string>>
 

@@ -43,6 +43,9 @@ let TemplatesDatabase = "templates.db"
 let TemplatesDirectory = "templates"
 
 [<Literal>]
+let OfflineTemplatesDirectory = "offline-templates"
+
+[<Literal>]
 let ImportMapName = "perla.json.importmap"
 
 [<Literal>]

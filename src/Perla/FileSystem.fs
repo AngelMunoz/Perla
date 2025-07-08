@@ -29,6 +29,7 @@ open Spectre.Console
 open Perla
 open Perla.Units
 open Perla.Json
+open Perla.Json.TemplateDecoders
 
 [<RequireQualifiedAccess>]
 type PerlaFileChange =
@@ -48,6 +49,7 @@ type PerlaDirectories =
   abstract PerlaArtifactsRoot: string<SystemPath> with get
   abstract Database: string<SystemPath> with get
   abstract Templates: string<SystemPath> with get
+  abstract OfflineTemplates: string<SystemPath> with get
   abstract PerlaConfigPath: string<SystemPath> with get
   abstract CurrentWorkingDirectory: string<SystemPath> with get
   abstract SetCwdToProject: ?fromPath: string<SystemPath> -> unit
@@ -66,6 +68,9 @@ type PerlaFsManager =
   abstract ResolveImportMap: PkgManager.ImportMap aval
 
   abstract ResolveTsConfig: string option aval
+
+  abstract ResolveOfflineTemplatesConfig:
+    unit -> CancellableTask<DecodedTemplateConfiguration>
 
   abstract ResolveDescriptionsFile: unit -> CancellableTask<Map<string, string>>
 
@@ -140,10 +145,13 @@ module FileSystem =
           |> UMX.tag<SystemPath>
 
         member this.Database =
-          $"{this.PerlaArtifactsRoot}" / Constants.TemplatesDatabase |> UMX.tag
+          this.PerlaArtifactsRoot |/ Constants.TemplatesDatabase
 
         member this.Templates =
-          $"{this.PerlaArtifactsRoot}" / Constants.TemplatesDirectory |> UMX.tag
+          this.PerlaArtifactsRoot |/ Constants.TemplatesDirectory
+
+        member this.OfflineTemplates =
+          this.PerlaArtifactsRoot |/ Constants.OfflineTemplatesDirectory
 
         member this.PerlaConfigPath =
           let cwd = DirectoryInfo(UMX.untag this.CurrentWorkingDirectory)
@@ -276,6 +284,30 @@ module FileSystem =
           with _ ->
             return Map.empty<string, string>
         }
+
+        member _.ResolveOfflineTemplatesConfig() = cancellableTask {
+          let! token = CancellableTask.getCancellationToken()
+          let path = UMX.untag dirs.OfflineTemplates / "perla.config.json"
+          let! content = File.ReadAllTextAsync(path, token)
+
+          let decoded =
+            Thoth.Json.Net.Decode.fromString
+              TemplateDecoders.TemplateConfigurationDecoder
+              content
+
+          match decoded with
+          | Ok config -> return config
+          | Error error ->
+            logger.LogWarning(
+              "Failed to decode offline templates configuration: {error}",
+              error
+            )
+            // This should not happen at all.
+            return
+              failwith
+                $"Failed to decode offline templates configuration: {error}"
+        }
+
 
         member _.ResolvePluginPaths() =
           let path = dirs.CurrentWorkingDirectory |/ ".perla" / "plugins"
