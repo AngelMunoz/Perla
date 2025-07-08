@@ -281,8 +281,19 @@ module PkgManager =
       let! token = CancellableTask.getCancellationToken()
       let { reqHandler = reqHandler } = dependencies
 
+      // Resolve each package name to the actual key in the import map (case-insensitive, exact)
+      let resolvedPackages =
+        packages
+        |> Seq.choose(fun pkg ->
+          map.imports
+          |> Map.tryFindKey(fun key _ ->
+            key.Equals(pkg, StringComparison.InvariantCultureIgnoreCase))
+          |> Option.defaultValue pkg // fallback to original if not found
+          |> Some)
+        |> Set.ofSeq
+
       let finalOptions = GeneratorOption.toDict options
-      finalOptions.Add("update", packages)
+      finalOptions.Add("update", resolvedPackages)
       finalOptions["inputMap"] <- map
 
       return! reqHandler.Update(finalOptions, cancellationToken = token)
@@ -298,14 +309,40 @@ module PkgManager =
       let! token = CancellableTask.getCancellationToken()
       let { reqHandler = reqHandler } = dependencies
 
+      // Resolve each package name to the actual key in the import map (case-insensitive, exact)
+      let resolvedPackages =
+        packages
+        |> Seq.choose(fun pkg ->
+          map.imports
+          |> Map.tryFindKey(fun key _ ->
+            key.Equals(pkg, StringComparison.InvariantCultureIgnoreCase))
+          |> Option.defaultValue pkg // fallback to original if not found
+          |> Some)
+        |> Set.ofSeq
+
       let finalOptions = GeneratorOption.toDict options
-      finalOptions.Add("uninstall", packages)
+      finalOptions.Add("uninstall", resolvedPackages)
       finalOptions["inputMap"] <- map
 
       return! reqHandler.Uninstall(finalOptions, cancellationToken = token)
     }
 
-  /// Generates a map that can be persisted to disk for offline use
+  let isValidTopLevelPackageKey(key: string) =
+    if key.StartsWith("@") then
+      // Scoped: valid if no '/' after '@scope/pkg' or '@scope/pkg@version'
+      // e.g. '@babel/core', '@babel/core@1.2.3' are valid
+      // '@babel/core/deep', '@babel/core@1.2.3/deep' are not
+      let parts = key.Split('/')
+
+      if parts.Length = 2 then
+        // '@scope/pkg' or '@scope/pkg@version'
+        true
+      else
+        false
+    else
+      // Unscoped: valid if no '/' at all
+      not(key.Contains "/")
+
   let goOffline
     (dependencies: PkgManagerServiceArgs)
     (options: DownloadOption seq)
@@ -314,15 +351,28 @@ module PkgManager =
     cancellableTask {
       let { logger = logger } = dependencies
 
+      // Filter out deep imports (not valid top-level package keys)
+      let filteredImports =
+        map.imports |> Map.filter(fun k _ -> isValidTopLevelPackageKey k)
+
+      let filteredScopes =
+        map.scopes
+        |> Map.map(fun scope scopeMap ->
+          scopeMap |> Map.filter(fun k _ -> isValidTopLevelPackageKey k))
+
       let allScopedImports =
-        map.scopes |> Map.values |> Seq.collect Map.toSeq |> Map.ofSeq
+        filteredScopes |> Map.values |> Seq.collect Map.toSeq |> Map.ofSeq
 
       let combinedImports =
-        map.imports
+        filteredImports
         |> Map.fold (fun state k v -> state |> Map.add k v) allScopedImports
 
       let! pkgs =
-        download dependencies options { map with imports = combinedImports }
+        download dependencies options {
+          map with
+              imports = combinedImports
+              scopes = filteredScopes
+        }
 
       // Cache the downloaded packages
       do! cacheResponse dependencies pkgs
@@ -448,18 +498,18 @@ module PkgManager =
 
   type ImportMap with
     member this.ExtractDependencies() =
-      // extract the package name and the version from the import map
+      // extract the package name and version from the import map, do not transform the key
       this.imports
       |> Map.toSeq
       |> Seq.map(fun (key, value) ->
         let uri = Uri value
 
         match ProviderOps.extractFromUri uri with
-        | Ok package ->
-          ProviderOps.extractPkgAndVersion package
-          |> Option.defaultWith(fun () ->
-            // if we can't extract the package name and version, return the key as is
-            key, None)
+        | Ok packageWithVersion ->
+          match ProviderOps.extractPkgAndVersion packageWithVersion with
+          | Some(_, Some version) -> key, Some version
+          | Some(_, None) -> key, None
+          | None -> key, None
         | Error _ -> key, None)
       |> Set
 
@@ -468,18 +518,16 @@ module PkgManager =
 
       imports
       |> Seq.tryPick(fun (key, value) ->
-        let uri = Uri value
+        if
+          key.Equals(packageName, StringComparison.InvariantCultureIgnoreCase)
+        then
+          let uri = Uri value
 
-        ProviderOps.extractFromUri uri
-        |> Result.toOption
-        |> Option.bind(fun package -> ProviderOps.extractPkgAndVersion package)
-        |> Option.orElseWith(fun () ->
-          if
-            key.Equals(
-              packageName,
-              StringComparison.InvariantCultureIgnoreCase
-            )
-          then
-            Some(key, None)
-          else
-            None))
+          match ProviderOps.extractFromUri uri with
+          | Ok packageWithVersion ->
+            match ProviderOps.extractPkgAndVersion packageWithVersion with
+            | Some(_, Some version) -> Some(key, Some version)
+            | _ -> None
+          | Error _ -> None
+        else
+          None)

@@ -74,10 +74,62 @@ type FakeJspmService
       Task.FromResult(defaultArg installResponse defaultInstallResponse)
 
     member _.Update(options, ?cancellationToken) =
-      Task.FromResult(defaultArg updateResponse defaultUpdateResponse)
+      // Simulate adding/updating packages in the import map
+      let inputMap =
+        match options.TryGetValue("inputMap") with
+        | true, (:? ImportMap as m) -> m
+        | _ -> defaultUpdateResponse.map
+
+      let updateSet =
+        match options.TryGetValue("update") with
+        | true, (:? Set<string> as s) -> s
+        | _ -> Set.empty
+
+      let updatedImports =
+        updateSet
+        |> Seq.fold
+          (fun acc pkg ->
+            acc |> Map.add pkg ($"https://ga.jspm.io/npm:{pkg}/index.js"))
+          inputMap.imports
+
+      let newMap = {
+        inputMap with
+            imports = updatedImports
+      }
+
+      let resp = {
+        defaultUpdateResponse with
+            map = newMap
+      }
+
+      Task.FromResult(defaultArg updateResponse resp)
 
     member _.Uninstall(options, ?cancellationToken) =
-      Task.FromResult(defaultArg uninstallResponse defaultUninstallResponse)
+      // Simulate removing packages from the import map
+      let inputMap =
+        match options.TryGetValue("inputMap") with
+        | true, (:? ImportMap as m) -> m
+        | _ -> defaultUninstallResponse.map
+
+      let uninstallSet =
+        match options.TryGetValue("uninstall") with
+        | true, (:? Set<string> as s) -> s
+        | _ -> Set.empty
+
+      let updatedImports =
+        inputMap.imports |> Map.filter(fun k _ -> not(uninstallSet.Contains k))
+
+      let newMap = {
+        inputMap with
+            imports = updatedImports
+      }
+
+      let resp = {
+        defaultUninstallResponse with
+            map = newMap
+      }
+
+      Task.FromResult(defaultArg uninstallResponse resp)
 
     member _.Download(packages, options, ?cancellationToken) =
       Task.FromResult(defaultArg downloadResponse defaultDownloadResponse)
@@ -267,19 +319,19 @@ module ImportMapTests =
     Assert.True(reactResult.IsSome)
     let (name, version) = reactResult.Value
     Assert.Equal("react", name)
-    Assert.Equal("18.2.0", version)
+    Assert.Equal("18.2.0", version.Value)
 
     let reactDomResult = importMap.FindDependency("react-dom")
     Assert.True(reactDomResult.IsSome)
     let (name2, version2) = reactDomResult.Value
     Assert.Equal("react-dom", name2)
-    Assert.Equal("18.2.0", version2)
+    Assert.Equal("18.2.0", version2.Value)
 
     let babelResult = importMap.FindDependency("@babel/core")
     Assert.True(babelResult.IsSome)
     let (name3, version3) = babelResult.Value
     Assert.Equal("@babel/core", name3)
-    Assert.Equal("7.20.0", version3)
+    Assert.Equal("7.20.0", version3.Value)
 
   [<Fact>]
   let ``FindDependency should return None for partial matches``() =
@@ -320,14 +372,14 @@ module ImportMapTests =
     let reactResult = importMap.FindDependency("react")
     Assert.True(reactResult.IsSome)
     let (name, version) = reactResult.Value
-    Assert.Equal("react", name) // Should return the extracted name, not the search term
-    Assert.Equal("18.2.0", version)
+    Assert.Equal("React", name) // Should return the original key
+    Assert.Equal("18.2.0", version.Value)
 
     let lodashResult = importMap.FindDependency("lodash")
     Assert.True(lodashResult.IsSome)
     let (name2, version2) = lodashResult.Value
-    Assert.Equal("lodash", name2)
-    Assert.Equal("4.17.21", version2)
+    Assert.Equal("LODASH", name2)
+    Assert.Equal("4.17.21", version2.Value)
 
   [<Fact>]
   let ``FindDependency should return None for packages without version``() =
@@ -350,7 +402,7 @@ module ImportMapTests =
     Assert.True(lodashResult.IsSome) // Should find this one with version
     let (name, version) = lodashResult.Value
     Assert.Equal("lodash", name)
-    Assert.Equal("4.17.21", version)
+    Assert.Equal("4.17.21", version.Value)
 
   [<Fact>]
   let ``FindDependency should handle empty ImportMap``() =
@@ -364,3 +416,115 @@ module ImportMapTests =
     // Act & Assert
     Assert.True(importMap.FindDependency("react").IsNone)
     Assert.True(importMap.FindDependency("").IsNone)
+
+  [<Fact>]
+  let ``ExtractDependencies should handle deep imports and return correct format``
+    ()
+    =
+    // Arrange
+    let importMap: ImportMap = {
+      imports =
+        Map.ofList [
+          ("solid-js", "https://ga.jspm.io/npm:solid-js@1.9.7/dist/dev.js")
+          ("solid-js/web",
+           "https://ga.jspm.io/npm:solid-js@1.9.7/web/dist/dev.js")
+          ("solid-js/html",
+           "https://ga.jspm.io/npm:solid-js@1.9.7/html/dist/html.js")
+        ]
+      scopes = Map.empty
+      integrity = Map.empty
+    }
+    // Act
+    let deps = importMap.ExtractDependencies()
+    // Assert
+    Assert.Contains(("solid-js", Some "1.9.7"), deps)
+    Assert.Contains(("solid-js/web", Some "1.9.7"), deps)
+    Assert.Contains(("solid-js/html", Some "1.9.7"), deps)
+
+  [<Fact>]
+  let ``uninstall should handle deep imports in ImportMap``() = taskUnit {
+    // Arrange
+    let importMap: ImportMap = {
+      imports =
+        Map.ofList [
+          ("solid-js", "https://ga.jspm.io/npm:solid-js@1.9.7/dist/dev.js")
+          ("solid-js/web",
+           "https://ga.jspm.io/npm:solid-js@1.9.7/web/dist/dev.js")
+        ]
+      scopes = Map.empty
+      integrity = Map.empty
+    }
+
+    let packages = [ "solid-js/web" ]
+    let service = createImportMapService(None)
+    // Act
+    let! result = service.Uninstall(importMap, packages)
+    // Assert
+    Assert.True(result.map.imports.ContainsKey("solid-js"))
+    Assert.False(result.map.imports.ContainsKey("solid-js/web"))
+  }
+
+  [<Fact>]
+  let ``update should handle deep imports in ImportMap``() = taskUnit {
+    // Arrange
+    let importMap: ImportMap = {
+      imports =
+        Map.ofList [
+          ("solid-js", "https://ga.jspm.io/npm:solid-js@1.9.7/dist/dev.js")
+          ("solid-js/web",
+           "https://ga.jspm.io/npm:solid-js@1.9.7/web/dist/dev.js")
+        ]
+      scopes = Map.empty
+      integrity = Map.empty
+    }
+
+    let packages = [ "solid-js/web" ]
+    let service = createImportMapService(None)
+    // Act
+    let! result = service.Update(importMap, packages)
+    // Assert
+    Assert.True(result.map.imports.ContainsKey("solid-js"))
+    Assert.True(result.map.imports.ContainsKey("solid-js/web"))
+  }
+
+  [<Fact>]
+  let ``ExtractDependencies should not transform package names``() =
+    // Arrange
+    let importMap: ImportMap = {
+      imports =
+        Map.ofList [
+          ("solid-js", "https://ga.jspm.io/npm:solid-js@1.9.7/dist/dev.js")
+          ("solid-js/web",
+           "https://ga.jspm.io/npm:solid-js@1.9.7/web/dist/dev.js")
+        ]
+      scopes = Map.empty
+      integrity = Map.empty
+    }
+    // Act
+    let deps = importMap.ExtractDependencies()
+    // Assert
+    Assert.Contains(("solid-js", Some "1.9.7"), deps)
+    Assert.Contains(("solid-js/web", Some "1.9.7"), deps)
+
+  [<Fact>]
+  let ``FindDependency should not transform package names and support deep imports``
+    ()
+    =
+    // Arrange
+    let importMap: ImportMap = {
+      imports =
+        Map.ofList [
+          ("solid-js", "https://ga.jspm.io/npm:solid-js@1.9.7/dist/dev.js")
+          ("solid-js/web",
+           "https://ga.jspm.io/npm:solid-js@1.9.7/web/dist/dev.js")
+        ]
+      scopes = Map.empty
+      integrity = Map.empty
+    }
+    // Act
+    let result = importMap.FindDependency("solid-js/web")
+    // Assert
+    Assert.True(result.IsSome)
+    let (name, version) = result.Value
+    Assert.Equal("solid-js/web", name)
+    Assert.Equal("1.9.7", version.Value)

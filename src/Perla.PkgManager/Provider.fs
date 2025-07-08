@@ -214,3 +214,19 @@ module ProviderOps =
     map
     |> Map.tryFindKey(fun key _ ->
       key.Equals(packageName, StringComparison.InvariantCultureIgnoreCase))
+
+  /// Given a key (e.g., solid-js/web) and a packageWithVersion (e.g., solid-js@1.9.7),
+  /// returns solid-js@1.9.7/web if key is a deep import, otherwise returns packageWithVersion
+  let combineDeepImport (key: string) (packageWithVersion: string) : string =
+    if key.Contains("/") then
+      let idx = key.IndexOf("/")
+      let deepPath = key.Substring(idx)
+      // Remove any deep path from packageWithVersion if present
+      let basePkg =
+        match packageWithVersion.IndexOf("/") with
+        | i when i > 0 -> packageWithVersion.Substring(0, i)
+        | _ -> packageWithVersion
+
+      basePkg + deepPath
+    else
+      packageWithVersion
