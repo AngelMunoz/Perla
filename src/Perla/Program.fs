@@ -52,16 +52,17 @@ let main argv =
     noActionAsync
 
     addCommands [
-      Commands.Setup
-      Commands.Template
-      Commands.Describe
-      Commands.Build
-      Commands.Serve
-      Commands.Test
-      Commands.AddPackage
-      Commands.RemovePackage
-      Commands.ListPackages
-      Commands.NewProject
+      Commands.Setup appContainer
+      Commands.Template appContainer
+      Commands.Describe appContainer
+      Commands.Build appContainer
+      Commands.Serve appContainer
+      Commands.Test appContainer
+      Commands.AddPackage appContainer
+      Commands.RemovePackage appContainer
+      Commands.ListPackages appContainer
+      Commands.Install appContainer
+      Commands.NewProject appContainer
     ]
 
     helpActionAsync

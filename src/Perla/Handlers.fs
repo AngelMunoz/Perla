@@ -81,6 +81,7 @@ type RunTemplateOperation =
 type TemplateRepositoryOptions = {
   fullRepositoryName: string option
   operation: RunTemplateOperation
+  skipPrompts: bool
 }
 
 type ProjectOptions = {

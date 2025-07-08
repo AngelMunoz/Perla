@@ -2,7 +2,9 @@
 
 open IcedTasks
 open FsToolkit.ErrorHandling
+open Perla
 open Perla.Types
+open Perla.Extensibility
 
 
 [<Struct; RequireQualifiedAccess>]
@@ -36,7 +38,7 @@ type ListPackagesOptions = { format: ListFormat }
 
 type InstallOptions = {
   offline: bool
-  source: Perla.PkgManager.DownloadProvider voption
+  source: PkgManager.DownloadProvider voption
 }
 
 [<RequireQualifiedAccess; Struct>]
@@ -49,6 +51,7 @@ type RunTemplateOperation =
 type TemplateRepositoryOptions = {
   fullRepositoryName: string option
   operation: RunTemplateOperation
+  skipPrompts: bool
 }
 
 type ProjectOptions = {
@@ -73,22 +76,40 @@ module Handlers =
 
   val runSetup: options: SetupOptions -> CancellableTask<int>
 
-  val runNew: options: ProjectOptions -> CancellableTask<int>
+  val runNew:
+    container: AppContainer -> options: ProjectOptions -> CancellableTask<int>
 
-  val runTemplate: options: TemplateRepositoryOptions -> CancellableTask<int>
+  val runTemplate:
+    container: AppContainer ->
+    options: TemplateRepositoryOptions ->
+      CancellableTask<int>
 
-  val runBuild: options: BuildOptions -> CancellableTask<int>
+  val runBuild:
+    container: AppContainer -> options: BuildOptions -> CancellableTask<int>
 
-  val runServe: options: ServeOptions -> CancellableTask<int>
+  val runServe:
+    container: AppContainer -> options: ServeOptions -> CancellableTask<int>
 
-  val runTesting: options: TestingOptions -> CancellableTask<int>
+  val runTesting:
+    container: AppContainer -> options: TestingOptions -> CancellableTask<int>
 
-  val runInstall: options: InstallOptions -> CancellableTask<int>
+  val runInstall:
+    container: AppContainer -> options: InstallOptions -> CancellableTask<int>
 
-  val runAddPackage: options: AddPackageOptions -> CancellableTask<int>
+  val runAddPackage:
+    container: AppContainer ->
+    options: AddPackageOptions ->
+      CancellableTask<int>
 
-  val runRemovePackage: options: RemovePackageOptions -> CancellableTask<int>
+  val runRemovePackage:
+    container: AppContainer ->
+    options: RemovePackageOptions ->
+      CancellableTask<int>
 
-  val runListPackages: options: ListPackagesOptions -> CancellableTask<int>
+  val runListPackages:
+    container: AppContainer ->
+    options: ListPackagesOptions ->
+      CancellableTask<int>
 
-  val runDescribePerla: options: DescribeOptions -> CancellableTask<int>
+  val runDescribePerla:
+    container: AppContainer -> options: DescribeOptions -> CancellableTask<int>

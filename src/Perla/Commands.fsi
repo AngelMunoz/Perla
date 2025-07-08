@@ -2,8 +2,8 @@
 
 open System.CommandLine
 open FSharp.SystemCommandLine
-open FSharp.SystemCommandLine.Input
 
+open Perla
 open Perla.Handlers
 open Perla.Types
 
@@ -74,13 +74,14 @@ module ServeInputs =
 
 [<RequireQualifiedAccess>]
 module Commands =
-  val Build: Command
-  val Serve: Command
-  val Setup: Command
-  val RemovePackage: Command
-  val AddPackage: Command
-  val ListPackages: Command
-  val Template: Command
-  val NewProject: Command
-  val Test: Command
-  val Describe: Command
+  val Build: container: AppContainer -> Command
+  val Serve: container: AppContainer -> Command
+  val Setup: container: AppContainer -> Command
+  val RemovePackage: container: AppContainer -> Command
+  val Install: container: AppContainer -> Command
+  val AddPackage: container: AppContainer -> Command
+  val ListPackages: container: AppContainer -> Command
+  val Template: container: AppContainer -> Command
+  val NewProject: container: AppContainer -> Command
+  val Test: container: AppContainer -> Command
+  val Describe: container: AppContainer -> Command

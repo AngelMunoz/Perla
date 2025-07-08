@@ -7,6 +7,7 @@ open System.CommandLine.Invocation
 open System.CommandLine.Parsing
 
 open Perla
+open Perla.Extensibility
 open Perla.Types
 open Perla.Handlers
 
@@ -196,6 +197,12 @@ module ProjectInputs =
     |> alias "-t"
     |> description "shortname of the template, e.g. ff"
 
+  let skipPrompts: ActionInput<bool> =
+    option "--skip"
+    |> aliases [ "-s"; "-y" ]
+    |> description "Skip interactive prompts and use defaults"
+    |> defaultValue false
+
 [<RequireQualifiedAccess>]
 module BuildInputs =
   let preview: ActionInput<bool option> =
@@ -259,7 +266,7 @@ module ServeInputs =
 [<RequireQualifiedAccess>]
 module Commands =
 
-  let Build =
+  let Build(container: AppContainer) =
 
     let handleCommand(context: ActionContext, enablePreview: bool option) =
 
@@ -267,7 +274,7 @@ module Commands =
         enablePreview = defaultArg enablePreview false
       }
 
-      Handlers.runBuild options context.CancellationToken
+      Handlers.runBuild container options context.CancellationToken
 
     command "build" {
       description "Builds the SPA application for distribution"
@@ -278,7 +285,7 @@ module Commands =
       setAction handleCommand
     }
 
-  let Serve =
+  let Serve(container: AppContainer) =
     let handleCommand
       (
         context: ActionContext,
@@ -287,7 +294,7 @@ module Commands =
         ssl: bool option
       ) =
       let options = { port = port; host = host; ssl = ssl }
-      Handlers.runServe options (context.CancellationToken)
+      Handlers.runServe container options (context.CancellationToken)
 
     let desc =
       "Starts the development server and if fable projects are present it also takes care of it."
@@ -301,7 +308,7 @@ module Commands =
       setAction handleCommand
     }
 
-  let Setup =
+  let Setup(container: AppContainer) =
     let handleCommand
       (
         ctx: ActionContext,
@@ -328,13 +335,13 @@ module Commands =
       setAction handleCommand
     }
 
-  let RemovePackage =
+  let RemovePackage(container: AppContainer) =
 
     let handleCommand
       (ctx: ActionContext, package: string, alias: string option)
       =
       let options = { package = package }
-      Handlers.runRemovePackage options ctx.CancellationToken
+      Handlers.runRemovePackage container options ctx.CancellationToken
 
     command "remove" {
       description "Removes a package from the project dependencies"
@@ -343,7 +350,7 @@ module Commands =
       setAction handleCommand
     }
 
-  let Install =
+  let Install(container: AppContainer) =
     let handleCommand
       (
         ctx: ActionContext,
@@ -355,7 +362,7 @@ module Commands =
         source = source
       }
 
-      Handlers.runInstall options ctx.CancellationToken
+      Handlers.runInstall container options ctx.CancellationToken
 
     command "install" {
       description "Installs the project dependencies from the perla.json file"
@@ -364,14 +371,14 @@ module Commands =
       setAction handleCommand
     }
 
-  let AddPackage =
+  let AddPackage(container: AppContainer) =
 
     let handleCommand
       (ctx: ActionContext, package: string, version: string option)
       =
       let options = { package = package; version = version }
 
-      Handlers.runAddPackage options ctx.CancellationToken
+      Handlers.runAddPackage container options ctx.CancellationToken
 
     command "add" {
       description "Adds a package to the project dependencies"
@@ -383,7 +390,7 @@ module Commands =
       setAction handleCommand
     }
 
-  let ListPackages =
+  let ListPackages(container: AppContainer) =
 
     let handleCommand(ctx: ActionContext, asNpm: bool option) =
       let args = {
@@ -397,7 +404,7 @@ module Commands =
           |> Option.defaultValue ListFormat.HumanReadable
       }
 
-      Handlers.runListPackages args ctx.CancellationToken
+      Handlers.runListPackages container args ctx.CancellationToken
 
     command "list" {
       addAlias "ls"
@@ -409,7 +416,7 @@ module Commands =
       setAction handleCommand
     }
 
-  let Template =
+  let Template(container: AppContainer) =
 
     let handleCommand
       (
@@ -452,9 +459,10 @@ module Commands =
       let options = {
         fullRepositoryName = name
         operation = operation
+        skipPrompts = true
       }
 
-      Handlers.runTemplate options ctx.CancellationToken
+      Handlers.runTemplate container options ctx.CancellationToken
 
     let template = command "templates" {
       addAlias "t"
@@ -476,14 +484,15 @@ module Commands =
 
     template
 
-  let NewProject =
+  let NewProject(container: AppContainer) =
 
     let handleCommand
       (
         ctx: ActionContext,
         name: string,
         byId: string option,
-        byShortName: string option
+        byShortName: string option,
+        skipPropmpts: bool
       ) =
       let options = {
         projectName = name
@@ -491,7 +500,7 @@ module Commands =
         byShortName = byShortName
       }
 
-      Handlers.runNew options ctx.CancellationToken
+      Handlers.runNew container options ctx.CancellationToken
 
     command "new" {
       addAliases [ "n"; "create"; "generate" ]
@@ -503,13 +512,14 @@ module Commands =
         Input.context,
         ProjectInputs.projectName,
         ProjectInputs.byId,
-        ProjectInputs.byShortName
+        ProjectInputs.byShortName,
+        ProjectInputs.skipPrompts
       )
 
       setAction handleCommand
     }
 
-  let Test =
+  let Test(container: AppContainer) =
 
     let handleCommand
       (
@@ -534,7 +544,7 @@ module Commands =
           |> Option.flatten
       }
 
-      Handlers.runTesting options ctx.CancellationToken
+      Handlers.runTesting container options ctx.CancellationToken
 
     let cmd = command "test" {
       description "Runs client side tests in a headless browser"
@@ -555,7 +565,7 @@ module Commands =
     cmd.Hidden <- true
     cmd
 
-  let Describe =
+  let Describe(container: AppContainer) =
 
     let handleCommand(ctx: ActionContext, properties: string[], current: bool) =
       let args = {
@@ -563,7 +573,7 @@ module Commands =
         current = current
       }
 
-      Handlers.runDescribePerla args ctx.CancellationToken
+      Handlers.runDescribePerla container args ctx.CancellationToken
 
     command "describe" {
       addAlias "ds"
