@@ -22,10 +22,8 @@
     <File Path="tools.fsx" />
   </Folder>
   <Folder Name="/src/">
-    <Project Path="src/Flan/Flan.vbproj" />
     <Project Path="src/Perla.PkgManager/Perla.PkgManager.fsproj" />
     <Project Path="src/Perla.Logger/Perla.Logger.fsproj" />
-    <Project Path="src/Perla.PackageManager/Perla.PackageManager.fsproj" />
     <Project Path="src/Perla.Plugins/Perla.Plugins.fsproj" />
     <Project Path="src/Perla/Perla.fsproj" />
   </Folder>

@@ -96,12 +96,9 @@
     <PackageReference Include="AngleSharp" />
     <PackageReference Include="CliWrap" />
     <PackageReference Include="FsHttp" />
-    <PackageReference Include="SharpZipLib" />
     <PackageReference Include="LiteDB" />
     <PackageReference Include="Scriban" />
-    <PackageReference Include="Zio" />
     <PackageReference Include="Yarp.ReverseProxy" />
-    <PackageReference Include="Hellang.Middleware.SpaFallback" />
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Microsoft.Playwright" />
   </ItemGroup>

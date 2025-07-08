@@ -11,9 +11,6 @@ open AngleSharp.Html.Parser
 open Microsoft.Playwright
 open Spectre.Console
 
-open Zio.FileSystems
-open Zio
-
 open FSharp.Control
 open FSharp.Control.Reactive
 
@@ -35,7 +32,7 @@ open Perla.Extensibility
 open Perla.Fable
 open Perla.Json
 open Perla.Scaffolding
-open Perla.Configuration.Types
+open Perla.Configuration
 open Perla.Configuration
 
 open Perla.Plugins
