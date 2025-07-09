@@ -111,271 +111,355 @@ type PathOperation =
 type PathsOptions = { operation: PathOperation }
 
 [<RequireQualifiedAccess>]
+module RunNew =
+  let findTemplateItemByNameOrId
+    (id: string option, name: string option)
+    (tplList: TemplateItem seq)
+    =
+    tplList
+    |> Seq.tryPick(fun tpl ->
+      let byId =
+        id
+        |> Option.bind(fun id ->
+          if $"{tpl.Group}.{tpl.Id}" = id then Some tpl else None)
+
+      let byShortName =
+        name
+        |> Option.bind(fun shortName ->
+          if tpl.ShortName = shortName then Some tpl else None)
+
+      byId |> Option.orElse byShortName)
+
+  let findDecodedTemplateByNameOrId
+    (id: string option, name: string option)
+    (tplList: TemplateDecoders.DecodedTemplateConfigItem seq)
+    =
+    tplList
+    |> Seq.tryPick(fun tpl ->
+      let byId =
+        id |> Option.bind(fun id -> if tpl.id = id then Some tpl else None)
+
+      let byShortName =
+        name
+        |> Option.bind(fun shortName ->
+          if tpl.shortName = shortName then Some tpl else None)
+
+      byId |> Option.orElse byShortName)
+
+  let private copyFiles
+    (sourcePath: DirectoryInfo)
+    (targetPath: string<SystemPath>)
+    =
+    let progress = AnsiConsole.Progress()
+    let files = sourcePath.GetFiles("*", SearchOption.AllDirectories)
+
+    progress.Start(fun ctx ->
+      let tsk =
+        ctx.AddTask("Creating project...", true, maxValue = files.Length)
+
+      files
+      |> Array.Parallel.iter(fun file ->
+        let targetPath =
+          file.FullName.Replace(sourcePath.FullName, UMX.untag targetPath)
+
+        file.Directory.Create()
+        File.Copy(file.FullName, UMX.untag targetPath, true)
+        tsk.Increment 1)
+
+      tsk.StopTask())
+
+  let writeFoundTemplate(tpl: TemplateItem, targetPath: string<SystemPath>) =
+    let tplPath = DirectoryInfo(UMX.untag tpl.FullPath)
+    copyFiles tplPath targetPath
+
+  let writeFoundDecodedTemplate
+    (directories: PerlaDirectories)
+    (
+      config: TemplateDecoders.DecodedTemplateConfiguration,
+      tpl: TemplateDecoders.DecodedTemplateConfigItem,
+      targetPath: string<SystemPath>
+    ) =
+    let tplPath =
+      Path.Combine(UMX.untag directories.OfflineTemplates, UMX.untag tpl.path)
+      |> DirectoryInfo
+
+    copyFiles tplPath targetPath
+
+  let logProjectCreationSuccess (logger: ILogger) (targetPath: DirectoryInfo) =
+    logger.LogInformation(
+      "Project created successfully at {path}",
+      targetPath.FullName
+    )
+
+    logger.LogInformation(
+      "cd {path} and run 'perla serve' to start the development server.",
+      targetPath.FullName
+    )
+
+  let getTargetPath (directories: PerlaDirectories) (projectName: string) =
+    Path.Combine(UMX.untag directories.CurrentWorkingDirectory, projectName)
+    |> DirectoryInfo
+
+  let handleTemplateNotFound(logger: ILogger) =
+    logger.LogWarning(
+      "No templates found in the offline templates, please add a template to the perla database or the offline templates."
+    )
+
+    logger.LogInformation(
+      "You can add templates with 'perla template add <repository>' or 'perla template add <repository>:<branch>'."
+    )
+
+  let handleTemplateNotFoundById(logger: ILogger) =
+    logger.LogWarning(
+      "No templates found with the provided id or short name, please try again."
+    )
+
+  type TemplateChoice<'T> =
+    | FoundById of 'T
+    | PromptUser of 'T seq
+
+  let resolveTemplateChoice
+    (byId: string option)
+    (byShortName: string option)
+    (templates: 'T seq)
+    (finder: string option * string option -> 'T seq -> 'T option)
+    =
+    if byId.IsSome || byShortName.IsSome then
+      match finder (byId, byShortName) templates with
+      | Some found -> FoundById found
+      | None -> PromptUser Seq.empty
+    else
+      PromptUser templates
+
+[<RequireQualifiedAccess>]
 module Handlers =
 
-  module Templates =
-  let runNew (container: AppContainer) (options: ProjectOptions) =
-    let findTemplateItemByNameOrId (id: string option, name: string option) (tplList: TemplateItem list) =
-      tplList
-      |> List.tryPick(fun tpl ->
-        let byId =
-          id
-          |> Option.bind(fun id ->
-            if $"{tpl.Group}.{tpl.Id}" = id then Some tpl else None)
+  let runNew (container: AppContainer) (options: ProjectOptions) = cancellableTask {
+    let! token = CancellableTask.getCancellationToken()
+    let (Logger logger) = container
+    let tplList = container.TemplateService.ListTemplateItems()
 
-        let byShortName =
-          name
-          |> Option.bind(fun shortName ->
-            if tpl.ShortName = shortName then Some tpl else None)
+    let handleOfflineTemplates() = cancellableTask {
+      logger.LogWarning
+        "No templates found in the perla database, searching in the default offline templates."
 
-        byId |> Option.orElse byShortName)
+      let! otConfig = container.FsManager.ResolveOfflineTemplatesConfig()
+      let tplList = otConfig.templates
 
-    let findDecodedTemplateByNameOrId (id: string option, name: string option) (tplList: TemplateDecoders.DecodedTemplateConfigItem seq) =
-      tplList
-      |> Seq.tryPick(fun tpl ->
-        let byId =
-          id
-          |> Option.bind(fun id ->
-            if tpl.id = id then Some tpl else None)
-        let byShortName =
-          name
-          |> Option.bind(fun shortName ->
-            if tpl.shortName = shortName then Some tpl else None)
-        byId |> Option.orElse byShortName)
+      let targetPath =
+        RunNew.getTargetPath container.Directories options.projectName
 
-    let writeFoundTemplate(tpl: TemplateItem, targetPath: string<SystemPath>) =
-      let progress = AnsiConsole.Progress()
-
-      let tplPath = DirectoryInfo(UMX.untag tpl.FullPath)
-      let files = tplPath.GetFiles("*", SearchOption.AllDirectories)
-      progress.Start(fun ctx ->
-        let tsk = ctx.AddTask("Creating project...", true, maxValue = files.Length)
-        files
-        |> Array.Parallel.iter(fun file ->
-          let targetPath = file.FullName.Replace(tplPath.FullName, UMX.untag targetPath)
-          file.Directory.Create()
-          File.Copy(
-            file.FullName,
-            UMX.untag targetPath,
-            true
-          )
-          tsk.Increment 1
-        )
-        tsk.StopTask()
-      )
-
-    let writeFoundDecodedTemplate(directories: PerlaDirectories) (config: TemplateDecoders.DecodedTemplateConfiguration, tpl: TemplateDecoders.DecodedTemplateConfigItem, targetPath: string<SystemPath>) =
-      let progress = AnsiConsole.Progress()
-      let tplPath = Path.Combine(UMX.untag directories.OfflineTemplates, UMX.untag tpl.path) |> DirectoryInfo
-      let files = tplPath.GetFiles("*", SearchOption.AllDirectories)
-      progress.Start(fun ctx ->
-        let tsk = ctx.AddTask("Creating project...", true, maxValue = files.Length)
-        files
-        |> Array.Parallel.iter(fun file ->
-          let targetPath = file.FullName.Replace(tplPath.FullName, UMX.untag targetPath)
-          file.Directory.Create()
-          File.Copy(
-            file.FullName,
-            UMX.untag targetPath,
-            true
-          )
-          tsk.Increment 1
-        )
-        tsk.StopTask()
-      )
-
-    cancellableTask {
-      let! cancellationToken = CancellableTask.getCancellationToken()
-      let (Logger logger) = container
-      let tplList = container.TemplateService.ListTemplateItems()
-      match tplList with
-      | [] ->
-        let writeFound = writeFoundDecodedTemplate container.Directories
-        logger.LogWarning
-          "No templates found in the perla database, searching in the default offline templates."
-        // No templates found, search in the offline templates first
-        let! otConfig = container.FsManager.ResolveOfflineTemplatesConfig()
-        let tplList = otConfig.templates
-        let targetPath = Path.Combine(UMX.untag container.Directories.CurrentWorkingDirectory, options.projectName) |> DirectoryInfo
-        if options.byId.IsSome || options.byShortName.IsSome then
-          // try find by name or id if provided
-          match findDecodedTemplateByNameOrId (options.byId, options.byShortName) tplList with
-          | Some found  ->
-            logger.LogInformation(
-              "Found template '{name}' with short name '{shortName}'",
-              found.name,
-              found.shortName
-            )
-
-
-            writeFound (otConfig, found, UMX.tag targetPath.FullName )
-            logger.LogInformation(
-              "Project created successfully at {path}",
-              targetPath.FullName
-            )
-            logger.LogInformation("cd {path} and run 'perla serve' to start the development server.",
-              targetPath.FullName
-            )
-            return 0
-          | None ->
-            // No templates found, prompt the user to select a template
-            logger.LogWarning(
-              "No templates found in the offline templates, please add a template to the perla database or the offline templates."
-            )
-            logger.LogInformation(
-              "You can add templates with 'perla template add <repository>' or 'perla template add <repository>:<branch>'."
-            )
-            return 1
-        else
-          // no options provided, prompt the user to select a template
-          let prompt =
-            SelectionPrompt().Title("Select a template to create a new project:").EnableSearch().AddChoices(tplList).UseConverter(fun tpl ->
-            $"{tpl.name} ({tpl.shortName}) - {tpl.description}"
-            )
-
-          let! selected = AnsiConsole.PromptAsync(prompt)
-
-          writeFound (otConfig, selected, UMX.tag targetPath.FullName)
-
-          logger.LogInformation(
-            "Project created successfully at {path}",
-            targetPath.FullName
-          )
-
-          logger.LogInformation("cd {path} and run 'perla serve' to start the development server.",
-            targetPath.FullName
-          )
-          return 0
-
-      | templates ->
-        // try find by name or id if provided
-        // otherwise prompt the user to select a template
-        let targetPath = Path.Combine(UMX.untag container.Directories.CurrentWorkingDirectory, options.projectName) |> DirectoryInfo
-        if options.byId.IsSome || options.byShortName.IsSome then
-          match findTemplateItemByNameOrId (options.byId, options.byShortName) templates with
-          | Some found ->
-            logger.LogInformation(
-              "Found template '{name}' with short name '{shortName}'",
-              found.Name,
-              found.ShortName
-            )
-
-            let targetPath = Path.Combine(UMX.untag container.Directories.CurrentWorkingDirectory, options.projectName) |> DirectoryInfo
-            writeFoundTemplate(found, UMX.tag targetPath.FullName)
-            logger.LogInformation(
-              "Project created successfully at {path}",
-              targetPath.FullName
-            )
-            logger.LogInformation("cd {path} and run 'perla serve' to start the development server.",
-              targetPath.FullName
-            )
-            return 0
-          | None ->
-            logger.LogWarning(
-              "No templates found with the provided id or short name, please try again."
-            )
-            return 1
-        else
-          // no options provided, prompt the user to select a template
-          let prompt =
-            SelectionPrompt().Title("Select a template to create a new project:").EnableSearch().AddChoices(templates).UseConverter(fun tpl ->
-            $"{tpl.Name} ({tpl.ShortName}) - {tpl.Description}"
-            )
-
-          let! selected = AnsiConsole.PromptAsync(prompt)
-
-          writeFoundTemplate(selected, UMX.tag targetPath.FullName)
-
-          logger.LogInformation(
-            "Project created successfully at {path}",
-            targetPath.FullName
-          )
-
-          logger.LogInformation("cd {path} and run 'perla serve' to start the development server.",
-            targetPath.FullName
-          )
-          return 0
-    }
-
-  let runTemplate(options: TemplateRepositoryOptions) = cancellableTask {
-    let template = voption {
-      let! username, repository, _ =
-        parseFullRepositoryName options.fullRepositoryName
-
-      return!
-        TemplateSearchKind.FullName(username, repository) |> Templates.FindOne
-    }
-
-    let updateRepo() = cancellableTask {
-      match template with
-      | ValueSome template ->
-        Logger.log $"Template {template.ToFullNameWithBranch} already exists."
-
-        match!
-          Templates.AddOrUpdate(Templates.TemplateOperation.Update template)
-        with
-        | Ok() -> return 0
-        | Error err ->
-          Logger.log(err, escape = false)
-          return 1
-      | ValueNone ->
-        Logger.log "We were unable to parse the repository name."
-
-        Logger.log(
-          "please ensure that the repository name is in the format: [bold blue]username/repository:branch[/]",
-          escape = false
+      match
+        RunNew.resolveTemplateChoice
+          options.byId
+          options.byShortName
+          tplList
+          RunNew.findDecodedTemplateByNameOrId
+      with
+      | RunNew.FoundById found ->
+        logger.LogInformation(
+          "Found template '{name}' with short name '{shortName}'",
+          found.name,
+          found.shortName
         )
 
+        RunNew.writeFoundDecodedTemplate
+          container.Directories
+          (otConfig, found, UMX.tag targetPath.FullName)
+
+        RunNew.logProjectCreationSuccess logger targetPath
+        return 0
+      | RunNew.PromptUser templates when not(Seq.isEmpty templates) ->
+        let prompt =
+          SelectionPrompt()
+            .Title("Select a template to create a new project:")
+            .EnableSearch()
+            .AddChoices(templates)
+            .UseConverter(fun tpl ->
+              $"{tpl.name} ({tpl.shortName}) - {tpl.description}")
+
+        let! selected = AnsiConsole.PromptAsync(prompt, token)
+
+        RunNew.writeFoundDecodedTemplate
+          container.Directories
+          (otConfig, selected, UMX.tag targetPath.FullName)
+
+        RunNew.logProjectCreationSuccess logger targetPath
+        return 0
+      | RunNew.PromptUser _ ->
+        RunNew.handleTemplateNotFound logger
         return 1
     }
 
-    match options.operation with
-    | RunTemplateOperation.List listFormat ->
-      return Templates.List { format = listFormat }
-    | RunTemplateOperation.Add ->
-      match parseFullRepositoryName options.fullRepositoryName with
-      | ValueSome template ->
-        match!
-          Templates.AddOrUpdate(Templates.TemplateOperation.Add template)
-        with
-        | Ok() -> return 0
-        | Error err ->
-          Logger.log(err, escape = false)
-          return 1
-      | ValueNone ->
-        Logger.log "We were unable to parse the repository name."
+    let handleDatabaseTemplates(templates: TemplateItem list) = cancellableTask {
+      let targetPath =
+        RunNew.getTargetPath container.Directories options.projectName
 
-        Logger.log(
-          "please ensure that the repository name is in the format: [bold blue]username/repository:branch[/]",
-          escape = false
+      match
+        RunNew.resolveTemplateChoice
+          options.byId
+          options.byShortName
+          templates
+          RunNew.findTemplateItemByNameOrId
+      with
+      | RunNew.FoundById found ->
+        logger.LogInformation(
+          "Found template '{name}' with short name '{shortName}'",
+          found.Name,
+          found.ShortName
         )
 
+        RunNew.writeFoundTemplate(found, UMX.tag targetPath.FullName)
+        RunNew.logProjectCreationSuccess logger targetPath
+        return 0
+      | RunNew.PromptUser templates when not(Seq.isEmpty templates) ->
+        let prompt =
+          SelectionPrompt()
+            .Title("Select a template to create a new project:")
+            .EnableSearch()
+            .AddChoices(templates)
+            .UseConverter(fun tpl ->
+              $"{tpl.Name} ({tpl.ShortName}) - {tpl.Description}")
+
+        let! selected = AnsiConsole.PromptAsync(prompt, token)
+        RunNew.writeFoundTemplate(selected, UMX.tag targetPath.FullName)
+        RunNew.logProjectCreationSuccess logger targetPath
+        return 0
+      | RunNew.PromptUser _ ->
+        RunNew.handleTemplateNotFoundById logger
         return 1
-    | RunTemplateOperation.Update -> return! updateRepo()
-    | RunTemplateOperation.Update
-    | RunTemplateOperation.Add when template.IsSome -> return! updateRepo()
-    | RunTemplateOperation.Remove ->
-      match template with
-      | ValueSome template ->
-        Logger.log $"Removing template '{template.ToFullNameWithBranch}'..."
+    }
 
-        match Templates.Remove(template) with
-        | Ok() ->
-          Logger.log "Template removed successfully."
-          return 0
-        | Error err ->
-          Logger.log(err, escape = false)
-          return 1
-      | ValueNone ->
-        Logger.log "We were unable to parse the repository name."
-
-        Logger.log(
-          "please ensure that the repository name is in the format: [bold blue]username/repository:branch[/]",
-          escape = false
-        )
-
-        return 1
+    match tplList with
+    | [] -> return! handleOfflineTemplates()
+    | templates -> return! handleDatabaseTemplates(templates)
   }
+
+  let runTemplate
+    (container: AppContainer)
+    (options: TemplateRepositoryOptions)
+    =
+    cancellableTask {
+      let (Logger logger) = container
+      let (TemplateService templateService) = container
+
+      let template = voption {
+        let! username, repository, _ =
+          parseFullRepositoryName options.fullRepositoryName
+
+        return!
+          TemplateSearchKind.FullName(username, repository)
+          |> templateService.FindOne
+          |> ValueOption.ofOption
+      }
+
+      let updateRepo() = cancellableTask {
+        match template with
+        | ValueSome template ->
+          logger.LogInformation
+            $"Template {template.ToFullNameWithBranch} already exists."
+
+          let! updated = templateService.Update(template)
+
+          if updated then
+            logger.LogInformation "Template updated successfully."
+            return 0
+          else
+            logger.LogError "Failed to update template."
+            return 1
+        | ValueNone ->
+          logger.LogWarning "We were unable to parse the repository name."
+
+          logger.LogInformation(
+            "please ensure that the repository name is in the format: username/repository:branch"
+          )
+
+          return 1
+      }
+
+      match options.operation with
+      | RunTemplateOperation.List listFormat ->
+        // Simply list the templates using the service and return
+        let templates = templateService.ListTemplateItems()
+
+        match listFormat with
+        | ListFormat.HumanReadable ->
+          let table =
+            Table()
+              .AddColumn("Name")
+              .AddColumn("Short Name")
+              .AddColumn("Description")
+
+          for template in templates do
+            let description =
+              template.Description
+              |> Option.defaultValue "No description provided"
+
+            table.AddRow(template.Name, template.ShortName, description)
+            |> ignore
+
+          AnsiConsole.Write(table)
+        | ListFormat.TextOnly ->
+          for template in templates do
+            let description =
+              template.Description
+              |> Option.defaultValue "No description provided"
+
+            logger.LogInformation
+              $"{template.Name} ({template.ShortName}) - {description}"
+
+        return 0
+
+      | RunTemplateOperation.Add ->
+        match parseFullRepositoryName options.fullRepositoryName with
+        | ValueSome(username, repository, branch) ->
+          try
+            let! id =
+              templateService.Add(username, UMX.tag repository, UMX.tag branch)
+
+            logger.LogInformation $"Template added successfully with id: {id}"
+            return 0
+          with ex ->
+            logger.LogError(ex, "Failed to add template: {Error}", ex.Message)
+            return 1
+        | ValueNone ->
+          logger.LogWarning "We were unable to parse the repository name."
+
+          logger.LogInformation(
+            "please ensure that the repository name is in the format: username/repository:branch"
+          )
+
+          return 1
+
+      | RunTemplateOperation.Update -> return! updateRepo()
+
+      | RunTemplateOperation.Update
+      | RunTemplateOperation.Add when template.IsSome -> return! updateRepo()
+
+      | RunTemplateOperation.Remove ->
+        match template with
+        | ValueSome template ->
+          logger.LogInformation
+            $"Removing template '{template.ToFullNameWithBranch}'..."
+
+          let result =
+            TemplateSearchKind.Id(template._id) |> templateService.Delete
+
+          if result then
+            logger.LogInformation "Template removed successfully."
+            return 0
+          else
+            logger.LogError "Failed to remove template."
+            return 1
+        | ValueNone ->
+          logger.LogWarning "We were unable to parse the repository name."
+
+          logger.LogInformation(
+            "please ensure that the repository name is in the format: username/repository:branch"
+          )
+
+          return 1
+    }
 
   let runBuild(options: BuildOptions) = cancellableTask {
     let! cancellationToken = CancellableTask.getCancellationToken()

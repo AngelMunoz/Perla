@@ -1,5 +1,6 @@
 {
   "index": "The html file that works as the entry point for the application.",
+  "useLocalPkgs": "Sets the project to download all of the dependencies as local sources and generating a 'node_modules' directory that is useful for existing tooling to pick up, however it has no node dependencies.",
   "provider": "Which CDN use to pull your app's dependencies from.",
   "runconfiguration": "Tells to include dev/testing dependencies or run with only the production configuretion.",
   "mountdirectories": "Tells perla that it should expose the directory as a server directory.",
