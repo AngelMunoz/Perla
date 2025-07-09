@@ -67,6 +67,7 @@ type TemplateItem =
   [<BsonId>]
   member _id: ObjectId with get, set
 
+  member Id: string with get, set
   member Parent: ObjectId with get, set
   member Name: string with get, set
   member Group: string with get, set

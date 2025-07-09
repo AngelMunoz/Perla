@@ -58,6 +58,7 @@ type ProjectOptions = {
   projectName: string
   byId: string option
   byShortName: string option
+  skipPrompts: bool
 }
 
 type TestingOptions = {

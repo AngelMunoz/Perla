@@ -81,13 +81,13 @@ type RunTemplateOperation =
 type TemplateRepositoryOptions = {
   fullRepositoryName: string option
   operation: RunTemplateOperation
-  skipPrompts: bool
 }
 
 type ProjectOptions = {
-  projectName: string
   byId: string option
+  projectName: string
   byShortName: string option
+  skipPrompts: bool
 }
 
 type TestingOptions = {
@@ -113,177 +113,189 @@ type PathsOptions = { operation: PathOperation }
 [<RequireQualifiedAccess>]
 module Handlers =
 
-  let runNew(options: ProjectOptions) = cancellableTask {
-    let! cancellationToken = CancellableTask.getCancellationToken()
-    Logger.log "Creating new project..."
-    let mutable mentionQuickCommand = false
+  module Templates =
+  let runNew (container: AppContainer) (options: ProjectOptions) =
+    let findTemplateItemByNameOrId (id: string option, name: string option) (tplList: TemplateItem list) =
+      tplList
+      |> List.tryPick(fun tpl ->
+        let byId =
+          id
+          |> Option.bind(fun id ->
+            if $"{tpl.Group}.{tpl.Id}" = id then Some tpl else None)
 
-    let inline byId() =
-      options.byId
-      |> Option.map UMX.tag<TemplateGroup>
-      |> Option.map QuickAccessSearch.Group
+        let byShortName =
+          name
+          |> Option.bind(fun shortName ->
+            if tpl.ShortName = shortName then Some tpl else None)
 
-    let queryParam =
-      options.byShortName
-      |> Option.map QuickAccessSearch.ShortName
-      |> Option.orElseWith byId
+        byId |> Option.orElse byShortName)
 
-    let foundRepo = result {
-      let! query = queryParam |> Result.requireSome Templates.NoQueryParams
+    let findDecodedTemplateByNameOrId (id: string option, name: string option) (tplList: TemplateDecoders.DecodedTemplateConfigItem seq) =
+      tplList
+      |> Seq.tryPick(fun tpl ->
+        let byId =
+          id
+          |> Option.bind(fun id ->
+            if tpl.id = id then Some tpl else None)
+        let byShortName =
+          name
+          |> Option.bind(fun shortName ->
+            if tpl.shortName = shortName then Some tpl else None)
+        byId |> Option.orElse byShortName)
 
-      match query with
-      | QuickAccessSearch.Name name ->
-        let user, template, child = getTemplateAndChild name
+    let writeFoundTemplate(tpl: TemplateItem, targetPath: string<SystemPath>) =
+      let progress = AnsiConsole.Progress()
 
-        let! found =
-          (match user, child with
-           | Some user, _ ->
-             Templates.FindOne(TemplateSearchKind.FullName(user, template))
-           | None, _ ->
-             Templates.FindOne(TemplateSearchKind.Repository template))
-          |> Result.requireSome Templates.ParentTemplateNotFound
-
-        return Templates.Repository found
-      | others ->
-        let! found =
-          Templates.FindTemplateItems(others)
-          |> Result.requireHead Templates.ChildTemplateNotFound
-
-        return Templates.Existing found
-    }
-
-    let inline TemplateItemPromptConverter(item: TemplateItem) =
-      let description =
-        item.description |> Option.defaultValue "No description provided."
-
-      $"{item.name} - {item.shortName}: {description[0..30]}"
-
-    let inline TemplateConfigPromptConverter(item: TemplateConfigurationItem) =
-      $"{item.name} - {item.shortName}: {item.description[0..30]}"
-
-    let selectedItem =
-      match foundRepo with
-      | Ok(Templates.Repository repo) ->
-        mentionQuickCommand <- true
-
-        let selection =
-          SelectionPrompt(
-            Title = $"Available templates for {repo.name}",
-            Converter = TemplateConfigPromptConverter
+      let tplPath = DirectoryInfo(UMX.untag tpl.FullPath)
+      let files = tplPath.GetFiles("*", SearchOption.AllDirectories)
+      progress.Start(fun ctx ->
+        let tsk = ctx.AddTask("Creating project...", true, maxValue = files.Length)
+        files
+        |> Array.Parallel.iter(fun file ->
+          let targetPath = file.FullName.Replace(tplPath.FullName, UMX.untag targetPath)
+          file.Directory.Create()
+          File.Copy(
+            file.FullName,
+            UMX.untag targetPath,
+            true
           )
-            .AddChoices(repo.templates)
-
-        task {
-          let! result =
-            selection.ShowAsync(AnsiConsole.Console, cancellationToken)
-
-          return
-            Templates.FindTemplateItems(QuickAccessSearch.Id result.childId)
-            |> List.tryHead
-        }
-      | Ok(Templates.Existing item) -> Task.FromResult(Some item)
-      | Error Templates.NoQueryParams ->
-        mentionQuickCommand <- true
-
-        let selection =
-          SelectionPrompt(
-            Title = "Welcome to Perla, please select a template to start with",
-            Converter = TemplateItemPromptConverter
-          )
-            .AddChoices(Templates.ListTemplateItems())
-
-        task {
-          try
-            let! result =
-              selection.ShowAsync(AnsiConsole.Console, cancellationToken)
-
-            return Some result
-          with :? TaskCanceledException ->
-            return None
-        }
-      | Error Templates.ChildTemplateNotFound
-      | Error Templates.ParentTemplateNotFound ->
-        if
-          AnsiConsole.Ask(
-            "We were not able to find the template you were looking for, Would you like to check the existing templates?",
-            false
-          )
-        then
-          mentionQuickCommand <- true
-
-          let selection =
-            SelectionPrompt(
-              Title = "Please select a template to start with",
-              Converter = TemplateItemPromptConverter
-            )
-              .AddChoices(Templates.ListTemplateItems())
-
-          task {
-            try
-              let! result =
-                selection.ShowAsync(AnsiConsole.Console, cancellationToken)
-
-              return Some result
-            with :? TaskCanceledException ->
-              return None
-          }
-        else
-          Task.FromResult None
-
-    let! item = selectedItem
-
-    match item with
-    | Some item ->
-      let scriptContent =
-        Templates.GetTemplateScriptContent(TemplateScriptKind.Template item)
-        |> Option.orElseWith(fun () -> option {
-          let! repo = Templates.FindOne(TemplateSearchKind.Id item.parent)
-
-          return!
-            TemplateScriptKind.Repository repo
-            |> Templates.GetTemplateScriptContent
-        })
-
-      let targetPath =
-        $"./{options.projectName}" |> Path.GetFullPath |> UMX.tag<UserPath>
-
-      FileSystem.WriteTplRepositoryToDisk(
-        item.fullPath,
-        targetPath,
-        ?payload = scriptContent
-      )
-
-
-      if mentionQuickCommand then
-        let ffCmd =
-          $"perla new [blue]<my-project-name>[/] [yellow]-t {item.shortName}[/]"
-
-        let groupCmd =
-          $"perla new [blue]<my-project-name>[/] [yellow]-id {item.group}[/]"
-
-        Logger.log(
-          $"You can run this template directly with:\n{ffCmd}\n{groupCmd}",
-          escape = false
+          tsk.Increment 1
         )
-
-      let chdir = $"cd ./{options.projectName}"
-      let serve = "perla serve"
-
-      Logger.log(
-        $"Project [green]{options.projectName}[/] created!, to get started run:\n{chdir}\n{serve}",
-        escape = false
+        tsk.StopTask()
       )
 
-      return 0
+    let writeFoundDecodedTemplate(directories: PerlaDirectories) (config: TemplateDecoders.DecodedTemplateConfiguration, tpl: TemplateDecoders.DecodedTemplateConfigItem, targetPath: string<SystemPath>) =
+      let progress = AnsiConsole.Progress()
+      let tplPath = Path.Combine(UMX.untag directories.OfflineTemplates, UMX.untag tpl.path) |> DirectoryInfo
+      let files = tplPath.GetFiles("*", SearchOption.AllDirectories)
+      progress.Start(fun ctx ->
+        let tsk = ctx.AddTask("Creating project...", true, maxValue = files.Length)
+        files
+        |> Array.Parallel.iter(fun file ->
+          let targetPath = file.FullName.Replace(tplPath.FullName, UMX.untag targetPath)
+          file.Directory.Create()
+          File.Copy(
+            file.FullName,
+            UMX.untag targetPath,
+            true
+          )
+          tsk.Increment 1
+        )
+        tsk.StopTask()
+      )
 
-    | None ->
-      Logger.log "No selection was available..."
+    cancellableTask {
+      let! cancellationToken = CancellableTask.getCancellationToken()
+      let (Logger logger) = container
+      let tplList = container.TemplateService.ListTemplateItems()
+      match tplList with
+      | [] ->
+        let writeFound = writeFoundDecodedTemplate container.Directories
+        logger.LogWarning
+          "No templates found in the perla database, searching in the default offline templates."
+        // No templates found, search in the offline templates first
+        let! otConfig = container.FsManager.ResolveOfflineTemplatesConfig()
+        let tplList = otConfig.templates
+        let targetPath = Path.Combine(UMX.untag container.Directories.CurrentWorkingDirectory, options.projectName) |> DirectoryInfo
+        if options.byId.IsSome || options.byShortName.IsSome then
+          // try find by name or id if provided
+          match findDecodedTemplateByNameOrId (options.byId, options.byShortName) tplList with
+          | Some found  ->
+            logger.LogInformation(
+              "Found template '{name}' with short name '{shortName}'",
+              found.name,
+              found.shortName
+            )
 
-      Logger.log
-        "please check for typos or run 'perla new <my-project-name>' to run the templating wizard"
 
-      return 1
-  }
+            writeFound (otConfig, found, UMX.tag targetPath.FullName )
+            logger.LogInformation(
+              "Project created successfully at {path}",
+              targetPath.FullName
+            )
+            logger.LogInformation("cd {path} and run 'perla serve' to start the development server.",
+              targetPath.FullName
+            )
+            return 0
+          | None ->
+            // No templates found, prompt the user to select a template
+            logger.LogWarning(
+              "No templates found in the offline templates, please add a template to the perla database or the offline templates."
+            )
+            logger.LogInformation(
+              "You can add templates with 'perla template add <repository>' or 'perla template add <repository>:<branch>'."
+            )
+            return 1
+        else
+          // no options provided, prompt the user to select a template
+          let prompt =
+            SelectionPrompt().Title("Select a template to create a new project:").EnableSearch().AddChoices(tplList).UseConverter(fun tpl ->
+            $"{tpl.name} ({tpl.shortName}) - {tpl.description}"
+            )
+
+          let! selected = AnsiConsole.PromptAsync(prompt)
+
+          writeFound (otConfig, selected, UMX.tag targetPath.FullName)
+
+          logger.LogInformation(
+            "Project created successfully at {path}",
+            targetPath.FullName
+          )
+
+          logger.LogInformation("cd {path} and run 'perla serve' to start the development server.",
+            targetPath.FullName
+          )
+          return 0
+
+      | templates ->
+        // try find by name or id if provided
+        // otherwise prompt the user to select a template
+        let targetPath = Path.Combine(UMX.untag container.Directories.CurrentWorkingDirectory, options.projectName) |> DirectoryInfo
+        if options.byId.IsSome || options.byShortName.IsSome then
+          match findTemplateItemByNameOrId (options.byId, options.byShortName) templates with
+          | Some found ->
+            logger.LogInformation(
+              "Found template '{name}' with short name '{shortName}'",
+              found.Name,
+              found.ShortName
+            )
+
+            let targetPath = Path.Combine(UMX.untag container.Directories.CurrentWorkingDirectory, options.projectName) |> DirectoryInfo
+            writeFoundTemplate(found, UMX.tag targetPath.FullName)
+            logger.LogInformation(
+              "Project created successfully at {path}",
+              targetPath.FullName
+            )
+            logger.LogInformation("cd {path} and run 'perla serve' to start the development server.",
+              targetPath.FullName
+            )
+            return 0
+          | None ->
+            logger.LogWarning(
+              "No templates found with the provided id or short name, please try again."
+            )
+            return 1
+        else
+          // no options provided, prompt the user to select a template
+          let prompt =
+            SelectionPrompt().Title("Select a template to create a new project:").EnableSearch().AddChoices(templates).UseConverter(fun tpl ->
+            $"{tpl.Name} ({tpl.ShortName}) - {tpl.Description}"
+            )
+
+          let! selected = AnsiConsole.PromptAsync(prompt)
+
+          writeFoundTemplate(selected, UMX.tag targetPath.FullName)
+
+          logger.LogInformation(
+            "Project created successfully at {path}",
+            targetPath.FullName
+          )
+
+          logger.LogInformation("cd {path} and run 'perla serve' to start the development server.",
+            targetPath.FullName
+          )
+          return 0
+    }
 
   let runTemplate(options: TemplateRepositoryOptions) = cancellableTask {
     let template = voption {

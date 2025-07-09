@@ -85,6 +85,7 @@ type TemplateItem() =
   [<BsonId>]
   member val _id: ObjectId = Unchecked.defaultof<_> with get, set
 
+  member val Id: string = String.Empty with get, set
   member val Parent: ObjectId = Unchecked.defaultof<_> with get, set
   member val Name: string = String.Empty with get, set
   member val Group: string = String.Empty with get, set
@@ -195,6 +196,7 @@ module Database =
     |> Seq.map(fun templateItem ->
       TemplateItem(
         _id = ObjectId.NewObjectId(),
+        Id = templateItem.id,
         Parent = repositoryId,
         Name = templateItem.name,
         Group = $"{config.group}.{templateItem.id}",

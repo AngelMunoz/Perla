@@ -25,6 +25,7 @@ type PerlaDirectories =
   abstract Database: string<SystemPath> with get
   abstract Templates: string<SystemPath> with get
   abstract OfflineTemplates: string<SystemPath> with get
+  abstract OriginalCwd: string<SystemPath>
   abstract PerlaConfigPath: string<SystemPath> with get
   abstract CurrentWorkingDirectory: string<SystemPath> with get
   abstract SetCwdToProject: ?fromPath: string<SystemPath> -> unit

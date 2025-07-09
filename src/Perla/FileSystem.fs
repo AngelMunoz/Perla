@@ -51,11 +51,13 @@ type PerlaDirectories =
   abstract Templates: string<SystemPath> with get
   abstract OfflineTemplates: string<SystemPath> with get
   abstract PerlaConfigPath: string<SystemPath> with get
+  abstract OriginalCwd: string<SystemPath> with get
   abstract CurrentWorkingDirectory: string<SystemPath> with get
   abstract SetCwdToProject: ?fromPath: string<SystemPath> -> unit
 
 [<Interface>]
 type PerlaFsManager =
+
 
   abstract PerlaConfiguration: Types.PerlaConfig aval
 
@@ -117,26 +119,30 @@ module Operators =
 [<RequireQualifiedAccess>]
 module FileSystem =
 
-  let GetDirectories() =
-    let rec findConfig filename (directory: DirectoryInfo | null) =
-      if isNull directory then
-        None
-      else
-        let found =
-          directory.GetFiles(filename, SearchOption.TopDirectoryOnly)
-          |> Array.tryHead
+  [<TailCall>]
+  let rec findConfig filename (directory: DirectoryInfo | null) =
+    if isNull directory then
+      None
+    else
+      let found =
+        directory.GetFiles(filename, SearchOption.TopDirectoryOnly)
+        |> Array.tryHead
 
-        match found with
-        | Some found -> Some found
-        | None -> findConfig filename directory.Parent
+      match found with
+      | Some found -> Some found
+      | None -> findConfig filename directory.Parent
+
+  let GetDirectories() =
 
     let findPerlaConfig = findConfig "perla.json"
+
+    let originalcwd = Directory.GetCurrentDirectory() |> UMX.tag<SystemPath>
 
     { new PerlaDirectories with
         member _.AssemblyRoot = UMX.tag<SystemPath> AppContext.BaseDirectory
 
         member _.CurrentWorkingDirectory =
-          UMX.tag<SystemPath> Environment.CurrentDirectory
+          UMX.tag<SystemPath>(Directory.GetCurrentDirectory())
 
         member _.PerlaArtifactsRoot =
           Environment.GetFolderPath
@@ -161,6 +167,8 @@ module FileSystem =
           |> _.FullName
           |> UMX.tag<SystemPath>
 
+        member _.OriginalCwd = originalcwd
+
         member this.SetCwdToProject(?fromPath) =
           let path =
             option {
@@ -170,7 +178,7 @@ module FileSystem =
             }
             |> function
               | Some path -> path
-              | None -> UMX.untag this.PerlaConfigPath
+              | None -> UMX.untag this.OriginalCwd
 
           Directory.SetCurrentDirectory path
     }
