@@ -1,6 +1,6 @@
-﻿namespace Perla.Build
+namespace Perla.Build
 
-open System.IO
+open System
 
 open AngleSharp
 open AngleSharp.Html.Dom
@@ -8,69 +8,95 @@ open AngleSharp.Html.Dom
 open Perla
 open Perla.Types
 open Perla.Units
-open Perla.FileSystem
-
-open FSharp.Data.Adaptive
-open Fake.IO.Globbing
 
 open FSharp.UMX
-open Spectre.Console
 open FsToolkit.ErrorHandling
 
 [<RequireQualifiedAccess>]
 module Build =
-  open Microsoft.Extensions.Logging
-  open System.Text
+
+  let EnsureBody(document: IHtmlDocument) =
+    match document.Body with
+    | null ->
+      let b = document.CreateElement("body")
+      document.AppendChild(b) |> ignore
+      b
+    | body -> body
+
+  let EnsureHead(document: IHtmlDocument) =
+    match document.Head with
+    | null ->
+      let h = document.CreateElement("head")
+      document.InsertBefore(h, document.Body) |> ignore
+      h
+    | head -> head
 
   let insertCssFiles
     (document: IHtmlDocument, cssEntryPoints: string<ServerUrl> seq)
     =
+    let head = EnsureHead document
+
     for file in cssEntryPoints do
       let style = document.CreateElement("link")
       style.SetAttribute("rel", "stylesheet")
       style.SetAttribute("href", UMX.untag file)
-      style |> document.Head.AppendChild |> ignore
+      style |> head.AppendChild |> ignore
 
   let insertImportMap
     (document: IHtmlDocument, importMap: PkgManager.ImportMap)
     =
+    let head = EnsureHead document
     let script = document.CreateElement("script")
     script.SetAttribute("type", "importmap")
     script.TextContent <- importMap.ToJson()
-    document.Head.AppendChild(script) |> ignore
+    head.AppendChild(script) |> ignore
 
   let insertJsFiles
     (document: IHtmlDocument, jsEntryPoints: string<ServerUrl> seq)
     =
+    let body = EnsureBody document
+
     for entryPoint in jsEntryPoints do
       let script = document.CreateElement("script")
       script.SetAttribute("type", "module")
       script.SetAttribute("src", UMX.untag entryPoint)
-      document.Body.AppendChild(script) |> ignore
+      body.AppendChild(script) |> ignore
 
   let EntryPoints(document: IHtmlDocument) =
     let cssBundles =
       document.QuerySelectorAll("[data-entry-point][rel=stylesheet]")
-      |> Seq.choose(fun el -> el.Attributes["href"] |> Option.ofObj)
-      |> Seq.map(fun el -> UMX.tag<ServerUrl> el.Value)
+      |> Seq.choose(fun el -> option {
+        let! href = el.Attributes["href"]
+
+        if String.IsNullOrWhiteSpace href.Value then
+          return! None
+        else
+          return UMX.tag<ServerUrl> href.Value
+      })
 
     let htmlBundles =
       document.QuerySelectorAll("[data-entry-point][type=module]")
       |> Seq.choose(fun el -> option {
-        let! entryPoint = el.Attributes["data-entry-point"].Value
+        let! dataEntryPoint = el.Attributes["data-entry-point"]
+        let! entryPoint = dataEntryPoint.Value
 
         if entryPoint = "standalone" then
           return! None
         else
-          return! el.Attributes["src"] |> Option.ofObj
+          let! src = el.Attributes["src"]
+          return UMX.tag<ServerUrl> src.Value
       })
-
-      |> Seq.map(fun el -> UMX.tag<ServerUrl> el.Value)
 
     let standaloneBundles =
       document.QuerySelectorAll("[data-entry-point=standalone][type=module]")
-      |> Seq.choose(fun el -> el.Attributes["src"] |> Option.ofObj)
-      |> Seq.map(fun el -> UMX.tag<ServerUrl> el.Value)
+      |> Seq.choose(fun el -> option {
+        let! src = el.Attributes["src"]
+
+        if String.IsNullOrWhiteSpace src.Value then
+          return! None
+        else
+          return UMX.tag<ServerUrl> src.Value
+      })
 
     cssBundles, htmlBundles, standaloneBundles
 

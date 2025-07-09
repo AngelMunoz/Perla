@@ -1,4 +1,4 @@
-﻿namespace Perla.Build
+namespace Perla.Build
 
 open Microsoft.Extensions.Logging
 
@@ -14,6 +14,8 @@ open Perla.PkgManager
 
 [<RequireQualifiedAccess>]
 module Build =
+  val EnsureBody: IHtmlDocument -> AngleSharp.Dom.IElement
+  val EnsureHead: IHtmlDocument -> AngleSharp.Dom.IElement
 
   val EntryPoints:
     IHtmlDocument ->

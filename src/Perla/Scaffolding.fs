@@ -1,4 +1,4 @@
-﻿namespace Perla
+namespace Perla
 
 open System
 open System.IO
@@ -50,7 +50,10 @@ module FsiSession =
     session.EvalInteractionNonThrowing(content) |> ignore
 
     match session.TryFindBoundValue ScaffoldConfiguration with
-    | Some bound -> Some bound.Value.ReflectionValue
+    | Some bound ->
+      match bound.Value.ReflectionValue with
+      | null -> None
+      | bound -> Some bound
     | None -> None
 
 module Scaffolding =

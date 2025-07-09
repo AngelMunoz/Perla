@@ -1,4 +1,4 @@
-﻿namespace Perla.Commands
+namespace Perla.Commands
 
 open System.Threading
 
@@ -492,12 +492,13 @@ module Commands =
         name: string,
         byId: string option,
         byShortName: string option,
-        skipPropmpts: bool
+        skipPrompts: bool
       ) =
       let options = {
         projectName = name
         byId = byId
         byShortName = byShortName
+        skipPrompts = skipPrompts
       }
 
       Handlers.runNew container options ctx.CancellationToken

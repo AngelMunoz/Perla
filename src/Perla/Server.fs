@@ -1,4 +1,4 @@
-﻿namespace Perla.Server
+namespace Perla.Server
 
 open System
 open System.IO
@@ -43,7 +43,7 @@ open Perla.Logger
 open Perla.Plugins
 open Perla.FileSystem
 open Perla.VirtualFs
-
+open Perla.Build
 open FSharp.UMX
 open FSharp.Data.Adaptive
 open IcedTasks
@@ -421,7 +421,7 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
 
       // Keep connection alive
       while not ctx.RequestAborted.IsCancellationRequested do
-        do! Task.Delay(TimeSpan.FromSeconds(30))
+        do! Task.Delay(TimeSpan.FromSeconds(30.))
         do! res.WriteAsync(": keepalive\n\n")
         do! res.Body.FlushAsync()
 
@@ -434,13 +434,16 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
     let map = fsManager.ResolveImportMap |> AVal.force
 
     use context = BrowsingContext.New(Configuration.Default)
-    let parser = context.GetService<IHtmlParser>()
-    use doc = parser.ParseDocument(content) :> IDocument
+    let parser = context.GetService<IHtmlParser>() |> nonNull
+
+    use doc = parser.ParseDocument(content)
+    let body = Build.EnsureBody doc
+    let head = Build.EnsureHead doc
 
     let script = doc.CreateElement "script"
     script.SetAttribute("type", "importmap")
     script.TextContent <- Json.ToText map
-    doc.Head.AppendChild script |> ignore
+    head.AppendChild script |> ignore
 
     // remove standalone entry points, we don't need them in the browser
     doc.QuerySelectorAll("[data-entry-point=standalone][type=module]")
@@ -450,7 +453,7 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
       let liveReload = doc.CreateElement "script"
       liveReload.SetAttribute("type", MimeTypeNames.DefaultJavaScript)
       liveReload.SetAttribute("src", "/~perla~/livereload.js")
-      doc.Body.AppendChild liveReload |> ignore
+      body.AppendChild liveReload |> ignore
 
     Results.Text(doc.ToHtml(), MimeTypeNames.Html)
 
@@ -465,8 +468,8 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
       let content = fsManager.ResolveIndex |> AVal.force
 
       use context = BrowsingContext.New(Configuration.Default)
-      let parser = context.GetService<IHtmlParser>()
-      use doc = parser.ParseDocument(content) :> IDocument
+      let parser = context.GetService<IHtmlParser>() |> nonNull
+      use doc = parser.ParseDocument(content)
 
       // remove any existing entry points, we don't need them in the tests
       doc.QuerySelectorAll("[data-entry-point][type=module]")
@@ -478,25 +481,27 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
       doc.QuerySelectorAll("[data-entry-point=standalone][type=module]")
       |> Seq.iter(fun f -> f.Remove())
 
+      let body = Build.EnsureBody doc
+      let head = Build.EnsureHead doc
       let mochaStyles: Dom.IElement = doc.CreateElement "link"
       mochaStyles.SetAttribute("href", "https://unpkg.com/mocha/mocha.css")
       mochaStyles.SetAttribute("rel", "stylesheet")
       mochaStyles.SetAttribute("type", MimeTypeNames.Css)
-      doc.Head.AppendChild mochaStyles |> ignore
+      head.AppendChild mochaStyles |> ignore
 
       let script: Dom.IElement = doc.CreateElement "script"
       script.SetAttribute("type", "importmap")
       script.TextContent <- Json.ToText(AVal.force map)
-      doc.Head.AppendChild script |> ignore
+      head.AppendChild script |> ignore
 
       let mochaScript = doc.CreateElement "script"
       mochaScript.SetAttribute("type", MimeTypeNames.DefaultJavaScript)
       mochaScript.SetAttribute("src", "https://unpkg.com/mocha/mocha.js")
-      doc.Body.AppendChild mochaScript |> ignore
+      body.AppendChild mochaScript |> ignore
 
       let mochaDiv = doc.CreateElement "div"
       mochaDiv.SetAttribute("id", "mocha")
-      doc.Body.AppendChild mochaDiv |> ignore
+      body.AppendChild mochaDiv |> ignore
 
       let runnerScript = doc.CreateElement "script"
       runnerScript.SetAttribute("type", "module")
@@ -504,13 +509,13 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
       let! runnerContent = fsManager.ResolveMochaRunnerScript()
 
       runnerScript.TextContent <- runnerContent
-      doc.Body.AppendChild runnerScript |> ignore
+      body.AppendChild runnerScript |> ignore
 
       if (AVal.force config).devServer.liveReload then
         let liveReload = doc.CreateElement "script"
         liveReload.SetAttribute("type", MimeTypeNames.DefaultJavaScript)
         liveReload.SetAttribute("src", "/~perla~/livereload.js")
-        doc.Body.AppendChild liveReload |> ignore
+        body.AppendChild liveReload |> ignore
 
       return Results.Text(doc.ToHtml(), MimeTypeNames.Html)
     }
@@ -526,7 +531,7 @@ module SpaMiddleware =
     (context: HttpContext)
     =
     task {
-      let path = context.Request.Path.Value
+      let path = context.Request.Path.Value |> nonNull
 
       // Skip if it's an API call or static file
       if
@@ -596,7 +601,7 @@ module Server =
 
       listeners
       |> Array.map(fun listener -> listener.Port)
-      |> Array.contains address.Port
+      |> Array.contains (nonNull address).Port
     else
       false
 
