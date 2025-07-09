@@ -107,7 +107,7 @@ type PerlaFsManager =
     buildConfig: BuildConfig * tempDir: string<SystemPath> -> unit
 
   abstract EmitEnvFile:
-    config: PerlaConfig * tmpPath: string<SystemPath> option -> unit
+    config: PerlaConfig * ?tmpPath: string<SystemPath> -> unit
 
 [<AutoOpen>]
 module Operators =
@@ -718,7 +718,7 @@ module FileSystem =
               lfsGlob |> Seq.toArray |> Array.Parallel.iter copyLocal)
 
         member this.EmitEnvFile
-          (config: PerlaConfig, tmpPath: string<SystemPath> option)
+          (config: PerlaConfig, ?tmpPath: string<SystemPath>)
           =
           let tmpPath = defaultArg tmpPath config.build.outDir |> UMX.untag
           let content = this.DotEnvContents |> AVal.force

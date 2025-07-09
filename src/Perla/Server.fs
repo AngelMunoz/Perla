@@ -962,14 +962,4 @@ type Server =
 
     app.UseDefaultFiles().UseStaticFiles() |> ignore
 
-    // Add env endpoint if enabled
-    if (AVal.force config).enableEnv then
-      app.MapGet(
-        UMX.untag (AVal.force config).envPath,
-        Func<HttpContext, Task<IResult>>(fun ctx ->
-          let logger = ctx.GetLogger("Perla:Env")
-          Middleware.SendScript logger PerlaScript.Env ctx ctx.RequestAborted)
-      )
-      |> ignore
-
     app

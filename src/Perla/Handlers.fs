@@ -31,6 +31,7 @@ open Perla.Fable
 open Perla.Esbuild
 open Perla.Extensibility
 open Perla.VirtualFs
+open Perla.Build
 open Perla.Scaffolding
 open Perla.Configuration
 open Perla.Logger
@@ -464,126 +465,138 @@ module Handlers =
           return 1
     }
 
-  let runBuild(options: BuildOptions) = cancellableTask {
-    let! cancellationToken = CancellableTask.getCancellationToken()
-    let config = ConfigurationManager.CurrentConfig
+  let runBuild (container: AppContainer) (options: BuildOptions) = cancellableTask {
+    let! token = CancellableTask.getCancellationToken()
 
-    do! Fable.StartFable(config, cancellationToken)
+    let config = container.Configuration.PerlaConfig |> AVal.force
 
-    let outDir = UMX.untag config.build.outDir
-
-    try
-      Directory.Delete(outDir, true)
-      Directory.CreateDirectory(outDir) |> ignore
-    with _ ->
-      ()
-
-    match PluginLoader.Load<FileSystem, Esbuild>(config.esbuild) with
-    | Ok plugins -> Logger.log $"Loaded {plugins.Length} plugins"
-    | Error err ->
-      for err in err do
-        match err with
-        | NoPluginFound name -> Logger.log($"Plugin {name} not found")
-        | EvaluationFailed(ex) ->
-          Logger.log($"Failed to evaluate plugin", ex = ex)
-        | SessionExists
-        | BoundValueMissing -> Logger.log "Failed to load plugins"
-        | AlreadyLoaded name -> Logger.log($"Plugin {name} already loaded")
-
-    do!
-      Logger.spinner(
-        "Mounting Virtual File System",
-        VirtualFileSystem.Mount config
+    match config.fable with
+    | None ->
+      container.Logger.LogWarning(
+        "Fable configuration not found. Skipping Fable build."
+      )
+    | Some config ->
+      container.Logger.LogInformation(
+        "Fable configuration found. Running Fable build."
       )
 
-    let tempDirectory = VirtualFileSystem.CopyToDisk() |> UMX.tag
+      do! container.FableService.Run config
+
+    let outDir = DirectoryInfo(UMX.untag config.build.outDir)
+
+    try
+      outDir.Delete(true)
+    with ex ->
+      container.Logger.LogWarning(
+        "Failed to clean output directory {path}: {error}",
+        outDir.FullName,
+        ex.Message
+      )
+
+    let plugins = container.FsManager.ResolvePluginPaths()
+
+    let esbuildPlugin =
+      config.plugins
+      |> List.tryFind(fun p ->
+        p.Equals(
+          Constants.PerlaEsbuildPluginName,
+          StringComparison.InvariantCultureIgnoreCase
+        ))
+      |> Option.map(fun _ -> container.EsbuildService.GetPlugin config.esbuild)
+
+    container.ExtensibilityService.LoadPlugins(
+      plugins,
+      ?esbuildPlugin = esbuildPlugin
+    )
+    |> Result.teeError(fun err ->
+      container.Logger.LogError("Failed to load plugins: {error}", err))
+    |> Result.ignore
+    |> Result.ignoreError
+
+    do!
+      container.Logger.Spinner(
+        "Mounting Virtual File System",
+        container.VirtualFileSystem.Load config.mountDirectories
+      )
+
+    let! tempDir = container.VirtualFileSystem.ToDisk()
 
 
-    Logger.log(
-      $"Copying Processed files to {tempDirectory}",
-      target = PrefixKind.Build
+    container.Logger.LogInformation(
+      "Copying Processed files to {tempDirectory}",
+      tempDir
     )
 
     if config.build.emitEnvFile then
-      Logger.log "Writing Env File"
+      container.Logger.LogInformation("Writing Env File")
 
-      Build.EmitEnvFile(config, tempDirectory)
-
-    use fs = new PhysicalFileSystem()
+      container.FsManager.EmitEnvFile(config, tempDir)
 
     use browserCtx = new BrowsingContext()
 
-    let externals = Build.GetExternals(config)
+    let index = container.FsManager.ResolveIndex |> AVal.force
 
-    let index = FileSystem.IndexFile(config.index)
+    let document =
+      (browserCtx.GetService<IHtmlParser>() |> nonNull).ParseDocument index
 
-    let document = browserCtx.GetService<IHtmlParser>().ParseDocument index
+    let map = container.FsManager.ResolveImportMap |> AVal.force
 
-    let tmp = UMX.untag tempDirectory |> fs.ConvertPathFromInternal
+    // at this point all of the files in the tempDir should have gone through esbuild if it was enabled
+    // but as individual files, not as a bundle
+    let cssPaths, jsPaths, standalonePaths = Build.EntryPoints document
 
-    let css, js, standalone = Build.GetEntryPoints(document)
+    let jsPaths = seq {
+      yield! jsPaths
+      yield! standalonePaths
+    }
+
+    // TODO: make sure the import map is correct and that it includes the "paths" map
+    let indexContent = Build.Index(document, map, jsPaths, cssPaths)
+
+    // TODO: check the copy globs logic
+    // we've changed the virtual file system so we need to re-evaluate how we're copying the blobs
+    // specially the vfs:<glob>
+    container.FsManager.CopyGlobs(config.build, tempDir)
 
     do!
-      Logger.spinner(
-        "Transpiling CSS and JS Files",
-        Esbuild.Run(
-          config,
-          tmp,
-          fs,
-          (css, js, standalone),
-          externals,
-          cancellationToken
-        )
+      File.WriteAllTextAsync(
+        Path.Combine(UMX.untag tempDir, "index.html"),
+        indexContent,
+        token
       )
-      :> Task
 
-    let css = [
-      yield! css
-      yield!
-        fs.EnumerateFiles(tmp, "*.css", SearchOption.AllDirectories)
-        |> Seq.map(fun path -> fs.ConvertPathToInternal path |> UMX.tag)
-    ]
-
-
-    let outDir =
-      config.build.outDir
-      |> UMX.untag
-      |> Path.GetFullPath
-      |> fs.ConvertPathFromInternal
-
-    // copy any glob files
-    Build.CopyGlobs(config.build, tempDirectory)
-
-    let map =
-      FileSystem
-        .GetImportMap()
-        .AddResolutions(config.paths)
-        .AddEnvResolution(config)
-
-    let indexContent = Build.GetIndexFile(document, css, js, map)
-    // Always copy the index file at the end to avoid
-    // clashing with any index.html file in the root of the virtual file system
-    fs.WriteAllText(UPath.Combine(outDir, "index.html"), indexContent)
-
-    Logger.log $"Cleaning up temp dir {tempDirectory}"
-
+    // Move the temporary directory to the output directory as that's the source of truth for our build
     try
-      Directory.Delete(UMX.untag tempDirectory, true)
+      Directory.Move(UMX.untag tempDir, outDir.FullName)
     with ex ->
-      Logger.log($"Failed to delete {tempDirectory}", ex = ex)
+      container.Logger.LogWarning(
+        "Failed to move temporary directory {tempDir} to output directory {outDir}: {error}",
+        tempDir,
+        config.build.outDir,
+        ex.Message
+      )
 
+    // TODO: evauate the bundle and minification usage here
+    // at this point our original index file is still pointing to the entrypoints
+    // so we could run esbuild to bundle and minify the sources
+    // however, this might cause issues with the "paths" and other custom resolutions
 
     if options.enablePreview then
-      let app = Server.GetStaticServer(config)
-      do! app.StartAsync(cancellationToken)
+      container.Logger.LogInformation "Starting a preview server for the build"
+
+      let app =
+        Server.Server.GetStaticServer container.Configuration.PerlaConfig
+
+      do! app.StartAsync token
 
       app.Urls
-      |> Seq.iter(fun url -> Logger.log($"Listening at: {url}", target = Serve))
+      |> Seq.iter(fun url ->
+        container.Logger.LogInformation("Listening at: {url}", url))
 
-      while not cancellationToken.IsCancellationRequested do
-        do! Async.Sleep(1000)
+      while not token.IsCancellationRequested do
+        do! Async.Sleep 1000
 
-      do! app.StopAsync(cancellationToken)
+      do! app.StopAsync token
 
     return 0
   }

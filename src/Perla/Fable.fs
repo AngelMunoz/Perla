@@ -24,7 +24,7 @@ type FableEvent =
 [<Interface>]
 type FableService =
 
-  abstract member Run: FableConfig -> CancellableTask<int>
+  abstract member Run: FableConfig -> CancellableTask<unit>
 
   abstract member Monitor: config: FableConfig -> IAsyncEnumerable<FableEvent>
 
@@ -94,8 +94,8 @@ module Fable =
               )
               .ExecuteAsync(cancellationToken = token)
 
-          let! result = command.Task
-          return result.ExitCode
+          do! command.Task :> System.Threading.Tasks.Task
+          return ()
         }
 
         member _.Monitor(config) = taskSeq {

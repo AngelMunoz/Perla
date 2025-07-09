@@ -112,12 +112,12 @@ module Build =
   let Index
     (
       document: IHtmlDocument,
-      cssPaths: string<ServerUrl> seq,
-      jsPaths: string<ServerUrl> seq,
-      importMap: PkgManager.ImportMap
+      importMap: PkgManager.ImportMap,
+      jsExtras: string<ServerUrl> seq,
+      cssExtras: string<ServerUrl> seq
     ) =
 
-    insertCssFiles(document, cssPaths)
+    insertCssFiles(document, cssExtras)
 
     // importmap needs to go first
     insertImportMap(document, importMap)
@@ -133,6 +133,6 @@ module Build =
     |> Seq.iter(fun f -> f.Remove())
 
     // insert the resolved entry points which should match paths in mounted directories
-    insertJsFiles(document, jsPaths)
+    insertJsFiles(document, jsExtras)
 
     document.Minify()

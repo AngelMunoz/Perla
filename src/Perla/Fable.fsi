@@ -17,7 +17,7 @@ type FableEvent =
 [<Interface>]
 type FableService =
 
-  abstract member Run: FableConfig -> CancellableTask<int>
+  abstract member Run: FableConfig -> CancellableTask<unit>
 
   abstract member Monitor: config: FableConfig -> IAsyncEnumerable<FableEvent>
 

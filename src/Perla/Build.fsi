@@ -24,5 +24,8 @@ module Build =
   val Externals: PerlaConfig -> string seq
 
   val Index:
-    IHtmlDocument * string<ServerUrl> seq * string<ServerUrl> seq * ImportMap ->
+    IHtmlDocument *
+    ImportMap *
+    jsExtras: string<ServerUrl> seq *
+    cssExtras: string<ServerUrl> seq ->
       string

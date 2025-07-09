@@ -80,7 +80,7 @@ type PerlaFsManager =
     buildConfig: BuildConfig * tempDir: string<SystemPath> -> unit
 
   abstract EmitEnvFile:
-    config: PerlaConfig * tmpPath: string<SystemPath> option -> unit
+    config: PerlaConfig * ?tmpPath: string<SystemPath> -> unit
 
 
 [<RequireQualifiedAccess>]
