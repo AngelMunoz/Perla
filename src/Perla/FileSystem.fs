@@ -1,4 +1,4 @@
-﻿namespace Perla.FileSystem
+namespace Perla.FileSystem
 
 open System
 open System.Formats.Tar
@@ -121,9 +121,9 @@ module FileSystem =
 
   [<TailCall>]
   let rec findConfig filename (directory: DirectoryInfo | null) =
-    if isNull directory then
-      None
-    else
+    match directory with
+    | null -> None
+    | directory ->
       let found =
         directory.GetFiles(filename, SearchOption.TopDirectoryOnly)
         |> Array.tryHead
@@ -243,10 +243,10 @@ module FileSystem =
             Environment.GetEnvironmentVariables()
             |> Seq.cast<Collections.DictionaryEntry>
             |> Seq.filter(fun entry ->
-              entry.Key.ToString().StartsWith("PERLA_"))
+              (nonNull(entry.Key.ToString())).StartsWith("PERLA_"))
             |> Seq.map(fun entry ->
-              entry.Key.ToString().Replace("PERLA_", ""),
-              entry.Value.ToString())
+              (nonNull(entry.Key.ToString())).Replace("PERLA_", ""),
+              (nonNull entry.Value).ToString() |> nonNull)
             |> Map.ofSeq
             |> AVal.constant
 
@@ -410,14 +410,17 @@ module FileSystem =
             try
               let! content = File.ReadAllTextAsync(UMX.untag path, token)
 
-              return
-                JsonObject
-                  .Parse(
+              if String.IsNullOrWhiteSpace content then
+                return! None
+              else
+                return
+                  (JsonObject.Parse(
                     content,
                     nodeOptions = DefaultJsonNodeOptions(),
                     documentOptions = DefaultJsonDocumentOptions()
-                  )
-                  .AsObject()
+                   )
+                   |> nonNull)
+                    .AsObject()
             with :? FileNotFoundException ->
               return! None
           }
@@ -444,7 +447,9 @@ module FileSystem =
             $"https://registry.npmjs.org/@esbuild/{binString}/-/{binString}-{esbuildVersion}.tgz"
 
           let dir =
-            DirectoryInfo(UMX.untag compressedFile |> Path.GetDirectoryName)
+            DirectoryInfo(
+              UMX.untag compressedFile |> Path.GetDirectoryName |> nonNull
+            )
 
           dir.Create()
 
@@ -676,6 +681,7 @@ module FileSystem =
 
             try
               Path.GetDirectoryName targetPath
+              |> nonNull
               |> Directory.CreateDirectory
               |> ignore
             with _ ->

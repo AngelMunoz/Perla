@@ -6,12 +6,13 @@
         <Title>Perla</Title>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <RepositoryType>git</RepositoryType>
-        <ProjectUrl>https://github.com/AngelMunoz/Perla</ProjectUrl>
         <RepositoryUrl>https://github.com/AngelMunoz/Perla.git</RepositoryUrl>
         <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <WarnOn>3390;$(WarnOn)</WarnOn>
+        <Nullable>enable</Nullable>
+        <LangVersion>preview</LangVersion>
     </PropertyGroup>
     <ItemGroup>
         <None Include="$(MSBuildThisFileDirectory)\..\LICENSE" Pack="true" PackagePath="\"/>

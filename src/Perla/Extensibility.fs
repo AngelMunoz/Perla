@@ -1,4 +1,4 @@
-﻿namespace Perla.Extensibility
+namespace Perla.Extensibility
 
 open System
 open System.IO
@@ -44,14 +44,14 @@ module ExtensibilityService =
             buffer.Append(value) |> ignore
 
         override _.Write(value: string) =
-          if isNull value then
+          if String.IsNullOrEmpty value then
             ()
           else
             for char in value do
               base.Write(char)
 
         override _.WriteLine(value: string) =
-          if isNull value then
+          if String.IsNullOrEmpty value then
             logger.Log(logLevel, String.Empty)
           else
             logger.Log(logLevel, value)

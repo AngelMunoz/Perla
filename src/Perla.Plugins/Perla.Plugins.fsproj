@@ -9,10 +9,6 @@
         This package gives you a a set of types that can be used to generate Perla Perla Dev Server plugins.
         Use the types here to transform non-supported files for browsers into either HTML/CSS/JS
     </Description>
-    <Summary>
-        A Library under the Perla umbrella.
-        This package gives you a a set of types that can be used to generate Perla Perla Dev Server plugins.
-    </Summary>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Library.fsi" />

@@ -2,8 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
-    <LangVersion>preview</LangVersion>
+    <TargetFrameworks>net9.0;net8.0</TargetFrameworks>
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>perla</ToolCommandName>
@@ -79,7 +78,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Perla.Logger\Perla.Logger.fsproj" />
-    <ProjectReference Include="..\Perla.PackageManager\Perla.PackageManager.fsproj" />
     <ProjectReference Include="..\Perla.PkgManager\Perla.PkgManager.fsproj" />
     <ProjectReference Include="..\Perla.Plugins\Perla.Plugins.fsproj" />
   </ItemGroup>

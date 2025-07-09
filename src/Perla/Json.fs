@@ -386,8 +386,15 @@ type Json =
   static member ToBytes value =
     JsonSerializer.SerializeToUtf8Bytes(value, DefaultJsonOptions())
 
-  static member FromBytes<'T>(value: byte array) =
-    JsonSerializer.Deserialize<'T>(ReadOnlySpan value, DefaultJsonOptions())
+  static member FromBytes<'T when 'T: not struct and 'T: not null>
+    (value: byte array)
+    =
+    match
+      JsonSerializer.Deserialize(ReadOnlySpan value, DefaultJsonOptions())
+    with
+    | null -> failwith "Deserialization failed"
+    | result -> result
+
 
   static member ToText(value, ?minify) =
     let opts = DefaultJsonOptions()
@@ -396,7 +403,9 @@ type Json =
     JsonSerializer.Serialize(value, opts)
 
   static member ToNode value =
-    JsonSerializer.SerializeToNode(value, DefaultJsonOptions())
+    match JsonSerializer.SerializeToNode(value, DefaultJsonOptions()) with
+    | null -> failwith "Serialization to JsonNode failed"
+    | result -> result
 
   static member FromConfigFile(content: string) =
     Decode.fromString ConfigDecoders.PerlaDecoder content

@@ -7,6 +7,7 @@ open System.Linq.Expressions
 open LiteDB
 
 open FSharp.UMX
+open FsToolkit.ErrorHandling
 
 open Perla
 open Perla.Units
@@ -224,7 +225,7 @@ module Database =
     (searchKind: TemplateSearchKind)
     =
     match searchKind with
-    | TemplateSearchKind.Id id -> repositories.FindById(id) |> Option.ofObj
+    | TemplateSearchKind.Id id -> repositories.FindById(id) |> Option.ofNull
     | TemplateSearchKind.Username username ->
       repositories
         .Query()
@@ -234,7 +235,7 @@ module Database =
             StringComparison.InvariantCultureIgnoreCase
           ))
         .SingleOrDefault()
-      |> Option.ofObj
+      |> Option.ofNull
     | TemplateSearchKind.Repository repository ->
       repositories
         .Query()
@@ -244,7 +245,7 @@ module Database =
             StringComparison.InvariantCultureIgnoreCase
           ))
         .SingleOrDefault()
-      |> Option.ofObj
+      |> Option.ofNull
     | TemplateSearchKind.FullName(username, repository) ->
       repositories
         .Query()
@@ -258,7 +259,7 @@ module Database =
             StringComparison.InvariantCultureIgnoreCase
           ))
         .SingleOrDefault()
-      |> Option.ofObj
+      |> Option.ofNull
 
   let getChecks(args: PerlaDatabaseArgs) =
     { new CheckRepository with
@@ -287,7 +288,7 @@ module Database =
 
           match
             checks.FindOne(fun check -> check.Name = checkName && check.IsDone)
-            |> Option.ofObj
+            |> Option.ofNull
           with
           | Some found -> found.CheckId
           | None ->
@@ -300,7 +301,7 @@ module Database =
 
           match
             checks.FindOne(fun check -> check.Name = PerlaCheck.SetupCheckName)
-            |> Option.ofObj
+            |> Option.ofNull
           with
           | Some found -> found.CheckId
           | None ->
@@ -315,7 +316,7 @@ module Database =
           let checkName = PerlaCheck.TemplatesCheckName
 
           match
-            checks.FindOne(fun check -> check.Name = checkName) |> Option.ofObj
+            checks.FindOne(fun check -> check.Name = checkName) |> Option.ofNull
           with
           | Some found -> found.CheckId
           | None ->
@@ -412,7 +413,7 @@ module Database =
             match searchParams with
             | QuickAccessSearch.Id id ->
               templates.FindById(id)
-              |> Option.ofObj
+              |> Option.ofNull
               |> Option.map List.singleton
               |> Option.defaultValue []
             | QuickAccessSearch.Name name ->
@@ -483,10 +484,7 @@ module Database =
             templates.DeleteMany(fun t -> t.Parent = template._id) |> ignore
 
             // Insert updated templates if any are provided
-            if
-              not(isNull template.Templates)
-              && template.Templates |> Seq.isEmpty |> not
-            then
+            if template.Templates |> Seq.isEmpty |> not then
               // Build template items from the configuration items
               let updatedTemplates =
                 template.Templates

@@ -1,4 +1,4 @@
-﻿namespace Perla.VirtualFs
+namespace Perla.VirtualFs
 
 open System
 open System.Collections.Concurrent
@@ -87,7 +87,7 @@ module VirtualFs =
   }
 
   let getMimeType(filename: string) =
-    match Path.GetExtension(filename).ToLowerInvariant() with
+    match (Path.GetExtension(filename) |> nonNull).ToLowerInvariant() with
     | ".js" -> "text/javascript"
     | ".ts" -> "text/typescript"
     | ".jsx" -> "text/javascript"
@@ -247,8 +247,8 @@ module VirtualFs =
     async {
       try
         let sourcePath = UMX.untag systemPath
-        let extension = Path.GetExtension(sourcePath)
-        let filename = Path.GetFileName(sourcePath)
+        let extension = Path.GetExtension(sourcePath) |> defaultIfNull ""
+        let filename = Path.GetFileName(sourcePath) |> nonNull
         let mimeType = getMimeType filename
         let targetPath = transformSourcePath systemPath userPath serverPath
 
@@ -277,7 +277,7 @@ module VirtualFs =
           let! transform = applyPlugins logger extensibility content extension
 
           let fileContent = {
-            filename = Path.GetFileName(sourcePath)
+            filename = Path.GetFileName(sourcePath) |> nonNull
             mimetype = getMimeType(filename + transform.extension)
             content = transform.content
             source = systemPath
@@ -286,10 +286,9 @@ module VirtualFs =
           let finalPath =
             if transform.extension <> extension then
               let newName =
-                Path.GetFileNameWithoutExtension(UMX.untag targetPath)
-                + transform.extension
+                $"{Path.GetFileNameWithoutExtension(sourcePath)}{transform.extension}"
 
-              let dir = Path.GetDirectoryName(UMX.untag targetPath)
+              let dir = Path.GetDirectoryName(UMX.untag targetPath) |> nonNull
 
               let newPath =
                 UMX.tag<ServerUrl>(
@@ -588,7 +587,7 @@ module VirtualFs =
           for KeyValue(serverUrl, entry) in files do
             let relativePath = (UMX.untag serverUrl).TrimStart('/')
             let targetPath = Path.Combine(outputDir, relativePath)
-            let targetDir = Path.GetDirectoryName(targetPath)
+            let targetDir = Path.GetDirectoryName(targetPath) |> nonNull
 
             Directory.CreateDirectory(targetDir) |> ignore
 
