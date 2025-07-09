@@ -1,4 +1,4 @@
-﻿namespace Perla.Handlers
+namespace Perla.Handlers
 
 open System
 open System.IO
@@ -162,7 +162,10 @@ module RunNew =
         let targetPath =
           file.FullName.Replace(sourcePath.FullName, UMX.untag targetPath)
 
-        file.Directory.Create()
+        match file.Directory with
+        | null -> ()
+        | directory -> directory.Create()
+
         File.Copy(file.FullName, UMX.untag targetPath, true)
         tsk.Increment 1)
 
@@ -274,9 +277,9 @@ module Handlers =
           SelectionPrompt()
             .Title("Select a template to create a new project:")
             .EnableSearch()
-            .AddChoices(templates)
-            .UseConverter(fun tpl ->
+            .UseConverter(fun (tpl: TemplateDecoders.DecodedTemplateConfigItem) ->
               $"{tpl.name} ({tpl.shortName}) - {tpl.description}")
+            .AddChoices(templates)
 
         let! selected = AnsiConsole.PromptAsync(prompt, token)
 
@@ -317,9 +320,9 @@ module Handlers =
           SelectionPrompt()
             .Title("Select a template to create a new project:")
             .EnableSearch()
-            .AddChoices(templates)
-            .UseConverter(fun tpl ->
+            .UseConverter(fun (tpl: TemplateItem) ->
               $"{tpl.Name} ({tpl.ShortName}) - {tpl.Description}")
+            .AddChoices(templates)
 
         let! selected = AnsiConsole.PromptAsync(prompt, token)
         RunNew.writeFoundTemplate(selected, UMX.tag targetPath.FullName)
@@ -332,7 +335,7 @@ module Handlers =
 
     match tplList with
     | [] -> return! handleOfflineTemplates()
-    | templates -> return! handleDatabaseTemplates(templates)
+    | templates -> return! handleDatabaseTemplates templates
   }
 
   let runTemplate

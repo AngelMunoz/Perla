@@ -13,7 +13,7 @@ open Perla.Json.TemplateDecoders
 open Perla.FileSystem
 
 
-[<AllowNullLiteral; Class>]
+[<Class; Sealed>]
 type PerlaCheck =
 
   [<BsonId>]
@@ -27,7 +27,7 @@ type PerlaCheck =
 
   member UpdatedAt: Nullable<DateTime>
 
-[<Class; Sealed; AllowNullLiteral>]
+[<Class; Sealed>]
 type TemplateConfigurationItem =
 
   [<BsonId>]
@@ -38,7 +38,7 @@ type TemplateConfigurationItem =
   member Description: string with get, set
 
 
-[<Class; Sealed; AllowNullLiteral>]
+[<Class; Sealed>]
 type PerlaTemplateRepository =
 
   [<BsonId>]
@@ -61,7 +61,7 @@ type PerlaTemplateRepository =
   member ToFullName: unit -> string
   member ToFullNameWithBranch: unit -> string
 
-[<Class; Sealed; AllowNullLiteral>]
+[<Class; Sealed>]
 type TemplateItem =
 
   [<BsonId>]

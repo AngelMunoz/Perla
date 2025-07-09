@@ -15,7 +15,7 @@ open Perla.FileSystem
 open Microsoft.Extensions.Logging
 open Json.TemplateDecoders
 
-[<AllowNullLiteral; Class>]
+[<Class; Sealed>]
 type PerlaCheck() =
 
   [<BsonId>]
@@ -41,7 +41,7 @@ module PerlaCheck =
   [<Literal>]
   let TemplatesCheckName = "TemplatesCheck"
 
-[<Class; Sealed; AllowNullLiteral>]
+[<Class; Sealed>]
 type TemplateConfigurationItem() =
 
   [<BsonId>]
@@ -52,7 +52,7 @@ type TemplateConfigurationItem() =
   member val Description: string = String.Empty with get, set
 
 
-[<Class; Sealed; AllowNullLiteral>]
+[<Class; Sealed>]
 type PerlaTemplateRepository() =
 
   [<BsonId>]
@@ -80,7 +80,7 @@ type PerlaTemplateRepository() =
   member this.ToFullNameWithBranch() : string =
     $"{this.Username}/{this.Repository}/{this.Branch}"
 
-[<Class; Sealed; AllowNullLiteral>]
+[<Class; Sealed>]
 type TemplateItem() =
 
   [<BsonId>]
