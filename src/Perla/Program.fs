@@ -52,7 +52,6 @@ let main argv =
     noActionAsync
 
     addCommands [
-      Commands.Setup appContainer
       Commands.Template appContainer
       Commands.Describe appContainer
       Commands.Build appContainer

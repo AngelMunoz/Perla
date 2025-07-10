@@ -76,7 +76,6 @@ module ServeInputs =
 module Commands =
   val Build: container: AppContainer -> Command
   val Serve: container: AppContainer -> Command
-  val Setup: container: AppContainer -> Command
   val RemovePackage: container: AppContainer -> Command
   val Install: container: AppContainer -> Command
   val AddPackage: container: AppContainer -> Command

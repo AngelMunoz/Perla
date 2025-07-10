@@ -51,7 +51,6 @@ type RunTemplateOperation =
 type TemplateRepositoryOptions = {
   fullRepositoryName: string option
   operation: RunTemplateOperation
-  skipPrompts: bool
 }
 
 type ProjectOptions = {
@@ -74,8 +73,6 @@ type DescribeOptions = { properties: string[]; current: bool }
 
 
 module Handlers =
-
-  val runSetup: options: SetupOptions -> CancellableTask<int>
 
   val runNew:
     container: AppContainer -> options: ProjectOptions -> CancellableTask<int>

@@ -308,33 +308,6 @@ module Commands =
       setAction handleCommand
     }
 
-  let Setup(container: AppContainer) =
-    let handleCommand
-      (
-        ctx: ActionContext,
-        installTemplates: bool option,
-        skipPrompts: bool option
-      ) =
-      let options = {
-        installTemplates = defaultArg installTemplates true
-        skipPrompts = defaultArg skipPrompts false
-      }
-
-      Handlers.runSetup options ctx.CancellationToken
-
-
-    command "setup" {
-      description "Initializes a given directory or perla itself"
-
-      inputs(
-        Input.context,
-        SetupInputs.installTemplates,
-        SetupInputs.skipPrompts
-      )
-
-      setAction handleCommand
-    }
-
   let RemovePackage(container: AppContainer) =
 
     let handleCommand
@@ -459,7 +432,6 @@ module Commands =
       let options = {
         fullRepositoryName = name
         operation = operation
-        skipPrompts = true
       }
 
       Handlers.runTemplate container options ctx.CancellationToken

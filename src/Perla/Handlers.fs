@@ -86,8 +86,8 @@ type TemplateRepositoryOptions = {
 }
 
 type ProjectOptions = {
-  byId: string option
   projectName: string
+  byId: string option
   byShortName: string option
   skipPrompts: bool
 }
@@ -739,7 +739,7 @@ module Handlers =
     return 0
   }
 
-  let runTesting(options: TestingOptions) = cancellableTask {
+  let runTesting (container: AppContainer) (options: TestingOptions) = cancellableTask {
     // let! cancellationToken = CancellableTask.getCancellationToken()
 
     // ConfigurationManager.UpdateFromCliArgs(
