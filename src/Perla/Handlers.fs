@@ -740,184 +740,184 @@ module Handlers =
   }
 
   let runTesting(options: TestingOptions) = cancellableTask {
-    let! cancellationToken = CancellableTask.getCancellationToken()
+    // let! cancellationToken = CancellableTask.getCancellationToken()
 
-    ConfigurationManager.UpdateFromCliArgs(
-      testingOptions = [
-        match options.browsers with
-        | Some value -> TestingField.Browsers value
-        | None -> ()
-        match options.files with
-        | Some value -> TestingField.Includes value
-        | None -> ()
-        match options.skip with
-        | Some value -> TestingField.Excludes value
-        | None -> ()
-        match options.watch with
-        | Some value -> TestingField.Watch value
-        | None -> ()
-        match options.headless with
-        | Some value -> TestingField.Headless value
-        | None -> ()
-        match options.browserMode with
-        | Some value -> TestingField.BrowserMode value
-        | None -> ()
-      ]
-    )
+    // ConfigurationManager.UpdateFromCliArgs(
+    //   testingOptions = [
+    //     match options.browsers with
+    //     | Some value -> TestingField.Browsers value
+    //     | None -> ()
+    //     match options.files with
+    //     | Some value -> TestingField.Includes value
+    //     | None -> ()
+    //     match options.skip with
+    //     | Some value -> TestingField.Excludes value
+    //     | None -> ()
+    //     match options.watch with
+    //     | Some value -> TestingField.Watch value
+    //     | None -> ()
+    //     match options.headless with
+    //     | Some value -> TestingField.Headless value
+    //     | None -> ()
+    //     match options.browserMode with
+    //     | Some value -> TestingField.BrowserMode value
+    //     | None -> ()
+    //   ]
+    // )
 
-    let config = {
-      ConfigurationManager.CurrentConfig with
-          mountDirectories =
-            ConfigurationManager.CurrentConfig.mountDirectories
-            |> Map.add
-              (UMX.tag<ServerUrl> "/tests")
-              (UMX.tag<UserPath> "./tests")
-    }
+    // let config = {
+    //   ConfigurationManager.CurrentConfig with
+    //       mountDirectories =
+    //         ConfigurationManager.CurrentConfig.mountDirectories
+    //         |> Map.add
+    //           (UMX.tag<ServerUrl> "/tests")
+    //           (UMX.tag<UserPath> "./tests")
+    // }
 
-    let isWatch = config.testing.watch
+    // let isWatch = config.testing.watch
 
-    let fableEvents =
-      match config.testing.fable with
-      | Some fable -> Fable.Observe(fable, isWatch)
-      | None -> Observable.single FableEvent.WaitingForChanges
+    // let fableEvents =
+    //   match config.testing.fable with
+    //   | Some fable -> Fable.Observe(fable, isWatch)
+    //   | None -> Observable.single FableEvent.WaitingForChanges
 
-    fableEvents
-    |> Observable.add(fun events ->
-      match events with
-      | FableEvent.Log msg -> Logger.log(msg.EscapeMarkup())
-      | FableEvent.ErrLog msg ->
-        Logger.log $"[bold red]{msg.EscapeMarkup()}[/]"
-      | FableEvent.WaitingForChanges -> ())
+    // fableEvents
+    // |> Observable.add(fun events ->
+    //   match events with
+    //   | FableEvent.Log msg -> Logger.log(msg.EscapeMarkup())
+    //   | FableEvent.ErrLog msg ->
+    //     Logger.log $"[bold red]{msg.EscapeMarkup()}[/]"
+    //   | FableEvent.WaitingForChanges -> ())
 
-    do! FsMonitor.FirstCompileDone isWatch fableEvents
+    // do! FsMonitor.FirstCompileDone isWatch fableEvents
 
-    match PluginLoader.Load<FileSystem, Esbuild>(config.esbuild) with
-    | Ok plugins -> Logger.log $"Loaded {plugins.Length} plugins"
-    | Error err ->
-      for err in err do
-        match err with
-        | NoPluginFound name -> Logger.log($"Plugin {name} not found")
-        | EvaluationFailed(ex) ->
-          Logger.log($"Failed to evaluate plugin", ex = ex)
-        | SessionExists
-        | BoundValueMissing -> Logger.log "Failed to load plugins"
-        | AlreadyLoaded name -> Logger.log($"Plugin {name} already loaded")
+    // match PluginLoader.Load<FileSystem, Esbuild>(config.esbuild) with
+    // | Ok plugins -> Logger.log $"Loaded {plugins.Length} plugins"
+    // | Error err ->
+    //   for err in err do
+    //     match err with
+    //     | NoPluginFound name -> Logger.log($"Plugin {name} not found")
+    //     | EvaluationFailed(ex) ->
+    //       Logger.log($"Failed to evaluate plugin", ex = ex)
+    //     | SessionExists
+    //     | BoundValueMissing -> Logger.log "Failed to load plugins"
+    //     | AlreadyLoaded name -> Logger.log($"Plugin {name} already loaded")
 
-    do! VirtualFileSystem.Mount config
+    // do! VirtualFileSystem.Mount config
 
-    let perlaChanges =
-      FileSystem.ObservePerlaFiles(UMX.untag config.index, cancellationToken)
+    // let perlaChanges =
+    //   FileSystem.ObservePerlaFiles(UMX.untag config.index, cancellationToken)
 
-    let fileChanges =
-      FsMonitor.FileChanges(
-        UMX.untag config.index,
-        config.mountDirectories,
-        perlaChanges,
-        config.plugins
-      )
-    // TODO: Grab these from esbuild
-    let compilerErrors = Observable.empty
+    // let fileChanges =
+    //   FsMonitor.FileChanges(
+    //     UMX.untag config.index,
+    //     config.mountDirectories,
+    //     perlaChanges,
+    //     config.plugins
+    //   )
+    // // TODO: Grab these from esbuild
+    // let compilerErrors = Observable.empty
 
-    let config = {
-      config with
-          devServer = {
-            config.devServer with
-                liveReload = isWatch
-          }
-    }
+    // let config = {
+    //   config with
+    //       devServer = {
+    //         config.devServer with
+    //             liveReload = isWatch
+    //       }
+    // }
 
-    let events = Subject<TestEvent>.broadcast
+    // let events = Subject<TestEvent>.broadcast
 
-    let! dependencies =
-      Dependencies.GetMapAndDependencies Seq.empty
-      |> TaskResult.map(fun (deps, map) ->
-        let map = map.AddResolutions(config.paths).AddEnvResolution config
-        deps, map)
-      |> TaskResult.defaultValue(
-        Seq.empty,
-        FileSystem.GetImportMap().AddResolutions(config.paths).AddEnvResolution
-          config
-      )
+    // let! dependencies =
+    //   Dependencies.GetMapAndDependencies Seq.empty
+    //   |> TaskResult.map(fun (deps, map) ->
+    //     let map = map.AddResolutions(config.paths).AddEnvResolution config
+    //     deps, map)
+    //   |> TaskResult.defaultValue(
+    //     Seq.empty,
+    //     FileSystem.GetImportMap().AddResolutions(config.paths).AddEnvResolution
+    //       config
+    //   )
 
-    let mutable app =
-      Server.GetTestingApp(
-        config,
-        dependencies,
-        events,
-        fileChanges,
-        compilerErrors,
-        config.testing.includes
-      )
-    // Keep this before initializing the server
-    // otherwise it will always say that the port is occupied
-    let http, _ =
-      Server.GetServerURLs
-        config.devServer.host
-        config.devServer.port
-        config.devServer.useSSL
+    // let mutable app =
+    //   Server.GetTestingApp(
+    //     config,
+    //     dependencies,
+    //     events,
+    //     fileChanges,
+    //     compilerErrors,
+    //     config.testing.includes
+    //   )
+    // // Keep this before initializing the server
+    // // otherwise it will always say that the port is occupied
+    // let http, _ =
+    //   Server.GetServerURLs
+    //     config.devServer.host
+    //     config.devServer.port
+    //     config.devServer.useSSL
 
-    do! app.StartAsync(cancellationToken)
+    // do! app.StartAsync(cancellationToken)
 
-    perlaChanges
-    |> Observable.choose (function
-      | PerlaFileChange.PerlaConfig -> Some()
-      | _ -> None)
-    |> Observable.map(fun _ -> app.StopAsync() |> Async.AwaitTask)
-    |> Observable.switchAsync
-    |> Observable.map(fun _ ->
-      ConfigurationManager.UpdateFromFile()
-      app <- Server.GetServerApp(config, fileChanges, compilerErrors)
-      app.StartAsync(cancellationToken) |> Async.AwaitTask)
-    |> Observable.switchAsync
-    |> Observable.add ignore
+    // perlaChanges
+    // |> Observable.choose (function
+    //   | PerlaFileChange.PerlaConfig -> Some()
+    //   | _ -> None)
+    // |> Observable.map(fun _ -> app.StopAsync() |> Async.AwaitTask)
+    // |> Observable.switchAsync
+    // |> Observable.map(fun _ ->
+    //   ConfigurationManager.UpdateFromFile()
+    //   app <- Server.GetServerApp(config, fileChanges, compilerErrors)
+    //   app.StartAsync(cancellationToken) |> Async.AwaitTask)
+    // |> Observable.switchAsync
+    // |> Observable.add ignore
 
-    use! pl = Playwright.CreateAsync()
+    // use! pl = Playwright.CreateAsync()
 
-    let testConfig = config.testing
+    // let testConfig = config.testing
 
-    if not isWatch then
-      do!
-        Testing.RunOnce(
-          pl,
-          testConfig.browserMode,
-          testConfig.browsers,
-          testConfig.headless,
-          http
-        )
+    // if not isWatch then
+    //   do!
+    //     Testing.RunOnce(
+    //       pl,
+    //       testConfig.browserMode,
+    //       testConfig.browsers,
+    //       testConfig.headless,
+    //       http
+    //     )
 
-      events.OnCompleted()
+    //   events.OnCompleted()
 
-      events
-      |> Observable.toEnumerable
-      |> Seq.toList
-      |> Testing.BuildReport
-      |> Print.Report
+    //   events
+    //   |> Observable.toEnumerable
+    //   |> Seq.toList
+    //   |> Testing.BuildReport
+    //   |> Print.Report
 
-      return 0
-    else
-      let browser = config.testing.browsers |> Seq.head
-      let fileChanges = fileChanges |> Observable.map ignore
+    //   return 0
+    // else
+    //   let browser = config.testing.browsers |> Seq.head
+    //   let fileChanges = fileChanges |> Observable.map ignore
 
-      do!
-        Testing.LiveRun(
-          pl,
-          browser,
-          testConfig.headless,
-          http,
-          fileChanges,
-          events,
-          cancellationToken
-        )
+    //   do!
+    //     Testing.LiveRun(
+    //       pl,
+    //       browser,
+    //       testConfig.headless,
+    //       http,
+    //       fileChanges,
+    //       events,
+    //       cancellationToken
+    //     )
 
-      events.OnCompleted()
+    //   events.OnCompleted()
 
-      events
-      |> Observable.toEnumerable
-      |> Seq.toList
-      |> Testing.BuildReport
-      |> Print.Report
+    //   events
+    //   |> Observable.toEnumerable
+    //   |> Seq.toList
+    //   |> Testing.BuildReport
+    //   |> Print.Report
 
-      return 0
+    return 0
   }
 
   let runAddPackage (container: AppContainer) (options: AddPackageOptions) = cancellableTask {
