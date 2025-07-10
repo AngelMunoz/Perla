@@ -136,7 +136,10 @@ val DefaultJsonDocumentOptions: unit -> JsonDocumentOptions
 [<Class>]
 type Json =
   static member ToBytes: value: 'a -> byte array
-  static member FromBytes<'T> : value: byte array -> 'T
+
+  static member FromBytes<'T when 'T: not struct and 'T: not null> :
+    value: byte array -> 'T
+
   static member ToText: value: 'a * ?minify: bool -> string
   static member ToNode: value: 'a -> JsonNode
   static member FromConfigFile: string -> Result<DecodedPerlaConfig, string>

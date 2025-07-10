@@ -390,7 +390,7 @@ type Json =
     (value: byte array)
     =
     match
-      JsonSerializer.Deserialize(ReadOnlySpan value, DefaultJsonOptions())
+      JsonSerializer.Deserialize<'T>(ReadOnlySpan value, DefaultJsonOptions())
     with
     | null -> failwith "Deserialization failed"
     | result -> result
@@ -791,14 +791,14 @@ module PerlaConfig =
       match jsonContents with
       | Some content -> content
       | None ->
-        JsonObject
-          .Parse($"""{{ "$schema": "{Constants.JsonSchemaUrl}" }}""")
+        (JsonObject.Parse($"""{{ "$schema": "{Constants.JsonSchemaUrl}" }}""")
+         |> nonNull)
           .AsObject()
 
     match
       content["$schema"]
       |> Option.ofObj
-      |> Option.map(fun schema -> schema.GetValue<string>() |> Option.ofObj)
+      |> Option.map(fun schema -> schema.GetValue<string>() |> Option.ofNull)
       |> Option.flatten
     with
     | Some _ -> ()
