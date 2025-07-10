@@ -37,6 +37,7 @@ open Perla.Configuration
 open Perla.Logger
 open Perla.PkgManager
 open Perla.PkgManager.PkgManager
+open Perla.Server
 
 [<Struct; RequireQualifiedAccess>]
 type ListFormat =
@@ -601,93 +602,136 @@ module Handlers =
     return 0
   }
 
-  let runServe(options: ServeOptions) = cancellableTask {
+  let runServe (container: AppContainer) (options: ServeOptions) = cancellableTask {
     let! cancellationToken = CancellableTask.getCancellationToken()
 
-    let cliArgs = [
-      match options.port with
-      | Some port -> DevServerField.Port port
-      | None -> ()
-      match options.host with
-      | Some host -> DevServerField.Host host
-      | None -> ()
-      match options.ssl with
-      | Some ssl -> DevServerField.UseSSL ssl
-      | None -> ()
-      // Don't minify sources in dev mode
-      DevServerField.MinifySources false
-    ]
+    let configA =
+      container.Configuration.PerlaConfig
+      |> AVal.map(fun config -> {
+        config with
+            devServer = {
+              config.devServer with
+                  port = defaultArg options.port config.devServer.port
+                  host = defaultArg options.host config.devServer.host
+                  useSSL = defaultArg options.ssl config.devServer.useSSL
+            }
+            esbuild = { config.esbuild with minify = false }
+      })
 
-    ConfigurationManager.UpdateFromCliArgs(serverOptions = cliArgs)
+    let config = configA |> AVal.force
 
+    let esbuildPlugin =
+      config.plugins
+      |> List.tryFind(fun p ->
+        p.Equals(
+          Constants.PerlaEsbuildPluginName,
+          StringComparison.InvariantCultureIgnoreCase
+        ))
+      |> Option.map(fun _ -> container.EsbuildService.GetPlugin config.esbuild)
 
-    let config = ConfigurationManager.CurrentConfig
+    let plugins = container.FsManager.ResolvePluginPaths()
 
-    let fableEvents =
-      match config.fable with
-      | Some fable ->
-        Fable.Observe(fable, cancellationToken = cancellationToken)
-      | None ->
-        let sub = Subject.replay
-        sub.OnNext(FableEvent.WaitingForChanges)
-        sub
+    container.ExtensibilityService.LoadPlugins(
+      plugins,
+      ?esbuildPlugin = esbuildPlugin
+    )
+    |> Result.teeError(fun err ->
+      container.Logger.LogError("Failed to load plugins: {error}", err))
+    |> Result.ignore
+    |> Result.ignoreError
 
-    use _ =
-      fableEvents
-      |> Observable.subscribeSafe(fun events ->
-        match events with
-        | FableEvent.Log msg -> Logger.log(msg.EscapeMarkup())
-        | FableEvent.ErrLog msg ->
-          Logger.log $"[bold red]{msg.EscapeMarkup()}[/]"
-        | FableEvent.WaitingForChanges -> ())
+    let mountedDirectories = config.mountDirectories
+    let fableConfig = config.fable
 
-    do! FsMonitor.FirstCompileDone true fableEvents
+    let mutable isFableFirstRunDone = fableConfig.IsSome && false
 
-    match PluginLoader.Load<FileSystem, Esbuild>(config.esbuild) with
-    | Ok plugins -> Logger.log $"Loaded {plugins.Length} plugins"
-    | Error err ->
-      for err in err do
-        match err with
-        | NoPluginFound name -> Logger.log($"Plugin {name} not found")
-        | EvaluationFailed(ex) ->
-          Logger.log($"Failed to evaluate plugin", ex = ex)
-        | SessionExists
-        | BoundValueMissing -> Logger.log "Failed to load plugins"
-        | AlreadyLoaded name -> Logger.log($"Plugin {name} already loaded")
+    match fableConfig with
+    | Some config ->
+      container.Logger.LogInformation
+        "Fable configuration found. Running Fable service."
 
-    do! VirtualFileSystem.Mount(config)
+      let work = asyncEx {
+        let events = container.FableService.Monitor config
 
-    let perlaChanges =
-      FileSystem.ObservePerlaFiles(UMX.untag config.index, cancellationToken)
+        for event in events do
+          match event with
+          | FableEvent.Log _ -> ()
+          | FableEvent.ErrLog _ -> ()
+          | FableEvent.WaitingForChanges ->
+            if not isFableFirstRunDone then
+              isFableFirstRunDone <- true
+              container.Logger.LogInformation "Fable service is ready."
+            else
+              container.Logger.LogInformation
+                "Fable service waiting for changes."
+      }
 
-    let fileChanges =
-      FsMonitor.FileChanges(
-        UMX.untag config.index,
-        config.mountDirectories,
-        perlaChanges,
-        config.plugins
+      Async.Start(work, cancellationToken)
+    | None ->
+      container.Logger.LogWarning
+        "Fable configuration not found. Skipping Fable service."
+
+      isFableFirstRunDone <- true
+
+    do!
+      container.Logger.Spinner(
+        "Mounting Virtual File System",
+        container.VirtualFileSystem.Load mountedDirectories
       )
 
-    // TODO: Grab these from esbuild
-    let compilerErrors = Observable.empty
+    let mutable server =
+      Server.GetServerApp(
+        configA,
+        container.VirtualFileSystem,
+        container.VirtualFileSystem.FileChanges,
+        Observable.empty,
+        container.FsManager
+      )
 
-    let mutable app = Server.GetServerApp(config, fileChanges, compilerErrors)
-    do! app.StartAsync(cancellationToken)
+    while not cancellationToken.IsCancellationRequested
+          && not isFableFirstRunDone do
+      do! Async.Sleep(TimeSpan.FromMilliseconds(100.))
 
-    app.Urls
-    |> Seq.iter(fun url -> Logger.log($"Listening at: {url}", target = Serve))
+    do! server.StartAsync(cancellationToken)
 
-    perlaChanges
-    |> Observable.throttle(TimeSpan.FromMilliseconds(500.))
-    |> Observable.choose (function
-      | PerlaFileChange.PerlaConfig -> Some()
-      | _ -> None)
-    |> Observable.map(fun _ -> app.StopAsync() |> Async.AwaitTask)
-    |> Observable.switchAsync
-    |> Observable.add(fun _ ->
-      ConfigurationManager.UpdateFromFile()
-      app <- Server.GetServerApp(config, fileChanges, compilerErrors)
-      app.StartAsync(cancellationToken) |> ignore)
+    server.Urls
+    |> Seq.iter(fun url ->
+      container.Logger.LogInformation("Listening at: {url}", url))
+
+    use _ =
+      container.FsManager.PerlaConfiguration.AddCallback(fun config ->
+        let port, host, useSSL =
+          configA
+          |> AVal.map(fun config ->
+            config.devServer.port,
+            config.devServer.host,
+            config.devServer.useSSL)
+          |> AVal.force
+
+        if
+          port <> config.devServer.port
+          || config.devServer.host <> host
+          || config.devServer.useSSL <> useSSL
+        then
+          container.Logger.LogInformation
+            "Server configuration changed, restarting server..."
+
+          let work = asyncEx {
+            do! server.StopAsync cancellationToken
+
+            server <-
+              Server.GetServerApp(
+                configA,
+                container.VirtualFileSystem,
+                container.VirtualFileSystem.FileChanges,
+                Observable.empty,
+                container.FsManager
+              )
+
+            do! server.StartAsync cancellationToken
+          }
+
+          Async.StartImmediate(work, cancellationToken))
 
     while not cancellationToken.IsCancellationRequested do
       do! Async.Sleep(TimeSpan.FromSeconds(1.))

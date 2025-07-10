@@ -105,7 +105,7 @@ module Fable =
             match event with
             | :? StartedCommandEvent as started ->
               args.Logger.LogInformation(
-                "Fable started with pid: []",
+                "Fable started with pid: [{ProcessId}]",
                 started.ProcessId
               )
             | :? StandardOutputCommandEvent as stdout ->

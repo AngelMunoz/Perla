@@ -15,6 +15,7 @@ open FSharp.Control.Reactive
 
 open Fake.IO.Globbing.Operators
 open Microsoft.Extensions.Logging
+open AngleSharp.Io
 
 
 // New types for refactored VFS
@@ -87,42 +88,10 @@ module VirtualFs =
   }
 
   let getMimeType(filename: string) =
-    match (Path.GetExtension(filename) |> nonNull).ToLowerInvariant() with
-    | ".js" -> "text/javascript"
-    | ".ts" -> "text/typescript"
-    | ".jsx" -> "text/javascript"
-    | ".tsx" -> "text/typescript"
-    | ".css" -> "text/css"
-    | ".html" -> "text/html"
-    | ".json" -> "application/json"
-    | ".png" -> "image/png"
-    | ".jpg"
-    | ".jpeg" -> "image/jpeg"
-    | ".gif" -> "image/gif"
-    | ".svg" -> "image/svg+xml"
-    | ".ico" -> "image/x-icon"
-    | ".woff"
-    | ".woff2" -> "font/woff"
-    | ".ttf" -> "font/ttf"
-    | ".eot" -> "application/vnd.ms-fontobject"
-    | _ -> "application/octet-stream"
-
-  let isBinaryFile(extension: string) =
-    match extension.ToLowerInvariant() with
-    | ".png"
-    | ".jpg"
-    | ".jpeg"
-    | ".gif"
-    | ".ico"
-    | ".woff"
-    | ".woff2"
-    | ".ttf"
-    | ".eot"
-    | ".pdf"
-    | ".zip"
-    | ".exe"
-    | ".dll" -> true
-    | _ -> false
+    filename
+    |> Path.GetExtension
+    |> defaultIfNull ""
+    |> MimeTypeNames.FromExtension
 
   let shouldIgnoreFile(path: string) =
     let normalized = path.Replace("\\", "/")
@@ -258,7 +227,7 @@ module VirtualFs =
           UMX.untag targetPath
         )
 
-        if isBinaryFile extension then
+        if mimeType = MimeTypeNames.Binary then
           let binaryInfo = {
             filename = filename
             mimetype = mimeType

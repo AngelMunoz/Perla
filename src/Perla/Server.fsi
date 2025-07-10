@@ -15,7 +15,7 @@ type Server =
   static member GetServerApp:
     config: PerlaConfig aval *
     vfs: VirtualFileSystem *
-    fileChangedEvents: IObservable<FileChangedEvent * FileTransform> *
+    fileChangedEvents: IObservable<FileChangedEvent> *
     compileErrorEvents: IObservable<string option> *
     fsManager: PerlaFsManager ->
       WebApplication
@@ -25,7 +25,7 @@ type Server =
     vfs: VirtualFileSystem *
     dependencies: Perla.PkgManager.ImportMap aval *
     testEvents: ISubject<TestEvent> *
-    fileChangedEvents: IObservable<FileChangedEvent * FileTransform> *
+    fileChangedEvents: IObservable<FileChangedEvent> *
     compileErrorEvents: IObservable<string option> *
     fsManager: PerlaFsManager *
     [<Optional>] ?fileGlobs: string seq *

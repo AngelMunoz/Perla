@@ -369,7 +369,8 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
   }
 
   let SseHandler
-    (fileChangedEvents: IObservable<FileChangedEvent * FileTransform>)
+    (vfs: VirtualFileSystem)
+    (fileChangedEvents: IObservable<FileChangedEvent>)
     (compileErrorEvents: IObservable<string option>)
     (ctx: HttpContext)
     =
@@ -392,10 +393,31 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
 
       let onChangeSub =
         fileChangedEvents
-        |> Observable.map(fun (event, fileTransform) -> task {
+        |> Observable.map(fun (event: FileChangedEvent) -> task {
           match event.changeType with
-          | Changed when fileTransform.extension.ToLowerInvariant() = ".css" ->
-            do! writeHmrChange(event, fileTransform, res)
+          | Changed ->
+            match vfs.Resolve event.serverPath with
+            | Some(FileKind.BinaryFile _) -> do! writeReloadChange(event, res)
+            | Some(FileKind.TextFile file) ->
+              if file.mimetype = MimeTypeNames.Css then
+                do!
+                  writeHmrChange(
+                    event,
+                    {
+                      content = file.content
+                      extension = ".css"
+                    },
+                    res
+                  )
+              else
+                do! writeReloadChange(event, res)
+            | None ->
+              logger.LogWarning(
+                "File Changed Event: {FileName} not found in VFS",
+                UMX.untag event.name
+              )
+
+              do! writeReloadChange(event, res)
           | _ -> do! writeReloadChange(event, res)
 
           do! res.Body.FlushAsync()
@@ -681,14 +703,15 @@ module Server =
 
   let addLiveReload
     (logger: ILogger)
-    (fileChangedEvents: IObservable<FileChangedEvent * FileTransform>)
+    (vfs: VirtualFileSystem)
+    (fileChangedEvents: IObservable<FileChangedEvent>)
     (compileErrorEvents: IObservable<string option>)
     (app: WebApplication)
     =
     app.MapGet(
       "/~perla~/sse",
       Func<HttpContext, Task<IResult>>(fun ctx ->
-        Middleware.SseHandler fileChangedEvents compileErrorEvents ctx)
+        Middleware.SseHandler vfs fileChangedEvents compileErrorEvents ctx)
     )
     |> ignore
 
@@ -875,7 +898,7 @@ type Server =
     (
       config: PerlaConfig aval,
       vfs: VirtualFileSystem,
-      fileChangedEvents: IObservable<FileChangedEvent * FileTransform>,
+      fileChangedEvents: IObservable<FileChangedEvent>,
       compileErrorEvents: IObservable<string option>,
       fsManager: PerlaFsManager
     ) =
@@ -894,7 +917,7 @@ type Server =
       app
 
     Server.DevApp.addIndexHandler app
-    |> Server.addLiveReload app.Logger fileChangedEvents compileErrorEvents
+    |> Server.addLiveReload app.Logger vfs fileChangedEvents compileErrorEvents
     |> Server.addEnv app.Logger config
     |> Server.addVirtualFileSystemMiddleware app.Logger
 
@@ -904,7 +927,7 @@ type Server =
       vfs: VirtualFileSystem,
       dependencies: PkgManager.ImportMap aval,
       testEvents: ISubject<TestEvent>,
-      fileChangedEvents: IObservable<FileChangedEvent * FileTransform>,
+      fileChangedEvents: IObservable<FileChangedEvent>,
       compileErrorEvents: IObservable<string option>,
       fsManager: PerlaFsManager,
       [<Optional>] ?fileGlobs: string seq,
@@ -924,7 +947,7 @@ type Server =
       app
 
     Server.TestApp.addIndexHandler dependencies app
-    |> Server.addLiveReload app.Logger fileChangedEvents compileErrorEvents
+    |> Server.addLiveReload app.Logger vfs fileChangedEvents compileErrorEvents
     |> Server.addEnv app.Logger config
     |> Server.TestApp.addTestingHandlers
       fileGlobs
