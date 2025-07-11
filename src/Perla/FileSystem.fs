@@ -132,7 +132,7 @@ module FileSystem =
               "PERLA_(?<envvarname>[a-zA-Z0-9_]+)\\s*=\\s*(?<content>.+)"
 
           let path = UMX.untag args.PerlaDirectories.CurrentWorkingDirectory
-          let dotEnvFiles = AdaptiveDirectory.GetFiles(path, "*.env")
+          let dotEnvFiles = AdaptiveDirectory.GetFiles(path, @".*\.env$")
 
           let parseEnvLine line =
             let matchResult = envVarRegex.Match line

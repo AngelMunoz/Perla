@@ -30,6 +30,7 @@
     <Compile Include="Types.Tests.fs" />
     <Compile Include="PlatformOps.Tests.fs" />
     <Compile Include="Json.Tests.fs" />
+    <Compile Include="FileSystem.Tests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 </Project>
