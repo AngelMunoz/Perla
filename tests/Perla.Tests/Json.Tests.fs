@@ -583,7 +583,7 @@ let ``TemplateConfigItemDecoder should decode correctly``() =
     "id": "template-1",
     "name": "React Template",
     "path": "./templates/react",
-    "shortname": "react",
+    "shortName": "react",
     "description": "A React template"
   }
   """
@@ -613,7 +613,7 @@ let ``TemplateConfigurationDecoder should decode correctly``() =
         "id": "template-1",
         "name": "React Template",
         "path": "./templates/react",
-        "shortname": "react",
+        "shortName": "react",
         "description": "A React template"
       }
     ],

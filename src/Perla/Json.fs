@@ -214,7 +214,7 @@ module internal Decoders =
         Required.Property.get ("fullTitle", Required.string) element
 
       let! root = Required.Property.get ("root", Required.boolean) element
-      let! parent = Optional.Property.get ("parent", Required.string) element
+      let! parent = Optional.Property.get ("parent", Optional.string) element
       let! pending = Required.Property.get ("pending", Required.boolean) element
 
       let! tests = Required.Property.list ("tests", TestDecoder) element
@@ -224,7 +224,7 @@ module internal Decoders =
         title = title
         fullTitle = fullTitle
         root = root
-        parent = parent
+        parent = parent |> Option.flatten
         pending = pending
         tests = tests
       }
@@ -305,7 +305,7 @@ module internal Decoders =
             element
       | value ->
         return!
-          DecodeError.ofError(element.Clone(), $"Unknown event: {value}")
+          DecodeError.ofError(element.Clone(), $"{value} is not a known event")
           |> Error
     }
 
@@ -385,9 +385,9 @@ type Json =
 
   static member ToText(value, ?minify: bool) =
     let options = DefaultJsonOptions()
+    let shouldMinify = minify |> Option.defaultValue false
 
-    if minify |> Option.defaultValue false then
-      options.WriteIndented <- false
+    options.WriteIndented <- not shouldMinify
 
     JsonSerializer.Serialize(value, options)
 
