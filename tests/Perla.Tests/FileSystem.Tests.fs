@@ -9,6 +9,7 @@ open Perla.Units
 open Perla.FileSystem
 open Perla.RequestHandler
 open Perla
+open Perla.Json
 open IcedTasks
 open FSharp.UMX
 open FSharp.Data.Adaptive
@@ -472,18 +473,176 @@ PERLA_debug="enabled" """
   Assert.True(envContents.ContainsKey("debug"))
   Assert.Equal("\"enabled\" ", envContents.["debug"])
 
-// TODO: Add tests for methods requiring more complex setup:
-// - SetupTemplate (requires zip stream handling)
-// - CopyGlobs (requires file globbing)
-// - SavePerlaConfig with updates (requires PerlaWritableField setup)
-// - SaveImportMap (requires import map serialization)
-// - SavePerlaConfig (requires config serialization)
-// - EmitEnvFile (requires env file generation)
-// - ResolveDescriptionsFile (requires descriptions file handling)
-// - SetupEsbuild (requires esbuild setup)
-// - SetupFable (requires fable setup)
-// - Script resolution methods (require embedded resources)
-// - ResolveOfflineTemplatesConfig (requires zip handling)
+[<Fact>]
+let ``SavePerlaConfig with updates should modify existing perla.json file``() = async {
+  use tempDir = TestHelpers.createTempDir()
+  let logger = TestHelpers.createLogger()
+  let platformOps = FakePlatformOps() :> PlatformOps
+
+  let perlaDirectories = FakePerlaDirectories(tempDir.Path) :> PerlaDirectories
+
+  let requestHandler = FakeRequestHandler() :> RequestHandler
+
+  // Create an initial config file
+  let initialConfigContent =
+    """{"index": "old-index.html", "provider": "unpkg"}"""
+
+  TestHelpers.createTempFile tempDir.Path "perla.json" initialConfigContent
+  |> ignore
+
+  let args = {
+    Logger = logger
+    PlatformOps = platformOps
+    PerlaDirectories = perlaDirectories
+    RequestHandler = requestHandler
+  }
+
+  let fsManager = FileSystem.GetManager(args)
+
+  // Create update fields
+  let updates = [ PerlaConfig.Provider PkgManager.DownloadProvider.JspmIo ]
+
+  // Apply the updates
+  do! fsManager.SavePerlaConfig(updates) |> Async.AwaitCancellableTask
+
+  // Verify the file was updated
+  let expectedPath = Path.Combine(UMX.untag tempDir.Path, "perla.json")
+  Assert.True(File.Exists(expectedPath))
+
+  let savedContent = File.ReadAllText(expectedPath)
+  Assert.NotNull(savedContent)
+  Assert.NotEmpty(savedContent)
+  Assert.Contains("jspm.io", savedContent.ToLowerInvariant())
+}
+
+[<Fact>]
+let ``ResolveOfflineTemplatesConfig should return decoded template configuration``
+  ()
+  =
+  async {
+    use tempDir = TestHelpers.createTempDir()
+    let logger = TestHelpers.createLogger()
+    let platformOps = FakePlatformOps() :> PlatformOps
+
+    let perlaDirectories =
+      FakePerlaDirectories(tempDir.Path) :> PerlaDirectories
+
+    let requestHandler = FakeRequestHandler() :> RequestHandler
+
+    // Create offline templates directory structure
+    let offlineTemplatesDir =
+      Path.Combine(UMX.untag tempDir.Path, "offline-templates")
+
+    Directory.CreateDirectory(offlineTemplatesDir) |> ignore
+
+    // Create a test template configuration
+    let configContent =
+      """{
+        "name": "Test Templates",
+        "group": "test",
+        "templates": [
+          {
+            "id": "test-template",
+            "name": "Test Template",
+            "path": "./test-template",
+            "shortName": "test",
+            "description": "A test template"
+          }
+        ],
+        "author": "Test Author",
+        "license": "MIT"
+      }"""
+
+    TestHelpers.createTempFile
+      (UMX.tag<SystemPath> offlineTemplatesDir)
+      "perla.config.json"
+      configContent
+    |> ignore
+
+    let args = {
+      Logger = logger
+      PlatformOps = platformOps
+      PerlaDirectories = perlaDirectories
+      RequestHandler = requestHandler
+    }
+
+    let fsManager = FileSystem.GetManager(args)
+
+    // Test the method
+    let! config =
+      fsManager.ResolveOfflineTemplatesConfig() |> Async.AwaitCancellableTask
+
+    Assert.NotNull(config)
+    Assert.Equal("Test Templates", config.name)
+    Assert.Equal("test", config.group)
+    Assert.Equal(1, config.templates |> Seq.length)
+
+    let template = config.templates |> Seq.head
+    Assert.Equal("test-template", template.id)
+    Assert.Equal("Test Template", template.name)
+    Assert.Equal("test", template.shortName)
+    Assert.Equal(Some "A test template", template.description)
+  }
+
+[<Fact>]
+let ``CopyGlobs should copy files matching local file system patterns``() =
+  use tempDir = TestHelpers.createTempDir()
+  use outputTempDir = TestHelpers.createTempDir()
+  let logger = TestHelpers.createLogger()
+  let platformOps = FakePlatformOps() :> PlatformOps
+  let perlaDirectories = FakePerlaDirectories(tempDir.Path) :> PerlaDirectories
+  let requestHandler = FakeRequestHandler() :> RequestHandler
+
+  // Create some test files to copy
+  TestHelpers.createTempFile tempDir.Path "test.txt" "test content" |> ignore
+
+  TestHelpers.createTempFile tempDir.Path "style.css" "body { color: red; }"
+  |> ignore
+
+  let srcDir = Path.Combine(UMX.untag tempDir.Path, "src")
+  Directory.CreateDirectory(srcDir) |> ignore
+
+  TestHelpers.createTempFile
+    (UMX.tag<SystemPath> srcDir)
+    "app.js"
+    "console.log('hello');"
+  |> ignore
+
+  let args = {
+    Logger = logger
+    PlatformOps = platformOps
+    PerlaDirectories = perlaDirectories
+    RequestHandler = requestHandler
+  }
+
+  let fsManager = FileSystem.GetManager(args)
+
+  // Create a build config with includes patterns
+  let buildConfig = {
+    Defaults.BuildConfig with
+        includes = [ "lfs:**/*.txt"; "lfs:**/*.css"; "lfs:src/**/*.js" ]
+        outDir = outputTempDir.Path
+  }
+
+  // Execute CopyGlobs
+  fsManager.CopyGlobs(buildConfig, outputTempDir.Path)
+
+  // Verify files were copied
+  let expectedTestFile = Path.Combine(UMX.untag outputTempDir.Path, "test.txt")
+
+  let expectedCssFile = Path.Combine(UMX.untag outputTempDir.Path, "style.css")
+
+  let expectedJsFile =
+    Path.Combine(UMX.untag outputTempDir.Path, "src", "app.js")
+
+  Assert.True(File.Exists(expectedTestFile))
+  Assert.True(File.Exists(expectedCssFile))
+  Assert.True(File.Exists(expectedJsFile))
+
+  // Verify content is correct
+  Assert.Equal("test content", File.ReadAllText(expectedTestFile))
+  Assert.Equal("body { color: red; }", File.ReadAllText(expectedCssFile))
+  Assert.Equal("console.log('hello');", File.ReadAllText(expectedJsFile))
 
 [<Fact>]
 let ``SavePerlaConfig should create perla.json file``() = async {
@@ -501,7 +660,7 @@ let ``SavePerlaConfig should create perla.json file``() = async {
   }
 
   let fsManager = FileSystem.GetManager(args)
-  
+
   // Test with the default config (which should be serializable)
   let testConfig = Defaults.PerlaConfig
 
@@ -519,42 +678,50 @@ let ``SavePerlaConfig should create perla.json file``() = async {
 }
 
 [<Fact>]
-let ``SaveImportMap should create perla.json.importmap file with correct content``() = async {
-  use tempDir = TestHelpers.createTempDir()
-  let logger = TestHelpers.createLogger()
-  let platformOps = FakePlatformOps() :> PlatformOps
-  let perlaDirectories = FakePerlaDirectories(tempDir.Path) :> PerlaDirectories
-  let requestHandler = FakeRequestHandler() :> RequestHandler
+let ``SaveImportMap should create perla.json.importmap file with correct content``
+  ()
+  =
+  async {
+    use tempDir = TestHelpers.createTempDir()
+    let logger = TestHelpers.createLogger()
+    let platformOps = FakePlatformOps() :> PlatformOps
 
-  let args = {
-    Logger = logger
-    PlatformOps = platformOps
-    PerlaDirectories = perlaDirectories
-    RequestHandler = requestHandler
+    let perlaDirectories =
+      FakePerlaDirectories(tempDir.Path) :> PerlaDirectories
+
+    let requestHandler = FakeRequestHandler() :> RequestHandler
+
+    let args = {
+      Logger = logger
+      PlatformOps = platformOps
+      PerlaDirectories = perlaDirectories
+      RequestHandler = requestHandler
+    }
+
+    let fsManager = FileSystem.GetManager(args)
+
+    // Create a test import map
+    let testImportMap = {
+      Perla.PkgManager.ImportMap.Empty with
+          imports = Map.ofList [ ("react", "https://esm.sh/react@18") ]
+    }
+
+    // Save the import map
+    do! fsManager.SaveImportMap(testImportMap) |> Async.AwaitCancellableTask
+
+    // Verify the file was created
+    let expectedPath =
+      Path.Combine(UMX.untag tempDir.Path, "perla.json.importmap")
+
+    Assert.True(File.Exists(expectedPath))
+
+    // Verify the content is correct JSON
+    let savedContent = File.ReadAllText(expectedPath)
+    Assert.NotNull(savedContent)
+    Assert.NotEmpty(savedContent)
+    Assert.Contains("react", savedContent)
+    Assert.Contains("https://esm.sh/react@18", savedContent)
   }
-
-  let fsManager = FileSystem.GetManager(args)
-  
-  // Create a test import map
-  let testImportMap = {
-    Perla.PkgManager.ImportMap.Empty with
-      imports = Map.ofList [("react", "https://esm.sh/react@18")]
-  }
-
-  // Save the import map
-  do! fsManager.SaveImportMap(testImportMap) |> Async.AwaitCancellableTask
-
-  // Verify the file was created
-  let expectedPath = Path.Combine(UMX.untag tempDir.Path, "perla.json.importmap")
-  Assert.True(File.Exists(expectedPath))
-
-  // Verify the content is correct JSON
-  let savedContent = File.ReadAllText(expectedPath)
-  Assert.NotNull(savedContent)
-  Assert.NotEmpty(savedContent)
-  Assert.Contains("react", savedContent)
-  Assert.Contains("https://esm.sh/react@18", savedContent)
-}
 
 [<Fact>]
 let ``EmitEnvFile should create environment file with correct content``() =
@@ -565,9 +732,11 @@ let ``EmitEnvFile should create environment file with correct content``() =
   let requestHandler = FakeRequestHandler() :> RequestHandler
 
   // Create .env file with test environment variables
-  let envContent = """PERLA_API_URL=https://api.example.com
+  let envContent =
+    """PERLA_API_URL=https://api.example.com
 PERLA_VERSION=1.0.0
 PERLA_DEBUG=true"""
+
   TestHelpers.createTempFile tempDir.Path ".env" envContent |> ignore
 
   let args = {
@@ -578,12 +747,15 @@ PERLA_DEBUG=true"""
   }
 
   let fsManager = FileSystem.GetManager(args)
-  
+
   // Create a test config with custom env path
   let testConfig = {
     Defaults.PerlaConfig with
-      envPath = UMX.tag<ServerUrl> "/env.js"
-      build = { Defaults.PerlaConfig.build with outDir = tempDir.Path }
+        envPath = UMX.tag<ServerUrl> "/env.js"
+        build = {
+          Defaults.PerlaConfig.build with
+              outDir = tempDir.Path
+        }
   }
 
   // Emit the env file
@@ -597,12 +769,19 @@ PERLA_DEBUG=true"""
   let savedContent = File.ReadAllText(expectedPath)
   Assert.NotNull(savedContent)
   Assert.NotEmpty(savedContent)
-  Assert.Contains("export const API_URL = \"https://api.example.com\"", savedContent)
+
+  Assert.Contains(
+    "export const API_URL = \"https://api.example.com\"",
+    savedContent
+  )
+
   Assert.Contains("export const VERSION = \"1.0.0\"", savedContent)
   Assert.Contains("export const DEBUG = \"true\"", savedContent)
 
 [<Fact>]
-let ``EmitEnvFile should create empty file when no environment variables exist``() =
+let ``EmitEnvFile should create empty file when no environment variables exist``
+  ()
+  =
   use tempDir = TestHelpers.createTempDir()
   let logger = TestHelpers.createLogger()
   let platformOps = FakePlatformOps() :> PlatformOps
@@ -617,12 +796,15 @@ let ``EmitEnvFile should create empty file when no environment variables exist``
   }
 
   let fsManager = FileSystem.GetManager(args)
-  
+
   // Create a test config with custom env path
   let testConfig = {
     Defaults.PerlaConfig with
-      envPath = UMX.tag<ServerUrl> "/env.js"
-      build = { Defaults.PerlaConfig.build with outDir = tempDir.Path }
+        envPath = UMX.tag<ServerUrl> "/env.js"
+        build = {
+          Defaults.PerlaConfig.build with
+              outDir = tempDir.Path
+        }
   }
 
   // Emit the env file
@@ -635,7 +817,10 @@ let ``EmitEnvFile should create empty file when no environment variables exist``
   // Verify the content is empty (just a newline)
   let savedContent = File.ReadAllText(expectedPath)
   Assert.NotNull(savedContent)
-  Assert.True(String.IsNullOrWhiteSpace(savedContent) || savedContent.Trim() = "")
+
+  Assert.True(
+    String.IsNullOrWhiteSpace(savedContent) || savedContent.Trim() = ""
+  )
 
 [<Fact>]
 let ``EmitEnvFile should use custom tmpPath when provided``() =
@@ -658,12 +843,15 @@ let ``EmitEnvFile should use custom tmpPath when provided``() =
   }
 
   let fsManager = FileSystem.GetManager(args)
-  
+
   // Create a test config with custom env path
   let testConfig = {
     Defaults.PerlaConfig with
-      envPath = UMX.tag<ServerUrl> "/env.js"
-      build = { Defaults.PerlaConfig.build with outDir = tempDir.Path }
+        envPath = UMX.tag<ServerUrl> "/env.js"
+        build = {
+          Defaults.PerlaConfig.build with
+              outDir = tempDir.Path
+        }
   }
 
   // Emit the env file with custom tmpPath
