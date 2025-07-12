@@ -377,7 +377,8 @@ module AppContainer =
 
 
     let pkgManager =
-      let jspmService = RequestHandler.JspmService.create()
+      let jspmService =
+        RequestHandler.JspmService.create(Json.DefaultJsonOptions())
 
       let pkgManagerConfig =
         let appData =

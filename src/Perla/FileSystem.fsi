@@ -10,8 +10,7 @@ open FSharp.Data.Adaptive
 open Perla
 open Perla.Types
 open Perla.Units
-open Perla.Json.TemplateDecoders
-open Perla
+open Perla.Json
 open Perla.RequestHandler
 
 [<Interface>]

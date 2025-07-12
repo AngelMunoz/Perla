@@ -11,10 +11,8 @@ open FsToolkit.ErrorHandling
 
 open Perla
 open Perla.Units
-open Perla.FileSystem
 open Microsoft.Extensions.Logging
-open Json.TemplateDecoders
-open Perla
+open Perla.Json
 
 [<Class; Sealed>]
 type PerlaCheck() =

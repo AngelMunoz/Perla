@@ -877,11 +877,9 @@ module Server =
           Results.Ok {|
             testConfig with
                 browsers =
-                  (testConfig.browsers |> Seq.map ConfigEncoders.Browser)
-                    .ToString()
+                  (testConfig.browsers |> Seq.map Encoders.Browser).ToString()
                 browserMode =
-                  (testConfig.browserMode |> ConfigEncoders.BrowserMode)
-                    .ToString()
+                  (testConfig.browserMode |> Encoders.BrowserMode).ToString()
                 runId = Guid.NewGuid()
           |})
       )

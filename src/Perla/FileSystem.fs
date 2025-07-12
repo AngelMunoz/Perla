@@ -12,7 +12,6 @@ open IcedTasks
 open FSharp.UMX
 
 open FsToolkit.ErrorHandling
-open Thoth.Json.Net
 
 open FSharp.Data.Adaptive
 
@@ -24,8 +23,6 @@ open Spectre.Console
 open Perla
 open Perla.Units
 open Perla.Json
-open Perla.Json.TemplateDecoders
-open Perla
 open Perla.RequestHandler
 
 [<RequireQualifiedAccess>]
@@ -77,9 +74,7 @@ type PerlaFsManager =
 
   abstract SetupTemplate:
     user: string * repository: string<Repository> * branch: string<Branch> ->
-      CancellableTask<
-        (string<SystemPath> * TemplateDecoders.DecodedTemplateConfiguration) option
-       >
+      CancellableTask<(string<SystemPath> * DecodedTemplateConfiguration) option>
 
   abstract CopyGlobs:
     buildConfig: BuildConfig * tempDir: string<SystemPath> -> unit
@@ -183,15 +178,9 @@ module FileSystem =
             args.PerlaDirectories.CurrentWorkingDirectory
             |/ Constants.ImportMapName
 
-          let! content = AdaptiveFile.TryReadAllText(UMX.untag path)
+          let! content = AdaptiveFile.TryReadAllBytes(UMX.untag path)
 
-          let importMap =
-            content
-            |> Option.map(
-              Thoth.Json.Net.Decode.fromString PkgManager.ImportMap.Decoder
-              >> Result.toOption
-            )
-            |> Option.flatten
+          let importMap = content |> Option.map Json.FromBytes
 
           return defaultArg importMap PkgManager.ImportMap.Empty
         }
@@ -211,8 +200,8 @@ module FileSystem =
 
           try
             let! token = CancellableTask.getCancellationToken()
-            let! content = File.ReadAllBytesAsync(UMX.untag path, token)
-            let descriptions = Json.FromBytes<Map<string, string>> content
+            use content = File.OpenRead(UMX.untag path)
+            let! descriptions = Json.FromStream<Map<string, string>> content
             return descriptions
           with _ ->
             return Map.empty<string, string>
@@ -225,24 +214,9 @@ module FileSystem =
             UMX.untag args.PerlaDirectories.OfflineTemplates
             / "perla.config.json"
 
-          let! content = File.ReadAllTextAsync(path, token)
+          use file = File.OpenRead path
 
-          let decoded =
-            Thoth.Json.Net.Decode.fromString
-              TemplateDecoders.TemplateConfigurationDecoder
-              content
-
-          match decoded with
-          | Ok config -> return config
-          | Error error ->
-            args.Logger.LogWarning(
-              "Failed to decode offline templates configuration: {error}",
-              error
-            )
-            // This should not happen at all.
-            return
-              failwith
-                $"Failed to decode offline templates configuration: {error}"
+          return! Json.FromStream file
         }
 
 
@@ -370,7 +344,7 @@ module FileSystem =
 
           let updatedContent =
             PerlaConfig.UpdateFileFields mutableConfig updates
-            |> _.ToJsonString(Json.DefaultJsonOptions())
+            |> _.ToJsonString(DefaultJsonOptions())
 
           do! File.WriteAllTextAsync(UMX.untag path, updatedContent, token)
         }
@@ -482,28 +456,21 @@ module FileSystem =
           let! config = cancellableTask {
             try
               let! content =
-                File.ReadAllTextAsync(targetPath / "perla.config.json", token)
+                File.ReadAllBytesAsync(targetPath / "perla.config.json", token)
 
+              let content = Json.FromBytes<DecodedTemplateConfiguration> content
               return Some content
-            with _ ->
+            with error ->
+              args.Logger.LogWarning(
+                "Failed to decode template configuration: {error}",
+                error
+              )
+
               return None
           }
 
           match config with
-          | Some config ->
-            let decoded =
-              Decode.fromString TemplateConfigurationDecoder config
-              |> Result.teeError(fun error ->
-                args.Logger.LogWarning(
-                  "Failed to decode template configuration: {error}",
-                  error
-                ))
-              |> Result.toOption
-
-            return
-              decoded
-              |> Option.map(fun config ->
-                UMX.tag<SystemPath> targetPath, config)
+          | Some config -> return Some(UMX.tag<SystemPath> targetPath, config)
           | None ->
             args.Logger.LogWarning(
               "No Configuration File found in template {user}/{repository}@{branch}",

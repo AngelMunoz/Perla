@@ -96,7 +96,7 @@
     <PackageReference Include="FsToolkit.ErrorHandling" />
     <PackageReference Include="FsToolkit.ErrorHandling.IcedTasks" />
     <PackageReference Include="FSharp.UMX" />
-    <PackageReference Include="Thoth.Json.Net" />
+    <PackageReference Include="JDeck" />
     <PackageReference Include="Fake.IO.FileSystem" />
     <PackageReference Include="AngleSharp" />
     <PackageReference Include="CliWrap" />

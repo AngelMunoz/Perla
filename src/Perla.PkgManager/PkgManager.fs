@@ -114,11 +114,13 @@ module PkgManager =
 
           // Create Parent Directories for the medusa path
           Path.GetDirectoryName medusaPkgPath
+          |> nonNull
           |> Directory.CreateDirectory
           |> ignore
 
           // Create Parent Directories for flat path
           Path.GetDirectoryName flatPkgPath
+          |> nonNull
           |> Directory.CreateDirectory
           |> ignore
 
@@ -181,7 +183,7 @@ module PkgManager =
               use! content = response |> Response.toStreamAsync
 
               Directory.CreateDirectory(
-                Path.GetDirectoryName filePath |> Path.GetFullPath
+                Path.GetDirectoryName filePath |> nonNull |> Path.GetFullPath
               )
               |> ignore
 

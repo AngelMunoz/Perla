@@ -4,13 +4,18 @@ open System
 open System.Text.Json
 open System.Text.Json.Serialization
 open System.Text.Json.Nodes
+open System.Threading
+open System.Threading.Tasks
+
+open FsToolkit.ErrorHandling
+open IcedTasks
+open FSharp.UMX
 
 open Perla.Types
-
 open Perla.Units
-open Thoth.Json.Net
-open FsToolkit.ErrorHandling
-open FSharp.UMX
+open JDeck
+
+
 
 [<RequireQualifiedAccess; Struct>]
 type PerlaConfigSection =
@@ -20,14 +25,326 @@ type PerlaConfigSection =
   | Build of build: BuildConfig option
   | Dependencies of dependencies: PkgDependency Set option
 
+type DecodedTemplateConfigItem = {
+  id: string
+  name: string
+  path: string<SystemPath>
+  shortName: string
+  description: string option
+}
+
+type DecodedTemplateConfiguration = {
+  name: string
+  group: string
+  templates: DecodedTemplateConfigItem seq
+  author: string option
+  license: string option
+  description: string option
+  repositoryUrl: string option
+}
+
+type DecodedFableConfig = {
+  project: string<SystemPath> option
+  extension: string<FileExtension> option
+  sourceMaps: bool option
+  outDir: string<SystemPath> option
+}
+
+type DecodedDevServer = {
+  port: int option
+  host: string option
+  liveReload: bool option
+  useSSL: bool option
+  proxy: Map<string, string> option
+}
+
+type DecodedEsbuild = {
+  esBuildPath: string<SystemPath> option
+  version: string<Semver> option
+  ecmaVersion: string option
+  minify: bool option
+  injects: string seq option
+  externals: string seq option
+  fileLoaders: Map<string, string> option
+  jsxAutomatic: bool option
+  jsxImportSource: string option
+}
+
+type DecodedBuild = {
+  includes: string seq option
+  excludes: string seq option
+  outDir: string<SystemPath> option
+  emitEnvFile: bool option
+}
+
+type DecodedTesting = {
+  browsers: Browser seq option
+  includes: string seq option
+  excludes: string seq option
+  watch: bool option
+  headless: bool option
+  browserMode: BrowserMode option
+  fable: DecodedFableConfig option
+}
+
+type DecodedPerlaConfig = {
+  index: string<SystemPath> option
+  provider: PkgManager.DownloadProvider option
+  useLocalPkgs: bool option
+  plugins: string list option
+  build: DecodedBuild option
+  devServer: DecodedDevServer option
+  fable: DecodedFableConfig option
+  esbuild: DecodedEsbuild option
+  testing: DecodedTesting option
+  mountDirectories: Map<string<ServerUrl>, string<UserPath>> option
+  enableEnv: bool option
+  envPath: string<ServerUrl> option
+  paths: Map<string<BareImport>, string<ResolutionUrl>> option
+  dependencies: PkgDependency Set option
+}
+
+[<AutoOpen>]
+module internal Decoders =
+
+  let BrowserDecoder: Decoder<Browser> =
+    fun element -> decode {
+      let! str = Required.string element
+      return Browser.FromString str
+    }
+
+  let BrowserModeDecoder: Decoder<BrowserMode> =
+    fun element -> decode {
+      let! str = Required.string element
+      return BrowserMode.FromString str
+    }
+
+  let DownloadProviderDecoder: Decoder<PkgManager.DownloadProvider> =
+    fun element -> decode {
+      let! str = Required.string element
+      return PkgManager.DownloadProvider.fromString str
+    }
+
+  let PkgDependencyDecoder: Decoder<PkgDependency> =
+    fun element -> decode {
+      let! package = Required.Property.get ("package", Required.string) element
+      let! version = Required.Property.get ("version", Required.string) element
+
+      return {
+        package = package
+        version = UMX.tag version
+      }
+    }
+
+  let PkgDependencySetDecoder: Decoder<PkgDependency Set> =
+    fun element -> decode {
+      // Dependencies come as object: { "package1": "version1", "package2": "version2" }
+      let! dependencyMap =
+        Optional.Property.map ("dependencies", Required.string) element
+
+      let dependencyMap = defaultArg dependencyMap Map.empty
+
+      return
+        Set [
+          for KeyValue(package, version) in dependencyMap ->
+            {
+              package = package
+              version = UMX.tag<Semver> version
+            }
+        ]
+    }
+
+  let TestStatsDecoder: Decoder<TestStats> =
+    fun element -> decode {
+      let! suites = Required.Property.get ("suites", Required.int) element
+      let! tests = Required.Property.get ("tests", Required.int) element
+      let! passes = Required.Property.get ("passes", Required.int) element
+      let! pending = Required.Property.get ("pending", Required.int) element
+      let! failures = Required.Property.get ("failures", Required.int) element
+      let! start = Required.Property.get ("start", Required.dateTime) element
+      let! endTime = Optional.Property.get ("end", Required.dateTime) element
+
+      return {
+        suites = suites
+        tests = tests
+        passes = passes
+        pending = pending
+        failures = failures
+        start = start
+        ``end`` = endTime
+      }
+    }
+
+  let TestDecoder: Decoder<Test> =
+    fun element -> decode {
+      let! body = Required.Property.get ("body", Required.string) element
+      let! duration = Optional.Property.get ("duration", Required.float) element
+
+      let! fullTitle =
+        Required.Property.get ("fullTitle", Required.string) element
+
+      let! id = Required.Property.get ("id", Required.string) element
+
+      let! pending = Required.Property.get ("pending", Required.boolean) element
+
+      let! speed = Optional.Property.get ("speed", Required.string) element
+      let! state = Optional.Property.get ("state", Required.string) element
+      let! title = Required.Property.get ("title", Required.string) element
+      let! testType = Required.Property.get ("type", Required.string) element
+
+      return {
+        body = body
+        duration = duration
+        fullTitle = fullTitle
+        id = id
+        pending = pending
+        speed = speed
+        state = state
+        title = title
+        ``type`` = testType
+      }
+    }
+
+  let SuiteDecoder: Decoder<Suite> =
+    fun element -> decode {
+      let! id = Required.Property.get ("id", Required.string) element
+      let! title = Required.Property.get ("title", Required.string) element
+
+      let! fullTitle =
+        Required.Property.get ("fullTitle", Required.string) element
+
+      let! root = Required.Property.get ("root", Required.boolean) element
+      let! parent = Optional.Property.get ("parent", Optional.string) element
+      let! pending = Required.Property.get ("pending", Required.boolean) element
+
+      let! tests = Required.Property.list ("tests", TestDecoder) element
+
+      return {
+        id = id
+        title = title
+        fullTitle = fullTitle
+        root = root
+        parent = parent |> Option.flatten
+        pending = pending
+        tests = tests
+      }
+    }
+
+  let SessionStart: Decoder<TestEvent> =
+    fun element -> decode {
+      let! runId = Required.Property.get ("runId", Required.guid) element
+      let! stats = Required.Property.get ("stats", TestStatsDecoder) element
+
+      let! totalTests =
+        Required.Property.get ("totalTests", Required.int) element
+
+      return SessionStart(runId, stats, totalTests)
+    }
+
+
+  let SessionEnd: Decoder<TestEvent> =
+    fun element -> decode {
+      let! runId = Required.Property.get ("runId", Required.guid) element
+      let! stats = Required.Property.get ("stats", TestStatsDecoder) element
+      return SessionEnd(runId, stats)
+    }
+
+
+  let TestPass: Decoder<TestEvent> =
+    fun element -> decode {
+      let! runId = Required.Property.get ("runId", Required.guid) element
+      let! stats = Required.Property.get ("stats", TestStatsDecoder) element
+      let! test = Required.Property.get ("test", TestDecoder) element
+      return TestEvent.TestPass(runId, stats, test)
+    }
+
+  let TestFailed: Decoder<TestEvent> =
+    fun element -> decode {
+      let! runId = Required.Property.get ("runId", Required.guid) element
+      let! stats = Required.Property.get ("stats", TestStatsDecoder) element
+      let! test = Required.Property.get ("test", TestDecoder) element
+      let! message = Required.Property.get ("message", Required.string) element
+      let! stack = Required.Property.get ("stack", Required.string) element
+      return TestFailed(runId, stats, test, message, stack)
+    }
+
+  let ImportFailed: Decoder<TestEvent> =
+    fun element -> decode {
+      let! runId = Required.Property.get ("runId", Required.guid) element
+      let! message = Required.Property.get ("message", Required.string) element
+      let! stack = Required.Property.get ("stack", Required.string) element
+      return TestImportFailed(runId, message, stack)
+    }
+
+  let SuiteEventArgs: Decoder<Guid * TestStats * Suite> =
+    fun element -> decode {
+      let! runId = Required.Property.get ("runId", Required.guid) element
+      let! stats = Required.Property.get ("stats", TestStatsDecoder) element
+      let! suite = Required.Property.get ("suite", SuiteDecoder) element
+      return runId, stats, suite
+    }
+
+  let TestEventDecoder: Decoder<TestEvent> =
+    fun element -> decode {
+      let! event = Required.Property.get ("event", Required.string) element
+
+      match event with
+      | "__perla-session-start" -> return! SessionStart element
+      | "__perla-suite-start" ->
+        return! (SuiteEventArgs >> Result.map SuiteStart) element
+      | "__perla-suite-end" ->
+        return! (SuiteEventArgs >> Result.map SuiteEnd) element
+      | "__perla-test-pass" -> return! TestPass element
+      | "__perla-test-failed" -> return! TestFailed element
+      | "__perla-session-end" -> return! SessionEnd element
+      | "__perla-test-import-failed" -> return! ImportFailed element
+      | "__perla-test-run-finished" ->
+        return!
+          Required.Property.get
+            ("runId", Required.guid >> Result.map TestRunFinished)
+            element
+      | value ->
+        return!
+          DecodeError.ofError(element.Clone(), $"{value} is not a known event")
+          |> Error
+    }
+
+[<RequireQualifiedAccess>]
+module internal Encoders =
+
+  let Browser: Encoder<Browser> = fun value -> Encode.string value.AsString
+
+  let BrowserMode: Encoder<BrowserMode> =
+    fun value -> Encode.string value.AsString
+
+  let DownloadProviderEncoder: Encoder<PkgManager.DownloadProvider> =
+    fun value -> Encode.string(PkgManager.DownloadProvider.asString value)
+
+  let PkgDependencySetEncoder: Encoder<PkgDependency Set> =
+    fun value ->
+      Json.object [
+        for dep in value ->
+          dep.package, Encode.string(UMX.untag<Semver> dep.version)
+      ]
+
+
 let DefaultJsonOptions() =
   JsonSerializerOptions(
-    WriteIndented = true,
+    WriteIndented = false,
     AllowTrailingCommas = true,
     ReadCommentHandling = JsonCommentHandling.Skip,
     UnknownTypeHandling = JsonUnknownTypeHandling.JsonElement,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
   )
+  |> Codec.useDecoder TestEventDecoder
+  |> Codec.useDecoder PkgDependencyDecoder
+  |> Codec.useDecoder PkgManager.DownloadResponse.Decoder
+  |> Codec.useCodec(Encoders.Browser, BrowserDecoder)
+  |> Codec.useCodec(Encoders.BrowserMode, BrowserModeDecoder)
+  |> Codec.useCodec(Encoders.DownloadProviderEncoder, DownloadProviderDecoder)
+  |> Codec.useCodec(Encoders.PkgDependencySetEncoder, PkgDependencySetDecoder)
+  |> Codec.useCodec(PkgManager.ImportMap.Encoder, PkgManager.ImportMap.Decoder)
+
 
 let DefaultJsonNodeOptions() =
   JsonNodeOptions(PropertyNameCaseInsensitive = true)
@@ -38,351 +355,6 @@ let DefaultJsonDocumentOptions() =
     CommentHandling = JsonCommentHandling.Skip
   )
 
-module TemplateDecoders =
-  type DecodedTemplateConfigItem = {
-    id: string
-    name: string
-    path: string<SystemPath>
-    shortName: string
-    description: string option
-  }
-
-  type DecodedTemplateConfiguration = {
-    name: string
-    group: string
-    templates: DecodedTemplateConfigItem seq
-    author: string option
-    license: string option
-    description: string option
-    repositoryUrl: string option
-  }
-
-  let TemplateConfigItemDecoder: Decoder<DecodedTemplateConfigItem> =
-    Decode.object(fun get -> {
-      id = get.Required.Field "id" Decode.string
-      name = get.Required.Field "name" Decode.string
-      path = get.Required.Field "path" Decode.string |> UMX.tag<SystemPath>
-      shortName = get.Required.Field "shortname" Decode.string
-      description = get.Optional.Field "description" Decode.string
-    })
-
-  let TemplateConfigurationDecoder: Decoder<DecodedTemplateConfiguration> =
-    Decode.object(fun get -> {
-      name = get.Required.Field "name" Decode.string
-      group = get.Required.Field "group" Decode.string
-      templates =
-        get.Required.Field "templates" (Decode.array TemplateConfigItemDecoder)
-      author = get.Optional.Field "author" Decode.string
-      license = get.Optional.Field "license" Decode.string
-      description = get.Optional.Field "description" Decode.string
-      repositoryUrl = get.Optional.Field "repositoryUrl" Decode.string
-    })
-
-module ConfigDecoders =
-
-  type DecodedFableConfig = {
-    project: string<SystemPath> option
-    extension: string<FileExtension> option
-    sourceMaps: bool option
-    outDir: string<SystemPath> option
-  }
-
-  type DecodedDevServer = {
-    port: int option
-    host: string option
-    liveReload: bool option
-    useSSL: bool option
-    proxy: Map<string, string> option
-  }
-
-  type DecodedEsbuild = {
-    esBuildPath: string<SystemPath> option
-    version: string<Semver> option
-    ecmaVersion: string option
-    minify: bool option
-    injects: string seq option
-    externals: string seq option
-    fileLoaders: Map<string, string> option
-    jsxAutomatic: bool option
-    jsxImportSource: string option
-  }
-
-  type DecodedBuild = {
-    includes: string seq option
-    excludes: string seq option
-    outDir: string<SystemPath> option
-    emitEnvFile: bool option
-  }
-
-  type DecodedTesting = {
-    browsers: Browser seq option
-    includes: string seq option
-    excludes: string seq option
-    watch: bool option
-    headless: bool option
-    browserMode: BrowserMode option
-    fable: DecodedFableConfig option
-  }
-
-  type DecodedPerlaConfig = {
-    index: string<SystemPath> option
-    provider: PkgManager.DownloadProvider option
-    useLocalPkgs: bool option
-    plugins: string list option
-    build: DecodedBuild option
-    devServer: DecodedDevServer option
-    fable: DecodedFableConfig option
-    esbuild: DecodedEsbuild option
-    testing: DecodedTesting option
-    mountDirectories: Map<string<ServerUrl>, string<UserPath>> option
-    enableEnv: bool option
-    envPath: string<ServerUrl> option
-    paths: Map<string<BareImport>, string<ResolutionUrl>> option
-    dependencies: PkgDependency Set option
-  }
-
-  let FableFileDecoder: Decoder<DecodedFableConfig> =
-    Decode.object(fun get -> {
-      project =
-        get.Optional.Field "project" Decode.string
-        |> Option.map UMX.tag<SystemPath>
-      extension =
-        get.Optional.Field "extension" Decode.string
-        |> Option.map UMX.tag<FileExtension>
-      sourceMaps = get.Optional.Field "sourceMaps" Decode.bool
-      outDir =
-        get.Optional.Field "outDir" Decode.string
-        |> Option.map UMX.tag<SystemPath>
-    })
-
-  let DevServerDecoder: Decoder<DecodedDevServer> =
-    Decode.object(fun get -> {
-      port = get.Optional.Field "port" Decode.int
-      host = get.Optional.Field "host" Decode.string
-      liveReload = get.Optional.Field "liveReload" Decode.bool
-      useSSL = get.Optional.Field "useSSL" Decode.bool
-      proxy = get.Optional.Field "proxy" (Decode.dict Decode.string)
-    })
-
-  let EsbuildDecoder: Decoder<DecodedEsbuild> =
-    Decode.object(fun get -> {
-      fileLoaders =
-        get.Optional.Field "fileLoaders" (Decode.dict Decode.string)
-      esBuildPath =
-        get.Optional.Field "esBuildPath" Decode.string
-        |> Option.map UMX.tag<SystemPath>
-      version =
-        get.Optional.Field "version" Decode.string
-        |> Option.map UMX.tag<Semver>
-      ecmaVersion = get.Optional.Field "ecmaVersion" Decode.string
-      minify = get.Optional.Field "minify" Decode.bool
-      injects =
-        get.Optional.Field "injects" (Decode.list Decode.string)
-        |> Option.map List.toSeq
-      externals =
-        get.Optional.Field "externals" (Decode.list Decode.string)
-        |> Option.map List.toSeq
-      jsxAutomatic = get.Optional.Field "jsxAutomatic" Decode.bool
-      jsxImportSource = get.Optional.Field "jsxImportSource" Decode.string
-    })
-
-  let BuildDecoder: Decoder<DecodedBuild> =
-    Decode.object(fun get -> {
-      includes =
-        get.Optional.Field "includes" (Decode.list Decode.string)
-        |> Option.map List.toSeq
-      excludes =
-        get.Optional.Field "excludes" (Decode.list Decode.string)
-        |> Option.map List.toSeq
-      outDir =
-        get.Optional.Field "outDir" Decode.string
-        |> Option.map UMX.tag<SystemPath>
-      emitEnvFile = get.Optional.Field "emitEnvFile" Decode.bool
-    })
-
-  let BrowserDecoder: Decoder<Browser> =
-    Decode.string
-    |> Decode.andThen(fun value -> Browser.FromString value |> Decode.succeed)
-
-  let BrowserModeDecoder: Decoder<BrowserMode> =
-    Decode.string
-    |> Decode.andThen(fun value ->
-      BrowserMode.FromString value |> Decode.succeed)
-
-  let TestConfigDecoder: Decoder<DecodedTesting> =
-    Decode.object(fun get -> {
-      browsers =
-        get.Optional.Field "browsers" (Decode.list BrowserDecoder)
-        |> Option.map List.toSeq
-      includes =
-        get.Optional.Field "includes" (Decode.list Decode.string)
-        |> Option.map List.toSeq
-      excludes =
-        get.Optional.Field "excludes" (Decode.list Decode.string)
-        |> Option.map List.toSeq
-      watch = get.Optional.Field "watch" Decode.bool
-      headless = get.Optional.Field "headless" Decode.bool
-      browserMode = get.Optional.Field "browserMode" BrowserModeDecoder
-      fable = get.Optional.Field "fable" FableFileDecoder
-    })
-
-  let PerlaDecoder: Decoder<DecodedPerlaConfig> =
-    Decode.object(fun get ->
-      let providerDecoder =
-        Decode.string
-        |> Decode.andThen (function
-          | "jspm"
-          | "jspm.io" -> Decode.succeed PkgManager.DownloadProvider.JspmIo
-          | "unpkg" -> Decode.succeed PkgManager.DownloadProvider.Unpkg
-          | "jsdelivr" -> Decode.succeed PkgManager.DownloadProvider.JsDelivr
-          | value -> Decode.fail $"{value} is not a valid run configuration")
-
-      let directoriesDecoder =
-        get.Optional.Field "mountDirectories" (Decode.dict Decode.string)
-        |> Option.map(fun m ->
-          m
-          |> Map.toSeq
-          |> Seq.map(fun (k, v) -> UMX.tag<ServerUrl> k, UMX.tag<UserPath> v)
-          |> Map.ofSeq)
-
-      let pathsDecoder =
-        get.Optional.Field "paths" (Decode.dict Decode.string)
-        |> Option.map(fun m ->
-          m
-          |> Map.toSeq
-          |> Seq.map(fun (k, v) ->
-            UMX.tag<BareImport> k, UMX.tag<ResolutionUrl> v)
-          |> Map.ofSeq)
-
-      let dependencyDecoder =
-        Decode.dict Decode.string
-        |> Decode.map(fun depMap ->
-          depMap
-          |> Map.toSeq
-          |> Seq.map(fun (k, v) -> {
-            package = k
-            version = UMX.tag<Semver> v
-          })
-          |> Set.ofSeq)
-
-      {
-        index =
-          get.Optional.Field "index" Decode.string
-          |> Option.map UMX.tag<SystemPath>
-        provider = get.Optional.Field "provider" providerDecoder
-        useLocalPkgs = get.Optional.Field "useLocalPkgs" Decode.bool
-        plugins = get.Optional.Field "plugins" (Decode.list Decode.string)
-        build = get.Optional.Field "build" BuildDecoder
-        devServer = get.Optional.Field "devServer" DevServerDecoder
-        fable = get.Optional.Field "fable" FableFileDecoder
-        esbuild = get.Optional.Field "esbuild" EsbuildDecoder
-        testing = get.Optional.Field "testing" TestConfigDecoder
-        enableEnv = get.Optional.Field "enableEnv" Decode.bool
-        envPath =
-          get.Optional.Field "envPath" Decode.string
-          |> Option.map UMX.tag<ServerUrl>
-        dependencies = get.Optional.Field "dependencies" dependencyDecoder
-        mountDirectories = directoriesDecoder
-        paths = pathsDecoder
-      })
-
-[<RequireQualifiedAccess>]
-module internal TestDecoders =
-
-  let TestStats: Decoder<TestStats> =
-    Decode.object(fun get -> {
-      suites = get.Required.Field "suites" Decode.int
-      tests = get.Required.Field "tests" Decode.int
-      passes = get.Required.Field "passes" Decode.int
-      pending = get.Required.Field "pending" Decode.int
-      failures = get.Required.Field "failures" Decode.int
-      start = get.Required.Field "start" Decode.datetimeUtc
-      ``end`` = get.Optional.Field "end" Decode.datetimeUtc
-    })
-
-  let Test: Decoder<Test> =
-    Decode.object(fun get -> {
-      body = get.Required.Field "body" Decode.string
-      duration = get.Optional.Field "duration" Decode.float
-      fullTitle = get.Required.Field "fullTitle" Decode.string
-      id = get.Required.Field "id" Decode.string
-      pending = get.Required.Field "pending" Decode.bool
-      speed = get.Optional.Field "speed" Decode.string
-      state = get.Optional.Field "state" Decode.string
-      title = get.Required.Field "title" Decode.string
-      ``type`` = get.Required.Field "type" Decode.string
-    })
-
-  let Suite: Decoder<Suite> =
-    Decode.object(fun get -> {
-      id = get.Required.Field "id" Decode.string
-      title = get.Required.Field "title" Decode.string
-      fullTitle = get.Required.Field "fullTitle" Decode.string
-      root = get.Required.Field "root" Decode.bool
-      parent = get.Optional.Field "parent" Decode.string
-      pending = get.Required.Field "pending" Decode.bool
-      tests = get.Required.Field "tests" (Decode.list Test)
-    })
-
-[<RequireQualifiedAccess>]
-module internal EventDecoders =
-
-  let SessionStart: Decoder<Guid * TestStats * int> =
-    Decode.object(fun get ->
-      get.Required.Field "runId" Decode.guid,
-      get.Required.Field "stats" TestDecoders.TestStats,
-      get.Required.Field "totalTests" Decode.int)
-
-  let SessionEnd: Decoder<Guid * TestStats> =
-    Decode.object(fun get ->
-      get.Required.Field "runId" Decode.guid,
-      get.Required.Field "stats" TestDecoders.TestStats)
-
-  let SuiteEvent: Decoder<Guid * TestStats * Suite> =
-    Decode.object(fun get ->
-      get.Required.Field "runId" Decode.guid,
-      get.Required.Field "stats" TestDecoders.TestStats,
-      get.Required.Field "suite" TestDecoders.Suite)
-
-  let TestPass: Decoder<Guid * TestStats * Test> =
-    Decode.object(fun get ->
-      get.Required.Field "runId" Decode.guid,
-      get.Required.Field "stats" TestDecoders.TestStats,
-      get.Required.Field "test" TestDecoders.Test)
-
-  let TestFailed: Decoder<Guid * TestStats * Test * string * string> =
-    Decode.object(fun get ->
-      get.Required.Field "runId" Decode.guid,
-      get.Required.Field "stats" TestDecoders.TestStats,
-      get.Required.Field "test" TestDecoders.Test,
-      get.Required.Field "message" Decode.string,
-      get.Required.Field "stack" Decode.string)
-
-  let ImportFailed: Decoder<Guid * string * string> =
-    Decode.object(fun get ->
-      get.Required.Field "runId" Decode.guid,
-      get.Required.Field "message" Decode.string,
-      get.Required.Field "stack" Decode.string)
-
-[<RequireQualifiedAccess>]
-module internal ConfigEncoders =
-
-  let Browser: Encoder<Browser> = fun value -> Encode.string value.AsString
-
-  let BrowserMode: Encoder<BrowserMode> =
-    fun value -> Encode.string value.AsString
-
-  let TestConfig: Encoder<TestConfig> =
-    fun value ->
-      Encode.object [
-        "browsers", value.browsers |> Seq.map Browser |> Encode.seq
-        "includes", value.includes |> Seq.map Encode.string |> Encode.seq
-        "excludes", value.excludes |> Seq.map Encode.string |> Encode.seq
-        "watch", Encode.bool value.watch
-        "headless", Encode.bool value.headless
-        "browserMode", BrowserMode value.browserMode
-      ]
-
 type Json =
   static member ToBytes value =
     JsonSerializer.SerializeToUtf8Bytes(value, DefaultJsonOptions())
@@ -390,18 +362,34 @@ type Json =
   static member FromBytes<'T when 'T: not struct and 'T: not null>
     (value: byte array)
     =
-    match
+    let value: 'T | null =
       JsonSerializer.Deserialize<'T>(ReadOnlySpan value, DefaultJsonOptions())
-    with
-    | null -> failwith "Deserialization failed"
-    | result -> result
 
+    nonNull value
 
-  static member ToText(value, ?minify) =
-    let opts = DefaultJsonOptions()
-    let minify = defaultArg minify false
-    opts.WriteIndented <- not minify
-    JsonSerializer.Serialize(value, opts)
+  static member FromStream<'T when 'T: not struct and 'T: not null>
+    (stream: IO.Stream)
+    =
+    cancellableTask {
+      let! cancellationToken = CancellableTask.getCancellationToken()
+
+      let! value =
+        JsonSerializer.DeserializeAsync<'T>(
+          stream,
+          DefaultJsonOptions(),
+          cancellationToken
+        )
+
+      return nonNull value
+    }
+
+  static member ToText(value, ?minify: bool) =
+    let options = DefaultJsonOptions()
+    let shouldMinify = minify |> Option.defaultValue false
+
+    options.WriteIndented <- not shouldMinify
+
+    JsonSerializer.Serialize(value, options)
 
   static member ToNode value =
     match JsonSerializer.SerializeToNode(value, DefaultJsonOptions()) with
@@ -409,7 +397,7 @@ type Json =
     | result -> result
 
   static member FromConfigFile(content: string) =
-    Decode.fromString ConfigDecoders.PerlaDecoder content
+    Decoding.auto<DecodedPerlaConfig>(content, DefaultJsonOptions())
 
   static member TestEventFromJson(value: string) =
     // test events
@@ -421,46 +409,30 @@ type Json =
     //   // message and stack are the error
     //   message?: string
     //   stack?: string }
-    result {
-      match! Decode.fromString (Decode.field "event" Decode.string) value with
-      | "__perla-session-start" ->
-        return!
-          Decode.fromString EventDecoders.SessionStart value
-          |> Result.map SessionStart
-      | "__perla-suite-start"
-      | "__perla-suite-end" ->
-        return!
-          Decode.fromString EventDecoders.SuiteEvent value
-          |> Result.map SuiteStart
-      | "__perla-test-pass" ->
-        return!
-          Decode.fromString EventDecoders.TestPass value |> Result.map TestPass
-      | "__perla-test-failed" ->
-        return!
-          Decode.fromString EventDecoders.TestFailed value
-          |> Result.map TestFailed
-      | "__perla-session-end" ->
-        return!
-          Decode.fromString EventDecoders.SessionEnd value
-          |> Result.map SessionEnd
-      | "__perla-test-import-failed" ->
-        return!
-          Decode.fromString EventDecoders.ImportFailed value
-          |> Result.map TestImportFailed
-      | "__perla-test-run-finished" ->
-        let decoder =
-          Decode.object(fun get -> get.Required.Field "runId" Decode.guid)
+    try
+      use jsonDocument = System.Text.Json.JsonDocument.Parse value
+      let jsonElement = jsonDocument.RootElement
+      TestEventDecoder jsonElement
+    with ex ->
+      let dummyElement = System.Text.Json.JsonDocument.Parse("{}").RootElement
 
-        return! Decode.fromString decoder value |> Result.map TestRunFinished
-      | unknown -> return! Error($"'{unknown}' is not a known event")
-    }
+      Error {
+        value = dummyElement
+        kind = JsonValueKind.String
+        rawValue = value
+        targetType = typeof<TestEvent>
+        message = ex.Message
+        exn = Some ex
+        index = None
+        property = None
+      }
+
 
 
 module PerlaConfig =
 
   [<RequireQualifiedAccess>]
   module FromDecoders =
-    open ConfigDecoders
 
     let GetFable(config: FableConfig option, fable: DecodedFableConfig option) = option {
       let! decoded = fable
@@ -587,7 +559,7 @@ module PerlaConfig =
       =
       serverOptions
       |> Seq.fold
-        (fun current next ->
+        (fun (current: DevServerConfig) next ->
           match next with
           | Port port -> { current with port = port }
           | Host host -> { current with host = host }
@@ -601,7 +573,7 @@ module PerlaConfig =
       =
       defaultArg testingOptions Seq.empty
       |> Seq.fold
-        (fun current next ->
+        (fun (current: TestConfig) next ->
           match next with
           | TestingField.Browsers value -> { current with browsers = value }
           | TestingField.Includes value -> { current with includes = value }
@@ -750,7 +722,8 @@ module PerlaConfig =
 
     let addProvider(content: JsonObject) =
       match provider with
-      | Some config -> content["provider"] <- Json.ToNode(config)
+      | Some config ->
+        content["provider"] <- JsonSerializer.SerializeToNode(config)
       | None -> ()
 
       content
@@ -758,7 +731,7 @@ module PerlaConfig =
     let addUseLocalPkgs(content: JsonObject) =
       match useLocalPkgs with
       | Some useLocalPkgs ->
-        content["useLocalPkgs"] <- Json.ToNode(useLocalPkgs)
+        content["useLocalPkgs"] <- JsonSerializer.SerializeToNode(useLocalPkgs)
       | None -> ()
 
       content

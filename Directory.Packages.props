@@ -31,8 +31,8 @@
     <PackageVersion Include="Serilog.AspNetCore" Version="9.0.0" />
     <PackageVersion Include="Spectre.Console" Version="0.50.0" />
     <PackageVersion Include="System.CommandLine" Version="2.0.0-beta5.25306.1" />
-    <PackageVersion Include="System.Text.Json" Version="9.0.5" />
-    <PackageVersion Include="Thoth.Json.Net" Version="12.0.0" />
+    <PackageVersion Include="System.Text.Json" Version="9.0.7" />
+    <PackageVersion Include="JDeck" Version="1.0.0-rc-003" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.0" />
     <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />

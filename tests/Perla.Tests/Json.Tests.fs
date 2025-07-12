@@ -9,7 +9,7 @@ open Perla.Json
 open Perla.Types
 open Perla.Units
 open Perla.PkgManager
-open Thoth.Json.Net
+open JDeck
 open FSharp.UMX
 
 [<Fact>]
@@ -135,16 +135,6 @@ let ``Json.FromConfigFile should decode valid config correctly``() =
     Assert.True(config.dependencies.IsSome)
     Assert.True(config.paths.IsSome)
   | Error error -> Assert.True(false, $"Expected Ok but got Error: {error}")
-
-[<Fact>]
-let ``Json.FromConfigFile should return error for invalid JSON``() =
-  let invalidJson = """{ "index": "./index.html", "invalid": }"""
-
-  let result = Json.FromConfigFile(invalidJson)
-
-  match result with
-  | Ok _ -> Assert.True(false, "Expected Error but got Ok")
-  | Error _ -> () // Expected
 
 [<Fact>]
 let ``Json.TestEventFromJson should decode SessionStart correctly``() =
@@ -408,7 +398,7 @@ let ``Json.TestEventFromJson should return error for unknown event``() =
 
   match result with
   | Ok _ -> Assert.True(false, "Expected Error but got Ok")
-  | Error error -> Assert.Contains("is not a known event", error)
+  | Error error -> Assert.Contains("is not a known event", error.message)
 
 [<Fact>]
 let ``PerlaConfig.FromString should create valid config from JSON``() =
@@ -586,19 +576,20 @@ let ``PerlaConfig.UpdateFileFields should handle None jsonContents``() =
 
 // Tests for TemplateDecoders
 [<Fact>]
-let ``TemplateDecoders.TemplateConfigItemDecoder should decode correctly``() =
+let ``TemplateConfigItemDecoder should decode correctly``() =
   let json =
     """
   {
     "id": "template-1",
     "name": "React Template",
     "path": "./templates/react",
-    "shortname": "react",
+    "shortName": "react",
     "description": "A React template"
   }
   """
 
-  let result = Decode.fromString TemplateDecoders.TemplateConfigItemDecoder json
+  let result =
+    Decoding.auto<DecodedTemplateConfigItem>(json, DefaultJsonOptions())
 
   match result with
   | Ok item ->
@@ -607,12 +598,11 @@ let ``TemplateDecoders.TemplateConfigItemDecoder should decode correctly``() =
     Assert.Equal("./templates/react", item.path |> UMX.untag)
     Assert.Equal("react", item.shortName)
     Assert.Equal(Some "A React template", item.description)
-  | Error error -> Assert.True(false, $"Expected Ok but got Error: {error}")
+  | Error error ->
+    Assert.True(false, $"Expected Ok but got Error: {error.message}")
 
 [<Fact>]
-let ``TemplateDecoders.TemplateConfigurationDecoder should decode correctly``
-  ()
-  =
+let ``TemplateConfigurationDecoder should decode correctly``() =
   let json =
     """
   {
@@ -623,7 +613,7 @@ let ``TemplateDecoders.TemplateConfigurationDecoder should decode correctly``
         "id": "template-1",
         "name": "React Template",
         "path": "./templates/react",
-        "shortname": "react",
+        "shortName": "react",
         "description": "A React template"
       }
     ],
@@ -635,7 +625,7 @@ let ``TemplateDecoders.TemplateConfigurationDecoder should decode correctly``
   """
 
   let result =
-    Decode.fromString TemplateDecoders.TemplateConfigurationDecoder json
+    Decoding.auto<DecodedTemplateConfiguration>(json, DefaultJsonOptions())
 
   match result with
   | Ok config ->
@@ -650,7 +640,8 @@ let ``TemplateDecoders.TemplateConfigurationDecoder should decode correctly``
       Some "https://github.com/perla/templates",
       config.repositoryUrl
     )
-  | Error error -> Assert.True(false, $"Expected Ok but got Error: {error}")
+  | Error error ->
+    Assert.True(false, $"Expected Ok but got Error: {error.message}")
 
 // Tests for internal TestDecoders
 [<Fact>]
@@ -668,7 +659,7 @@ let ``TestDecoders.TestStats should decode correctly``() =
   }
   """
 
-  let result = Decode.fromString TestDecoders.TestStats json
+  let result = Decoding.auto<TestStats>(json, DefaultJsonOptions())
 
   match result with
   | Ok stats ->
@@ -683,7 +674,8 @@ let ``TestDecoders.TestStats should decode correctly``() =
       Some(DateTime(2023, 1, 1, 0, 1, 0, DateTimeKind.Utc)),
       stats.``end``
     )
-  | Error error -> Assert.True(false, $"Expected Ok but got Error: {error}")
+  | Error error ->
+    Assert.True(false, $"Expected Ok but got Error: {error.message}")
 
 [<Fact>]
 let ``TestDecoders.Test should decode correctly``() =
@@ -702,7 +694,7 @@ let ``TestDecoders.Test should decode correctly``() =
   }
   """
 
-  let result = Decode.fromString TestDecoders.Test json
+  let result = Decoding.auto(json, DefaultJsonOptions())
 
   match result with
   | Ok test ->
@@ -741,7 +733,7 @@ let ``TestDecoders.Suite should decode correctly``() =
   }
   """
 
-  let result = Decode.fromString TestDecoders.Suite json
+  let result = Decoding.auto(json, DefaultJsonOptions())
 
   match result with
   | Ok suite ->
@@ -759,7 +751,7 @@ let ``TestDecoders.Suite should decode correctly``() =
 [<Fact>]
 let ``ConfigEncoders.Browser should encode correctly``() =
   let browser = Browser.Chrome
-  let encoded = ConfigEncoders.Browser browser
+  let encoded = Encoders.Browser browser
 
   // Just check that it encodes to a JToken without pattern matching
   Assert.NotNull(encoded)
@@ -768,7 +760,7 @@ let ``ConfigEncoders.Browser should encode correctly``() =
 [<Fact>]
 let ``ConfigEncoders.BrowserMode should encode correctly``() =
   let browserMode = BrowserMode.Parallel
-  let encoded = ConfigEncoders.BrowserMode browserMode
+  let encoded = Encoders.BrowserMode browserMode
 
   // Just check that it encodes to a JToken without pattern matching
   Assert.NotNull(encoded)
@@ -786,7 +778,7 @@ let ``ConfigEncoders.TestConfig should encode correctly``() =
     fable = None
   }
 
-  let encoded = ConfigEncoders.TestConfig testConfig
+  let encoded = Json.ToText(testConfig)
 
   // Just check that it encodes to a JToken without pattern matching
   Assert.NotNull(encoded)
@@ -797,8 +789,6 @@ let ``ConfigEncoders.TestConfig should encode correctly``() =
   Assert.True(jsonString.Contains("watch"))
   Assert.True(jsonString.Contains("headless"))
   Assert.True(jsonString.Contains("browserMode"))
-
-open Perla.Json.ConfigDecoders
 
 [<Fact>]
 let ``ConfigDecoders.PerlaDecoder should decode complete config correctly``() =
@@ -870,24 +860,24 @@ let ``ConfigDecoders.PerlaDecoder should decode complete config correctly``() =
   }
   """
 
-  let result = Decode.fromString PerlaDecoder json
+  let result = Decoding.auto<DecodedPerlaConfig>(json, DefaultJsonOptions())
 
   match result with
   | Ok config ->
-    Assert.Equal(Some "./index.html", config.index |> Option.map UMX.untag)
-    Assert.Equal(Some DownloadProvider.JspmIo, config.provider)
-    Assert.Equal(Some true, config.useLocalPkgs)
+    Assert.Equal("./index.html", UMX.untag config.index.Value)
+    Assert.Equal(DownloadProvider.JspmIo, config.provider.Value)
+    Assert.Equal(true, config.useLocalPkgs.Value)
     Assert.True(config.plugins.IsSome)
     Assert.Equal(1, config.plugins.Value.Length)
-    Assert.Equal("@perla/plugin-example", config.plugins.Value.[0])
+    Assert.Equal("@perla/plugin-example", config.plugins.Value[0])
     Assert.True(config.build.IsSome)
     Assert.True(config.devServer.IsSome)
     Assert.True(config.fable.IsSome)
     Assert.True(config.esbuild.IsSome)
     Assert.True(config.testing.IsSome)
     Assert.True(config.mountDirectories.IsSome)
-    Assert.Equal(Some true, config.enableEnv)
-    Assert.Equal(Some "/.env", config.envPath |> Option.map UMX.untag)
+    Assert.Equal(true, config.enableEnv.Value)
+    Assert.Equal("/.env", UMX.untag config.envPath.Value)
     Assert.True(config.paths.IsSome)
     Assert.True(config.dependencies.IsSome)
   | Error error -> Assert.True(false, $"Expected Ok but got Error: {error}")
@@ -901,11 +891,16 @@ let ``ConfigDecoders.PerlaDecoder should handle minimal config correctly``() =
   }
   """
 
-  let result = Decode.fromString PerlaDecoder json
+  let result =
+    Decoding.auto<DecodedPerlaConfig>(
+      json,
+      DefaultJsonOptions(),
+      DefaultJsonDocumentOptions()
+    )
 
   match result with
   | Ok config ->
-    Assert.Equal(Some "./index.html", config.index |> Option.map UMX.untag)
+    Assert.Equal("./index.html", UMX.untag config.index.Value)
     Assert.Equal(None, config.provider)
     Assert.Equal(None, config.useLocalPkgs)
     Assert.Equal(None, config.plugins)

@@ -136,7 +136,7 @@ module RunNew =
 
   let findDecodedTemplateByNameOrId
     (id: string option, name: string option)
-    (tplList: TemplateDecoders.DecodedTemplateConfigItem seq)
+    (tplList: DecodedTemplateConfigItem seq)
     =
     tplList
     |> Seq.tryPick(fun tpl ->
@@ -182,8 +182,8 @@ module RunNew =
   let writeFoundDecodedTemplate
     (directories: PerlaDirectories)
     (
-      config: TemplateDecoders.DecodedTemplateConfiguration,
-      tpl: TemplateDecoders.DecodedTemplateConfigItem,
+      config: DecodedTemplateConfiguration,
+      tpl: DecodedTemplateConfigItem,
       targetPath: string<SystemPath>
     ) =
     let tplPath =
@@ -281,7 +281,7 @@ module Handlers =
           SelectionPrompt()
             .Title("Select a template to create a new project:")
             .EnableSearch()
-            .UseConverter(fun (tpl: TemplateDecoders.DecodedTemplateConfigItem) ->
+            .UseConverter(fun (tpl: DecodedTemplateConfigItem) ->
               $"{tpl.name} ({tpl.shortName}) - {tpl.description}")
             .AddChoices(templates)
 
@@ -701,39 +701,40 @@ module Handlers =
       container.Logger.LogInformation("Listening at: {url}", url))
 
     use _ =
-      container.FsManager.PerlaConfiguration.AddCallback(fun config ->
-        let port, host, useSSL =
-          configA
-          |> AVal.map(fun config ->
-            config.devServer.port,
-            config.devServer.host,
-            config.devServer.useSSL)
-          |> AVal.force
+      container.FsManager.PerlaConfiguration.AddCallback
+        (fun (config: PerlaConfig) ->
+          let port, host, useSSL =
+            configA
+            |> AVal.map(fun config ->
+              config.devServer.port,
+              config.devServer.host,
+              config.devServer.useSSL)
+            |> AVal.force
 
-        if
-          port <> config.devServer.port
-          || config.devServer.host <> host
-          || config.devServer.useSSL <> useSSL
-        then
-          container.Logger.LogInformation
-            "Server configuration changed, restarting server..."
+          if
+            port <> config.devServer.port
+            || config.devServer.host <> host
+            || config.devServer.useSSL <> useSSL
+          then
+            container.Logger.LogInformation
+              "Server configuration changed, restarting server..."
 
-          let work = asyncEx {
-            do! server.StopAsync cancellationToken
+            let work = asyncEx {
+              do! server.StopAsync cancellationToken
 
-            server <-
-              Server.GetServerApp(
-                configA,
-                container.VirtualFileSystem,
-                container.VirtualFileSystem.FileChanges,
-                Observable.empty,
-                container.FsManager
-              )
+              server <-
+                Server.GetServerApp(
+                  configA,
+                  container.VirtualFileSystem,
+                  container.VirtualFileSystem.FileChanges,
+                  Observable.empty,
+                  container.FsManager
+                )
 
-            do! server.StartAsync cancellationToken
-          }
+              do! server.StartAsync cancellationToken
+            }
 
-          Async.StartImmediate(work, cancellationToken))
+            Async.StartImmediate(work, cancellationToken))
 
     while not cancellationToken.IsCancellationRequested do
       do! Async.Sleep(TimeSpan.FromSeconds(1.))

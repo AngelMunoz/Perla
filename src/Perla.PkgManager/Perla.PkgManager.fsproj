@@ -18,7 +18,7 @@
   <ItemGroup>
     <PackageReference Include="FsHttp" />
     <PackageReference Include="IcedTasks" />
-    <PackageReference Include="Thoth.Json.Net" />
+    <PackageReference Include="JDeck" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
   </ItemGroup>
 </Project>

@@ -16,7 +16,7 @@
     <PackageReference Include="CliWrap" />
     <PackageReference Include="LiteDB" />
     <PackageReference Include="FSharp.UMX" />
-    <PackageReference Include="Thoth.Json.Net" />
+    <PackageReference Include="JDeck" />
     <PackageReference Include="FsToolkit.ErrorHandling" />
     <PackageReference Include="FsHttp" />
     <PackageReference Include="FSharp.SystemCommandLine" />
