@@ -23,8 +23,6 @@ open Spectre.Console
 open Perla
 open Perla.Units
 open Perla.Json
-open Perla.Json.TemplateDecoders
-open Perla
 open Perla.RequestHandler
 
 [<RequireQualifiedAccess>]
@@ -76,9 +74,7 @@ type PerlaFsManager =
 
   abstract SetupTemplate:
     user: string * repository: string<Repository> * branch: string<Branch> ->
-      CancellableTask<
-        (string<SystemPath> * TemplateDecoders.DecodedTemplateConfiguration) option
-       >
+      CancellableTask<(string<SystemPath> * DecodedTemplateConfiguration) option>
 
   abstract CopyGlobs:
     buildConfig: BuildConfig * tempDir: string<SystemPath> -> unit
@@ -348,7 +344,7 @@ module FileSystem =
 
           let updatedContent =
             PerlaConfig.UpdateFileFields mutableConfig updates
-            |> _.ToJsonString(DefaultJsonOptions.Value)
+            |> _.ToJsonString(DefaultJsonOptions())
 
           do! File.WriteAllTextAsync(UMX.untag path, updatedContent, token)
         }

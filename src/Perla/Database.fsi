@@ -9,7 +9,7 @@ open LiteDB
 open FSharp.UMX
 
 open Perla.Units
-open Perla.Json.TemplateDecoders
+open Perla.Json
 open Perla
 
 
