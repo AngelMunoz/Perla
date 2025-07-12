@@ -6,9 +6,11 @@ open System.Threading
 open System.Threading.Tasks
 
 open FsHttp
-open Thoth.Json.Net
+open JDeck
 
 open Perla.PkgManager
+
+exception DecodingException of DecodeError
 
 type JspmService =
   abstract member Install:
@@ -31,8 +33,10 @@ type JspmService =
 
 
 module JspmService =
+  open System.Text.Json
 
-  let create() =
+  let create(jsonOptions: JsonSerializerOptions) =
+
     { new JspmService with
         member _.Download(packages, options, ?cancellationToken) = task {
           let token = defaultArg cancellationToken CancellationToken.None
@@ -48,9 +52,11 @@ module JspmService =
             }
             |> Request.sendTAsync
 
-          let! response = Response.toTextTAsync token req
+          let! response = Response.toStreamTAsync token req
 
-          return Decode.unsafeFromString DownloadResponse.Decoder response
+          match! Decoding.auto(response, jsonOptions) with
+          | Ok response -> return response
+          | Error error -> return raise(DecodingException error)
         }
 
         member _.Install(options, ?cancellationToken) = task {
@@ -66,10 +72,11 @@ module JspmService =
             |> Config.cancellationToken token
             |> Request.sendTAsync
 
-          let! responseStream = Response.toTextTAsync token req
+          let! responseStream = Response.toStreamTAsync token req
 
-          return
-            Decode.unsafeFromString GeneratorResponse.Decoder responseStream
+          match! Decoding.auto(responseStream, jsonOptions) with
+          | Ok response -> return response
+          | Error error -> return raise(DecodingException error)
         }
 
         member _.Uninstall(options, ?cancellationToken) = task {
@@ -85,10 +92,11 @@ module JspmService =
             |> Config.cancellationToken token
             |> Request.sendTAsync
 
-          let! responseStream = Response.toTextTAsync token req
+          let! responseStream = Response.toStreamTAsync token req
 
-          return
-            Decode.unsafeFromString GeneratorResponse.Decoder responseStream
+          match! Decoding.auto(responseStream, jsonOptions) with
+          | Ok response -> return response
+          | Error error -> return raise(DecodingException error)
         }
 
         member _.Update(options, ?cancellationToken) = task {
@@ -104,9 +112,10 @@ module JspmService =
             |> Config.cancellationToken token
             |> Request.sendTAsync
 
-          let! responseStream = Response.toTextTAsync token req
+          let! responseStream = Response.toStreamTAsync token req
 
-          return
-            Decode.unsafeFromString GeneratorResponse.Decoder responseStream
+          match! Decoding.auto(responseStream, jsonOptions) with
+          | Ok response -> return response
+          | Error error -> return raise(DecodingException error)
         }
     }

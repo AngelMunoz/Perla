@@ -2,6 +2,7 @@ namespace Perla.PkgManager
 
 open System
 open System.Collections.Generic
+open System.Text.Json
 
 module Constants =
   [<Literal>]
@@ -129,7 +130,7 @@ type GeneratorResponse = {
 
 
 module ImportMap =
-  open Thoth.Json.Net
+  open JDeck
 
   let Empty = {
     imports = Map.empty
@@ -138,57 +139,53 @@ module ImportMap =
   }
 
   let Decoder: Decoder<ImportMap> =
-    Decode.object(fun get ->
-      let imports =
-        get.Optional.Field "imports" (Decode.dict Decode.string)
-        |> Option.defaultValue Map.empty
+    fun element -> decode {
+      let! imports =
+        element |> Optional.Property.map("imports", Required.string)
 
-      let scopes =
-        get.Optional.Field "scopes" (Decode.dict(Decode.dict Decode.string))
-        |> Option.defaultValue Map.empty
+      let! scopes =
+        element |> Optional.Property.map("scopes", Required.map Required.string)
 
-      let integrity =
-        get.Optional.Field "integrity" (Decode.dict Decode.string)
-        |> Option.defaultValue Map.empty
+      let! integrity =
+        element |> Optional.Property.map("integrity", Required.string)
 
-      {
-        imports = imports
-        scopes = scopes
-        integrity = integrity
-      })
+      return {
+        imports = defaultArg imports Map.empty
+        scopes = defaultArg scopes Map.empty
+        integrity = defaultArg integrity Map.empty
+      }
+    }
+
+  let mapEncoder: Encoder<Map<string, string>> =
+    fun map ->
+      Json.object [
+        for KeyValue(key, value) in map -> key, Encode.string value
+      ]
+
+  let scopesEncoder: Encoder<Map<string, Map<string, string>>> =
+    fun scopes ->
+      Json.object [
+        for KeyValue(scopeKey, scopeMap) in scopes ->
+          scopeKey, mapEncoder scopeMap
+      ]
 
   let Encoder: Encoder<ImportMap> =
     fun map ->
 
-      Encode.object [
-        if map.imports |> Map.isEmpty |> not then
-          "imports",
-          map.imports |> Map.map(fun _ v -> Encode.string v) |> Encode.dict
-        if map.scopes |> Map.isEmpty |> not then
-          "scopes",
-          map.scopes
-          |> Map.map(fun _ v ->
-            v |> Map.map(fun _ v -> Encode.string v) |> Encode.dict)
-          |> Encode.dict
-        if map.integrity |> Map.isEmpty |> not then
-          "integrity",
-          map.integrity |> Map.map(fun _ v -> Encode.string v) |> Encode.dict
+      Json.object [
+        if Map.isEmpty map.imports |> not then
+          "imports", mapEncoder map.imports
+        if Map.isEmpty map.scopes |> not then
+          ("scopes", scopesEncoder map.scopes)
+        if Map.isEmpty map.integrity |> not then
+          ("integrity", mapEncoder map.integrity)
       ]
 
 type ImportMap with
 
-  member this.ToJson(?indentSize: int) =
-    let indentSize = defaultArg indentSize 0
-    ImportMap.Encoder this |> Thoth.Json.Net.Encode.toString indentSize
+  member this.ToJson(?jsonSerializerOptions: JsonSerializerOptions) =
 
-module GeneratorResponse =
-  open Thoth.Json.Net
-
-  let Decoder: Decoder<GeneratorResponse> =
-    Decode.Auto.generateDecoderCached<GeneratorResponse>(
-      CamelCase,
-      Extra.empty |> Extra.withCustom ImportMap.Encoder ImportMap.Decoder
-    )
+    ImportMap.Encoder this |> _.ToJsonString(?options = jsonSerializerOptions)
 
 module GeneratorOption =
 
@@ -242,29 +239,34 @@ module GeneratorOption =
     finalOptions
 
 module DownloadResponse =
-  open Thoth.Json.Net
+  open JDeck
+  open JDeck.Encoding
 
   let private downloadPackageDecoder: Decoder<DownloadPackage> =
-    Decode.object(fun get ->
-      let pkgUrl = get.Required.Field "pkgUrl" Decode.string
-      let files = get.Required.Field "files" (Decode.array Decode.string)
-      { pkgUrl = Uri pkgUrl; files = files })
+    fun element -> decode {
+      let! pkgUrl = element |> Required.Property.get("pkgUrl", Required.string)
+      let! files = element |> Required.Property.array("files", Required.string)
 
-  let private downloadResponseErrorDecoder: Decoder<DownloadResponseError> =
-    Decode.object(fun get -> {
-      error = get.Required.Field "error" Decode.string
-    })
+      return { pkgUrl = Uri(pkgUrl); files = files }
+    }
 
-  let private downloadResponseSuccessDecoder
-    : Decoder<Map<string, DownloadPackage>> =
-    Decode.object(fun get ->
-      let filesMap =
-        get.Required.Field "filesMap" (Decode.dict downloadPackageDecoder)
 
-      filesMap)
+  let private downloadResponseErrorDecoder: Decoder<_> =
+    fun element -> decode {
+      let! error = element |> Required.Property.get("error", Required.string)
+      return DownloadResponse.DownloadError { error = error }
+    }
+
+  let private downloadResponseSuccessDecoder: Decoder<_> =
+    fun element -> decode {
+      let! filesMap =
+        element |> Required.Property.map("filesMap", downloadPackageDecoder)
+
+      return DownloadResponse.DownloadSuccess filesMap
+    }
 
   let Decoder: Decoder<DownloadResponse> =
     Decode.oneOf [
-      downloadResponseSuccessDecoder |> Decode.map DownloadSuccess
-      downloadResponseErrorDecoder |> Decode.map DownloadError
+      downloadResponseErrorDecoder
+      downloadResponseSuccessDecoder
     ]

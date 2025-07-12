@@ -9,7 +9,7 @@ open Perla.Json
 open Perla.Types
 open Perla.Units
 open Perla.PkgManager
-open Thoth.Json.Net
+open JDeck
 open FSharp.UMX
 
 [<Fact>]
@@ -408,7 +408,7 @@ let ``Json.TestEventFromJson should return error for unknown event``() =
 
   match result with
   | Ok _ -> Assert.True(false, "Expected Error but got Ok")
-  | Error error -> Assert.Contains("is not a known event", error)
+  | Error error -> Assert.Contains("is not a known event", error.message)
 
 [<Fact>]
 let ``PerlaConfig.FromString should create valid config from JSON``() =
@@ -598,7 +598,11 @@ let ``TemplateDecoders.TemplateConfigItemDecoder should decode correctly``() =
   }
   """
 
-  let result = Decode.fromString TemplateDecoders.TemplateConfigItemDecoder json
+  let result =
+    Decoding.auto<TemplateDecoders.DecodedTemplateConfigItem>(
+      json,
+      DefaultJsonOptions.Value
+    )
 
   match result with
   | Ok item ->
@@ -607,7 +611,8 @@ let ``TemplateDecoders.TemplateConfigItemDecoder should decode correctly``() =
     Assert.Equal("./templates/react", item.path |> UMX.untag)
     Assert.Equal("react", item.shortName)
     Assert.Equal(Some "A React template", item.description)
-  | Error error -> Assert.True(false, $"Expected Ok but got Error: {error}")
+  | Error error ->
+    Assert.True(false, $"Expected Ok but got Error: {error.message}")
 
 [<Fact>]
 let ``TemplateDecoders.TemplateConfigurationDecoder should decode correctly``
@@ -635,7 +640,10 @@ let ``TemplateDecoders.TemplateConfigurationDecoder should decode correctly``
   """
 
   let result =
-    Decode.fromString TemplateDecoders.TemplateConfigurationDecoder json
+    Decoding.auto<TemplateDecoders.DecodedTemplateConfiguration>(
+      json,
+      DefaultJsonOptions.Value
+    )
 
   match result with
   | Ok config ->
@@ -650,7 +658,8 @@ let ``TemplateDecoders.TemplateConfigurationDecoder should decode correctly``
       Some "https://github.com/perla/templates",
       config.repositoryUrl
     )
-  | Error error -> Assert.True(false, $"Expected Ok but got Error: {error}")
+  | Error error ->
+    Assert.True(false, $"Expected Ok but got Error: {error.message}")
 
 // Tests for internal TestDecoders
 [<Fact>]
@@ -668,7 +677,7 @@ let ``TestDecoders.TestStats should decode correctly``() =
   }
   """
 
-  let result = Decode.fromString TestDecoders.TestStats json
+  let result = Decoding.auto<TestStats>(json, DefaultJsonOptions.Value)
 
   match result with
   | Ok stats ->
@@ -683,7 +692,8 @@ let ``TestDecoders.TestStats should decode correctly``() =
       Some(DateTime(2023, 1, 1, 0, 1, 0, DateTimeKind.Utc)),
       stats.``end``
     )
-  | Error error -> Assert.True(false, $"Expected Ok but got Error: {error}")
+  | Error error ->
+    Assert.True(false, $"Expected Ok but got Error: {error.message}")
 
 [<Fact>]
 let ``TestDecoders.Test should decode correctly``() =
@@ -702,7 +712,7 @@ let ``TestDecoders.Test should decode correctly``() =
   }
   """
 
-  let result = Decode.fromString TestDecoders.Test json
+  let result = Decoding.auto(json, DefaultJsonOptions.Value)
 
   match result with
   | Ok test ->
@@ -741,7 +751,7 @@ let ``TestDecoders.Suite should decode correctly``() =
   }
   """
 
-  let result = Decode.fromString TestDecoders.Suite json
+  let result = Decoding.auto(json, DefaultJsonOptions.Value)
 
   match result with
   | Ok suite ->
@@ -786,7 +796,7 @@ let ``ConfigEncoders.TestConfig should encode correctly``() =
     fable = None
   }
 
-  let encoded = ConfigEncoders.TestConfig testConfig
+  let encoded = Json.ToText(testConfig)
 
   // Just check that it encodes to a JToken without pattern matching
   Assert.NotNull(encoded)
@@ -870,7 +880,7 @@ let ``ConfigDecoders.PerlaDecoder should decode complete config correctly``() =
   }
   """
 
-  let result = Decode.fromString PerlaDecoder json
+  let result = Decoding.auto(json, DefaultJsonOptions.Value)
 
   match result with
   | Ok config ->
@@ -901,7 +911,7 @@ let ``ConfigDecoders.PerlaDecoder should handle minimal config correctly``() =
   }
   """
 
-  let result = Decode.fromString PerlaDecoder json
+  let result = Decoding.auto(json, DefaultJsonOptions.Value)
 
   match result with
   | Ok config ->

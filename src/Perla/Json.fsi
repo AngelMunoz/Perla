@@ -4,9 +4,10 @@ open System
 open System.Text.Json
 open System.Text.Json.Serialization
 open System.Text.Json.Nodes
+open IcedTasks
 open Perla.Types
 open Perla.Units
-open Thoth.Json.Net
+open JDeck
 
 open FSharp.UMX
 
@@ -28,10 +29,6 @@ module TemplateDecoders =
     description: string option
     repositoryUrl: string option
   }
-
-  val TemplateConfigItemDecoder: Decoder<DecodedTemplateConfigItem>
-
-  val TemplateConfigurationDecoder: Decoder<DecodedTemplateConfiguration>
 
 module ConfigDecoders =
 
@@ -96,28 +93,11 @@ module ConfigDecoders =
     dependencies: PkgDependency Set option
   }
 
-  val PerlaDecoder: Decoder<DecodedPerlaConfig>
-
-[<RequireQualifiedAccess>]
-module internal TestDecoders =
-  val TestStats: Decoder<TestStats>
-  val Test: Decoder<Test>
-  val Suite: Decoder<Suite>
-
-[<RequireQualifiedAccess>]
-module internal EventDecoders =
-  val SessionStart: Decoder<Guid * TestStats * int>
-  val SessionEnd: Decoder<Guid * TestStats>
-  val SuiteEvent: Decoder<Guid * TestStats * Suite>
-  val TestPass: Decoder<Guid * TestStats * Test>
-  val TestFailed: Decoder<Guid * TestStats * Test * string * string>
-  val ImportFailed: Decoder<Guid * string * string>
 
 [<RequireQualifiedAccess>]
 module internal ConfigEncoders =
   val Browser: Encoder<Browser>
   val BrowserMode: Encoder<BrowserMode>
-  val TestConfig: Encoder<TestConfig>
 
 open ConfigDecoders
 
@@ -129,7 +109,7 @@ type PerlaConfigSection =
   | Build of build: BuildConfig option
   | Dependencies of dependencies: PkgDependency Set option
 
-val DefaultJsonOptions: unit -> JsonSerializerOptions
+val DefaultJsonOptions: Lazy<JsonSerializerOptions>
 val DefaultJsonNodeOptions: unit -> JsonNodeOptions
 val DefaultJsonDocumentOptions: unit -> JsonDocumentOptions
 
@@ -140,10 +120,16 @@ type Json =
   static member FromBytes<'T when 'T: not struct and 'T: not null> :
     value: byte array -> 'T
 
+  static member FromStream<'T when 'T: not struct and 'T: not null> :
+    stream: IO.Stream -> System.Threading.Tasks.Task<'T>
+
   static member ToText: value: 'a * ?minify: bool -> string
   static member ToNode: value: 'a -> JsonNode
-  static member FromConfigFile: string -> Result<DecodedPerlaConfig, string>
-  static member TestEventFromJson: string -> Result<TestEvent, string>
+
+  static member FromConfigFile:
+    string -> Result<DecodedPerlaConfig, DecodeError>
+
+  static member TestEventFromJson: string -> Result<TestEvent, DecodeError>
 
 
 module PerlaConfig =
