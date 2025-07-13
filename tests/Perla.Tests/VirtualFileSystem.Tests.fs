@@ -13,12 +13,13 @@ open Perla.Units
 open Perla.VirtualFs
 open Perla.Extensibility
 open Perla.Plugins
+open Perla.Logger
 
 // Test helpers and fakes
 module TestHelpers =
   let createLogger() =
     let loggerFactory =
-      LoggerFactory.Create(fun builder -> builder.AddConsole() |> ignore)
+      LoggerFactory.Create(fun builder -> builder.AddPerlaLogger() |> ignore)
 
     loggerFactory.CreateLogger("VirtualFileSystemTests")
 

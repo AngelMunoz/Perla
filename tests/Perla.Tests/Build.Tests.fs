@@ -13,13 +13,13 @@ open Perla.Units
 open Perla.Types
 open Perla.Build
 open Perla.PkgManager
-open Perla.Constants
+open Perla.Logger
 
 // Test helpers
 module TestHelpers =
   let createLogger() =
     let loggerFactory =
-      LoggerFactory.Create(fun builder -> builder.AddConsole() |> ignore)
+      LoggerFactory.Create(fun builder -> builder.AddPerlaLogger() |> ignore)
 
     loggerFactory.CreateLogger("BuildTests")
 

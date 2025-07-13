@@ -10,12 +10,13 @@ open IcedTasks
 open Perla.Plugins
 open Perla.Plugins.Registry
 open Perla.Extensibility
+open Perla.Logger
 
 // Test helpers
 module TestHelpers =
   let createLogger() =
     let loggerFactory =
-      LoggerFactory.Create(fun builder -> builder.AddConsole() |> ignore)
+      LoggerFactory.Create(fun builder -> builder.AddPerlaLogger() |> ignore)
 
     loggerFactory.CreateLogger<ExtensibilityService>()
 

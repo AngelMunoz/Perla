@@ -6,19 +6,11 @@ open Xunit
 open FSharp.UMX
 open Microsoft.Extensions.Logging
 
-open Perla.Types
 open Perla.Units
 open Perla.VirtualFs
 open Perla.SuaveService.LiveReload
-open Perla.SuaveService.MimeTypes
-open Perla.SuaveService.PortUtils
 open Perla.SuaveService
-open Perla.SuaveService
-open Perla.FileSystem
-open Perla.RequestHandler
-open Perla
-open IcedTasks
-open FSharp.Control
+open Perla.Logger
 
 open Suave.EventSource
 
@@ -28,7 +20,7 @@ module SuaveServiceTests =
   module TestHelpers =
     let createLogger() =
       let loggerFactory =
-        LoggerFactory.Create(fun builder -> builder.AddConsole() |> ignore)
+        LoggerFactory.Create(fun builder -> builder.AddPerlaLogger() |> ignore)
 
       loggerFactory.CreateLogger("SuaveServiceTests")
 

@@ -12,12 +12,13 @@ open Perla.Units
 open Perla.Json
 open Perla.Database
 open Perla
+open Perla.Logger
 
 // Test helpers
 module TestHelpers =
   let createLogger() =
     let loggerFactory =
-      LoggerFactory.Create(fun builder -> builder.AddConsole() |> ignore)
+      LoggerFactory.Create(fun builder -> builder.AddPerlaLogger() |> ignore)
 
     loggerFactory.CreateLogger<PerlaDatabase>()
 

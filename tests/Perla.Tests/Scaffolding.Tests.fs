@@ -4,12 +4,11 @@ open System
 open System.IO
 open Microsoft.Extensions.Logging
 open Xunit
-open Perla.Types
+open Perla
 open Perla.Units
 open Perla.Scaffolding
 open Perla.Json
-open Perla
-open IcedTasks
+open Perla.Logger
 open FSharp.UMX
 
 // Test helpers
@@ -30,7 +29,7 @@ module TestHelpers =
 
   let createLogger() =
     let loggerFactory =
-      LoggerFactory.Create(fun builder -> builder.AddConsole() |> ignore)
+      LoggerFactory.Create(fun builder -> builder.AddPerlaLogger() |> ignore)
 
     loggerFactory.CreateLogger("ScaffoldingTests")
 

@@ -1,22 +1,15 @@
 module Perla.Tests.Library
 
-open System
-open System.Text.RegularExpressions
 open Microsoft.Extensions.Logging
 open Xunit
-open Perla.Types
-open Perla.Units
 open Perla.Lib
-open Perla
-open FSharp.UMX
-open Spectre.Console
-open Spectre.Console.Rendering
+open Perla.Logger
 
 // Test helpers
 module TestHelpers =
   let createLogger() =
     let loggerFactory =
-      LoggerFactory.Create(fun builder -> builder.AddConsole() |> ignore)
+      LoggerFactory.Create(fun builder -> builder.AddPerlaLogger() |> ignore)
 
     loggerFactory.CreateLogger("LibraryTests")
 
@@ -149,11 +142,11 @@ let ``Log pattern should categorize console levels correctly``() =
   | _ -> Assert.True(false, "Should match Clear")
 
   match "log" with
-  | Log -> Assert.True(true)
+  | Perla.Lib.Log -> Assert.True(true)
   | _ -> Assert.True(false, "Should match Log")
 
   match "unknown" with
-  | Log -> Assert.True(true)
+  | Perla.Lib.Log -> Assert.True(true)
   | _ -> Assert.True(false, "Should default to Log")
 
 [<Fact>]
