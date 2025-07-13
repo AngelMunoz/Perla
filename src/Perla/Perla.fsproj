@@ -48,6 +48,8 @@
     <Compile Include="Library.fsi" />
     <Compile Include="Library.fs" />
     <Compile Include="Testing.fs" />
+    <Compile Include="SuaveService.fsi" />
+    <Compile Include="SuaveService.fs" />
     <Compile Include="Server.fsi" />
     <Compile Include="Server.fs" />
     <Compile Include="Configuration.fsi" />
@@ -106,6 +108,8 @@
     <PackageReference Include="Yarp.ReverseProxy" />
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Microsoft.Playwright" />
+    <PackageReference Include="Suave" />
+    <PackageReference Include="System.IO.Pipelines" />
   </ItemGroup>
 
 </Project>
