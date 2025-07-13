@@ -193,8 +193,8 @@ type SuaveContext = {
 // ============================================================================
 
 module MimeTypes =
-
-  let private defaultMimeType = "application/octet-stream"
+  [<Literal>]
+  let DefaultMimeType = "application/octet-stream"
 
   let tryGetContentType(filePath: string) =
     let extension =
@@ -227,7 +227,7 @@ module MimeTypes =
     | _ -> None
 
   let getContentType(filePath: string) =
-    tryGetContentType filePath |> Option.defaultValue defaultMimeType
+    tryGetContentType filePath |> Option.defaultValue DefaultMimeType
 
 // ============================================================================
 // Proxy using Suave.Proxy
@@ -388,13 +388,6 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
 module LiveReload =
 
   open Suave.EventSource
-
-
-  type SseBodyArgs = {
-    fileChangedEvents: IAsyncEnumerable<FileChangedEvent>
-    vfs: VirtualFileSystem
-  }
-
   // Pure functions matching Server.fs implementation
   let createReloadEventData(event: FileChangedEvent) =
     Json.ToText(
@@ -422,61 +415,47 @@ module LiveReload =
       localPath = userPath
       content = transform.content
     |}
+  // Pure functions for creating SSE messages
+  let createReloadMessage(event: FileChangedEvent) : Message =
+    let data = createReloadEventData event
+    let id = string(DateTimeOffset.Now.ToUnixTimeSeconds())
+    Message.createType id data "reload"
+
+  let createHmrMessage (event: FileChangedEvent) (file: FileContent) : Message =
+    let data =
+      createHmrEventData event {
+        content = file.content
+        extension = ".css"
+      }
+
+    let id = string(DateTimeOffset.Now.ToUnixTimeSeconds())
+    Message.createType id data "replace-css"
+
+  let createLiveReloadMessage
+    (vfs: VirtualFileSystem)
+    (event: FileChangedEvent)
+    : Message =
+    match event.changeType with
+    | Changed ->
+      // Check if it's a CSS file for HMR
+      match vfs.Resolve event.serverPath with
+      | Some(TextFile file) when file.mimetype = "text/css" ->
+        createHmrMessage event file
+      | _ -> createReloadMessage event
+    | Created
+    | Deleted
+    | Renamed -> createReloadMessage event
 
   let sseBody
-    ({
-       fileChangedEvents = fileChangedEvents
-       vfs = vfs
-     }: SseBodyArgs)
+    vfs
+    (fileChangedEvents: IAsyncEnumerable<FileChangedEvent>)
     (out: Sockets.Connection)
     : Async<unit> =
     asyncEx {
       // Handle file change events
       for event in fileChangedEvents do
-        match event.changeType with
-        | Changed ->
-          // Check if it's a CSS file for HMR
-          match vfs.Resolve event.serverPath with
-          | Some(TextFile file) when file.mimetype = "text/css" ->
-            // Send HMR event for CSS
-            let data =
-              createHmrEventData event {
-                content = file.content
-                extension = ".css"
-              }
-
-            let msg =
-              Message.createType
-                (string(DateTimeOffset.Now.ToUnixTimeSeconds()))
-                data
-                "replace-css"
-
-            do! EventSource.send out msg :> Task
-          | _ ->
-            // Regular reload event for other files
-            let data = createReloadEventData event
-
-            let msg =
-              Message.createType
-                (string(DateTimeOffset.Now.ToUnixTimeSeconds()))
-                data
-                "reload"
-
-            do! EventSource.send out msg :> Task
-
-        | Created
-        | Deleted
-        | Renamed ->
-          // Regular reload event for created/deleted/renamed files
-          let data = createReloadEventData event
-
-          let msg =
-            Message.createType
-              (string(DateTimeOffset.Now.ToUnixTimeSeconds()))
-              data
-              "reload"
-
-          do! EventSource.send out msg :> Task
+        let msg = createLiveReloadMessage vfs event
+        do! EventSource.send out msg :> Task
     }
 
   let sseHandler
@@ -492,11 +471,7 @@ module LiveReload =
 
       return!
         handShake
-          (sseBody {
-            fileChangedEvents = fileChangedEvents
-            vfs = vfs
-           }
-           >> Sockets.SocketOp.ofAsync)
+          (sseBody vfs fileChangedEvents >> Sockets.SocketOp.ofAsync)
           ctx
     }
 
@@ -689,9 +664,9 @@ module PerlaHandlers =
         let content =
           envVars
           |> Map.fold
-            (fun (sb: System.Text.StringBuilder) key value ->
-              sb.AppendLine $"export const {key} = \"{value}\"")
-            (System.Text.StringBuilder())
+            (fun (sb: StringBuilder) key value ->
+              sb.AppendLine $"export const {key} = \"{value}\";")
+            (StringBuilder())
           |> _.ToString()
 
         return! (setMimeType "text/javascript" >=> OK content) ctx
@@ -703,8 +678,6 @@ module PerlaHandlers =
 
 module TestingHandlers =
   open Fake.IO
-  open System.Reactive.Subjects
-  open FsToolkit.ErrorHandling
 
   let testingFiles
     (fileGlobs: string seq option, testConfig: TestConfig)
@@ -765,21 +738,16 @@ module TestingHandlers =
     (logger: ILogger, testEvents: ISubject<TestEvent>)
     : WebPart =
     fun ctx -> async {
-      try
-        use stream = new MemoryStream(ctx.request.rawForm)
-        use reader = new StreamReader(stream)
-        let! content = reader.ReadToEndAsync() |> Async.AwaitTask
 
-        match Json.TestEventFromJson content with
-        | Result.Ok testEvent ->
-          testEvents.OnNext testEvent
-          return! OK "Event processed" ctx
-        | Result.Error err ->
-          logger.LogError("Failed to parse test event: {Error}", err)
-          return! BAD_REQUEST "Invalid test event format" ctx
-      with ex ->
-        logger.LogError(ex, "Error processing test event")
-        return! ServerErrors.INTERNAL_ERROR "Internal server error" ctx
+      let content = Encoding.UTF8.GetString ctx.request.rawForm
+
+      match Json.TestEventFromJson content with
+      | Result.Ok testEvent ->
+        testEvents.OnNext testEvent
+        return! OK "Event processed" ctx
+      | Result.Error err ->
+        logger.LogError("Failed to parse test event: {Error}", err)
+        return! BAD_REQUEST "Invalid test event format" ctx
     }
 
 // ============================================================================
