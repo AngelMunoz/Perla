@@ -38,7 +38,7 @@ open Perla.Configuration
 open Perla.Logger
 open Perla.PkgManager
 open Perla.PkgManager.PkgManager
-open Perla.Server
+open Perla.SuaveService
 
 [<Struct; RequireQualifiedAccess>]
 type ListFormat =
@@ -587,19 +587,15 @@ module Handlers =
     if options.enablePreview then
       container.Logger.LogInformation "Starting a preview server for the build"
 
-      let app =
-        Server.Server.GetStaticServer container.Configuration.PerlaConfig
-
-      do! app.StartAsync token
-
-      app.Urls
-      |> Seq.iter(fun url ->
-        container.Logger.LogInformation("Listening at: {url}", url))
-
-      while not token.IsCancellationRequested do
-        do! Async.Sleep 1000
-
-      do! app.StopAsync token
+      SuaveServer.startStaticServer
+        {
+          Logger = container.Logger
+          VirtualFileSystem = container.VirtualFileSystem
+          Config = AVal.constant config
+          FsManager = container.FsManager
+          FileChangedEvents = container.VirtualFileSystem.FileChanges
+        }
+        token
 
     return 0
   }
@@ -621,28 +617,6 @@ module Handlers =
       })
 
     let config = configA |> AVal.force
-
-    let esbuildPlugin =
-      config.plugins
-      |> List.tryFind(fun p ->
-        p.Equals(
-          Constants.PerlaEsbuildPluginName,
-          StringComparison.InvariantCultureIgnoreCase
-        ))
-      |> Option.map(fun _ -> container.EsbuildService.GetPlugin config.esbuild)
-
-    let plugins = container.FsManager.ResolvePluginPaths()
-
-    container.ExtensibilityService.LoadPlugins(
-      plugins,
-      ?esbuildPlugin = esbuildPlugin
-    )
-    |> Result.teeError(fun err ->
-      container.Logger.LogError("Failed to load plugins: {error}", err))
-    |> Result.ignore
-    |> Result.ignoreError
-
-    let mountedDirectories = config.mountDirectories
     let fableConfig = config.fable
 
     let mutable isFableFirstRunDone = fableConfig.IsSome && false
@@ -675,71 +649,58 @@ module Handlers =
 
       isFableFirstRunDone <- true
 
-    do!
-      container.Logger.Spinner(
-        "Mounting Virtual File System",
-        container.VirtualFileSystem.Load mountedDirectories
-      )
-
-    let mutable server =
-      Server.GetServerApp(
-        configA,
-        container.VirtualFileSystem,
-        container.VirtualFileSystem.FileChanges,
-        Observable.empty,
-        container.FsManager
-      )
-
     while not cancellationToken.IsCancellationRequested
           && not isFableFirstRunDone do
       do! Async.Sleep(TimeSpan.FromMilliseconds(100.))
 
-    do! server.StartAsync(cancellationToken)
+    if cancellationToken.IsCancellationRequested then
+      container.Logger.LogInformation(
+        "Fable service cancelled before starting."
+      )
 
-    server.Urls
-    |> Seq.iter(fun url ->
-      container.Logger.LogInformation("Listening at: {url}", url))
+      return 1
+    else
 
-    use _ =
-      container.FsManager.PerlaConfiguration.AddCallback
-        (fun (config: PerlaConfig) ->
-          let port, host, useSSL =
-            configA
-            |> AVal.map(fun config ->
-              config.devServer.port,
-              config.devServer.host,
-              config.devServer.useSSL)
-            |> AVal.force
+      let esbuildPlugin =
+        config.plugins
+        |> List.tryFind(fun p ->
+          p.Equals(
+            Constants.PerlaEsbuildPluginName,
+            StringComparison.InvariantCultureIgnoreCase
+          ))
+        |> Option.map(fun _ ->
+          container.EsbuildService.GetPlugin config.esbuild)
 
-          if
-            port <> config.devServer.port
-            || config.devServer.host <> host
-            || config.devServer.useSSL <> useSSL
-          then
-            container.Logger.LogInformation
-              "Server configuration changed, restarting server..."
+      let plugins = container.FsManager.ResolvePluginPaths()
 
-            let work = asyncEx {
-              do! server.StopAsync cancellationToken
+      container.ExtensibilityService.LoadPlugins(
+        plugins,
+        ?esbuildPlugin = esbuildPlugin
+      )
+      |> Result.teeError(fun err ->
+        container.Logger.LogError("Failed to load plugins: {error}", err))
+      |> Result.ignore
+      |> Result.ignoreError
 
-              server <-
-                Server.GetServerApp(
-                  configA,
-                  container.VirtualFileSystem,
-                  container.VirtualFileSystem.FileChanges,
-                  Observable.empty,
-                  container.FsManager
-                )
+      let mountedDirectories = config.mountDirectories
 
-              do! server.StartAsync cancellationToken
-            }
+      do!
+        container.Logger.Spinner(
+          "Mounting Virtual File System",
+          container.VirtualFileSystem.Load mountedDirectories
+        )
 
-            Async.StartImmediate(work, cancellationToken))
+      SuaveServer.startServer
+        (SuaveContext {
+          Logger = container.Logger
+          VirtualFileSystem = container.VirtualFileSystem
+          Config = configA
+          FsManager = container.FsManager
+          FileChangedEvents = container.VirtualFileSystem.FileChanges
+        })
+        cancellationToken
 
-    while not cancellationToken.IsCancellationRequested do
-      do! Async.Sleep(TimeSpan.FromSeconds(1.))
-
-    return 0
+      return 0
   }
 
   let runTesting (container: AppContainer) (options: TestingOptions) = cancellableTask {
