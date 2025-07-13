@@ -1041,6 +1041,8 @@ module SuaveServer =
         host, port
 
     let serverConfig =
+      let host = if host = "localhost" then "127.0.0.1" else host
+
       defaultConfig
         .withBindings([ HttpBinding.createSimple HTTP host port ])
         .withCancellationToken(cancellationToken)

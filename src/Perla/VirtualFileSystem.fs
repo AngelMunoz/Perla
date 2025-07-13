@@ -13,6 +13,8 @@ open FSharp.UMX
 open FSharp.Control
 open FSharp.Control.Reactive
 
+open IcedTasks
+
 open Fake.IO.Globbing.Operators
 open Microsoft.Extensions.Logging
 open AngleSharp.Io
@@ -108,7 +110,9 @@ module VirtualFs =
     filename
     |> Path.GetExtension
     |> defaultIfNull ""
-    |> MimeTypeNames.FromExtension
+    |> function
+      | ".json" -> MimeTypeNames.ApplicationJson
+      | others -> MimeTypeNames.FromExtension others
 
   let shouldIgnoreFile(path: string) =
     let normalized = path.Replace("\\", "/")
@@ -165,12 +169,21 @@ module VirtualFs =
     let targetBase = UMX.untag serverPath
 
     let relativePath = Path.GetRelativePath(basePath, sourcePath)
+    // If relativePath is '.', don't append anything
+    let cleanRelativePath =
+      if relativePath = "." then
+        ""
+      else
+        relativePath.Replace("\\", "/")
 
     let serverFilePath =
-      if targetBase = "/" then
-        "/" + relativePath.Replace("\\", "/")
+      if cleanRelativePath = "" then
+        // Just the mount point
+        targetBase
+      elif targetBase = "/" then
+        "/" + cleanRelativePath
       else
-        targetBase.TrimEnd('/') + "/" + relativePath.Replace("\\", "/")
+        targetBase.TrimEnd('/') + "/" + cleanRelativePath
 
     UMX.tag<ServerUrl> serverFilePath
 
@@ -259,7 +272,23 @@ module VirtualFs =
           files.[targetPath] <- entry
           logger.LogTrace("Processed binary file {FilePath}", sourcePath)
         else
-          let content = File.ReadAllText(sourcePath)
+          let! token = Async.CancellationToken
+          // Read file with FileShare.ReadWrite to avoid lock issues
+          let! content = asyncEx {
+
+            use fs =
+              new FileStream(
+                sourcePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read
+              )
+
+            use sr = new StreamReader(fs)
+            return! sr.ReadToEndAsync(token)
+          }
+
+
           let! transform = applyPlugins logger extensibility content extension
 
           let fileContent = {
@@ -342,9 +371,6 @@ module VirtualFs =
     =
     async {
       try
-        let targetPath =
-          transformSourcePath event.path event.userPath event.serverPath
-
         logger.LogInformation(
           "Processing file change event {ChangeType} for {FilePath}",
           event.changeType,
@@ -353,6 +379,9 @@ module VirtualFs =
 
         match event.changeType with
         | Deleted ->
+          let targetPath =
+            transformSourcePath event.path event.userPath event.serverPath
+
           let removed = files.TryRemove targetPath
 
           if fst removed then
@@ -366,8 +395,37 @@ module VirtualFs =
               UMX.untag targetPath
             )
         | Created
-        | Changed
+        | Changed ->
+          // Always update the entry for the current file
+          do!
+            processFile
+              logger
+              extensibility
+              files
+              event.path
+              event.userPath
+              event.serverPath
         | Renamed ->
+          // Remove the old entry if present
+          match event.oldPath, event.oldName with
+          | Some oldSystemPath, Some _ ->
+            let oldTargetPath =
+              transformSourcePath oldSystemPath event.userPath event.serverPath
+
+            let removed = files.TryRemove oldTargetPath
+
+            if fst removed then
+              logger.LogDebug(
+                "Removed old file {FilePath} due to rename",
+                UMX.untag oldTargetPath
+              )
+            else
+              logger.LogWarning(
+                "Attempted to remove non-existent old file {FilePath} during rename",
+                UMX.untag oldTargetPath
+              )
+          | _ -> ()
+          // Add/update the new file
           do!
             processFile
               logger
