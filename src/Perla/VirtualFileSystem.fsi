@@ -1,4 +1,4 @@
-﻿namespace Perla.VirtualFs
+namespace Perla.VirtualFs
 
 open System
 
@@ -47,6 +47,11 @@ type BinaryFileInfo = {
 type FileKind =
   | TextFile of FileContent
   | BinaryFile of BinaryFileInfo
+
+module FileKind =
+  val source: FileKind -> string<SystemPath>
+  val filename: FileKind -> string
+  val mimetype: FileKind -> string
 
 type VirtualFileEntry = {
   kind: FileKind

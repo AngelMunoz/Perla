@@ -4,16 +4,18 @@ open System
 open System.IO
 open System.Net
 open System.Text
+open System.Threading
 open System.Threading.Tasks
 open Microsoft.Extensions.Logging
 
-open IcedTasks
-open FSharp.Data.Adaptive
-
 open AngleSharp
 open AngleSharp.Html.Parser
-open AngleSharp.Html.Dom
 
+open FSharp.Control
+open FSharp.Data.Adaptive
+open IcedTasks
+
+open System.Collections.Generic
 open Perla
 open Perla.Types
 open Perla.Units
@@ -21,13 +23,13 @@ open Perla.VirtualFs
 open Perla.FileSystem
 open Perla.Build
 open Perla.Json
+open Perla.Plugins
 open FSharp.UMX
 
 module Observable =
-  open System.Collections.Generic
-  open System.Threading
 
-  type ObservableAsyncEnumerable<'T>(source: IObservable<'T>) =
+  type ObservableAsyncEnumerable<'T>
+    (source: IObservable<'T>, cancellationToken: CancellationToken) =
     let queue = Collections.Concurrent.ConcurrentQueue<'T>()
     let mutable completed = false
     let mutable error: exn option = None
@@ -59,7 +61,7 @@ module Observable =
             onNotification()
       }
 
-    let waitForSignal(cancellationToken: CancellationToken) =
+    let waitForSignal(enumeratorToken: CancellationToken) =
       lock lockObj (fun () ->
         match signal with
         | Some existingTcs -> existingTcs.Task
@@ -67,18 +69,27 @@ module Observable =
           let tcs = TaskCompletionSource<bool>()
           signal <- Some tcs
 
+          // Create combined cancellation token
+          use combinedCts =
+            CancellationTokenSource.CreateLinkedTokenSource(
+              cancellationToken,
+              enumeratorToken
+            )
+
+          let combinedToken = combinedCts.Token
+
           // Handle cancellation
-          if cancellationToken.IsCancellationRequested then
-            tcs.TrySetCanceled(cancellationToken) |> ignore
+          if combinedToken.IsCancellationRequested then
+            tcs.TrySetCanceled(combinedToken) |> ignore
           else
-            cancellationToken.Register(fun () ->
-              tcs.TrySetCanceled(cancellationToken) |> ignore)
+            combinedToken.Register(fun () ->
+              tcs.TrySetCanceled(combinedToken) |> ignore)
             |> ignore
 
           tcs.Task)
 
     interface IAsyncEnumerable<'T> with
-      member _.GetAsyncEnumerator(cancellationToken) =
+      member _.GetAsyncEnumerator(enumeratorToken) =
         // Subscribe on first enumeration
         if subscription.IsNone then
           subscription <- Some(source.SubscribeSafe(observer))
@@ -89,7 +100,16 @@ module Observable =
             member _.Current = current
 
             member _.MoveNextAsync() = valueTask {
-              cancellationToken.ThrowIfCancellationRequested()
+              // Create combined cancellation token
+              use combinedCts =
+                CancellationTokenSource.CreateLinkedTokenSource(
+                  cancellationToken,
+                  enumeratorToken
+                )
+
+              let combinedToken = combinedCts.Token
+
+              combinedToken.ThrowIfCancellationRequested()
 
               let mutable keepLooping = true
               let mutable result = false
@@ -112,11 +132,11 @@ module Observable =
                   else
                     // Wait for notification
                     try
-                      let! _ = waitForSignal(cancellationToken)
+                      let! _ = waitForSignal(enumeratorToken)
                       // Continue the loop to try dequeuing again
                       ()
                     with :? OperationCanceledException ->
-                      cancellationToken.ThrowIfCancellationRequested()
+                      combinedToken.ThrowIfCancellationRequested()
                       result <- false
                       keepLooping <- false
 
@@ -133,8 +153,14 @@ module Observable =
         }
 
   let toAsyncEnumerable(source: IObservable<'T>) =
-    ObservableAsyncEnumerable(source) :> IAsyncEnumerable<'T>
+    ObservableAsyncEnumerable(source, CancellationToken.None)
+    :> IAsyncEnumerable<'T>
 
+  let toCancellableAsyncEnumerable
+    (token: CancellationToken)
+    (source: IObservable<'T>)
+    =
+    ObservableAsyncEnumerable(source, token) :> IAsyncEnumerable<'T>
 
 // ============================================================================
 // Suave imports
@@ -147,6 +173,7 @@ open Suave.Successful
 open Suave.RequestErrors
 open Suave.Writers
 open Suave.Proxy
+open System.Reactive.Subjects
 
 // ============================================================================
 // Core Types
@@ -158,7 +185,7 @@ type SuaveContext = {
   Config: PerlaConfig aval
   FsManager: PerlaFsManager
   FileChangedEvents: IObservable<FileChangedEvent>
-  CompileErrorEvents: IObservable<string option>
+  TestEvents: ISubject<TestEvent>
 }
 
 // ============================================================================
@@ -225,27 +252,118 @@ module ProxyService =
 
 module VirtualFiles =
 
-  let private processFile
+  // File processing types matching ASP.NET Core implementation
+  [<Struct>]
+  type RequestedAs =
+    | JS
+    | Normal
+
+  type FileProcessingResult = {
+    ContentType: string
+    Content: byte[]
+    ShouldProcess: bool
+  }
+
+  // Pure function to transform CSS content to JS (matching ASP.NET Core)
+  let processCssAsJs (content: string) (url: string) =
+    $"""const style=document.createElement('style');style.setAttribute("url", "{url}");
+document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
+
+  // Pure function to transform JSON content to JS (matching ASP.NET Core)
+  let processJsonAsJs(content: string) = $"""export default {content};"""
+
+  // Pure function to determine how to process a file
+  let determineFileProcessing
+    (mimeType: string)
+    (requestedAs: RequestedAs)
+    (content: byte[])
+    (reqPath: string)
+    : FileProcessingResult =
+
+    match mimeType, requestedAs with
+    | "application/json", JS -> {
+        ContentType = "application/javascript"
+        Content =
+          processJsonAsJs(System.Text.Encoding.UTF8.GetString content)
+          |> System.Text.Encoding.UTF8.GetBytes
+        ShouldProcess = true
+      }
+    | "text/css", JS -> {
+        ContentType = "application/javascript"
+        Content =
+          processCssAsJs (System.Text.Encoding.UTF8.GetString content) reqPath
+          |> System.Text.Encoding.UTF8.GetBytes
+        ShouldProcess = true
+      }
+    | _, Normal -> {
+        ContentType = mimeType
+        Content = content
+        ShouldProcess = false
+      }
+    | _, JS ->
+        {
+          ContentType = mimeType
+          Content = content
+          ShouldProcess = false
+        }
+
+  // Log function for unsupported JS transformations
+  let logUnsupportedJsTransformation
+    (logger: ILogger)
+    (mimeType: string)
+    (reqPath: string)
+    =
+    logger.LogWarning(
+      "Requested JS - {MimeType} - {RequestPath} as JS, this file type is not supported as JS, sending default content",
+      mimeType,
+      reqPath
+    )
+
+  // Determine request type from query string
+  let determineRequestedAs(ctx: HttpContext) : RequestedAs =
+    if ctx.request.query |> List.exists(fun (key, _) -> key = "js") then
+      JS
+    else
+      Normal
+
+  let processFile
     (logger: ILogger)
     (vfs: VirtualFileSystem)
     (requestPath: string)
     : WebPart =
     fun ctx -> async {
+      let requestedAs = determineRequestedAs ctx
 
       match vfs.Resolve(UMX.tag<ServerUrl> requestPath) with
       | Some file ->
+        logger.LogDebug(
+          "Serving file from virtual file system: {filesource}",
+          (FileKind.source file)
+        )
+
         match file with
         | TextFile fileContent ->
           let mimeType = fileContent.mimetype
-          return! (setMimeType mimeType >=> OK fileContent.content) ctx
+          let content = System.Text.Encoding.UTF8.GetBytes fileContent.content
 
-        | BinaryFile binaryInfo ->
-          let mimeType = binaryInfo.mimetype
-          // For binary files, we need to read from the source
-          let bytes = File.ReadAllBytes(UMX.untag binaryInfo.source)
+          // Process the file based on request type
+          let processingResult =
+            determineFileProcessing mimeType requestedAs content requestPath
+
+          // Log unsupported JS transformations if needed
+          if requestedAs = JS && not processingResult.ShouldProcess then
+            logUnsupportedJsTransformation logger mimeType requestPath
 
           return!
-            (setMimeType mimeType >=> Suave.Response.response HTTP_200 bytes)
+            (setMimeType processingResult.ContentType
+             >=> Successful.ok processingResult.Content)
+              ctx
+        | BinaryFile binaryInfo ->
+          return!
+            (setMimeType binaryInfo.mimetype
+             >=> Stream.okStream(
+               async { return File.OpenRead(UMX.untag binaryInfo.source) }
+             ))
               ctx
 
       | None -> return! NOT_FOUND "File not found in virtual file system" ctx
@@ -270,60 +388,113 @@ module VirtualFiles =
 module LiveReload =
 
   open Suave.EventSource
-  open System.Threading
-  open FSharp.Control
-  open FSharp.Control.Reactive
-  open System.Collections.Generic
+
 
   type SseBodyArgs = {
-    token: CancellationToken
     fileChangedEvents: IAsyncEnumerable<FileChangedEvent>
-    compileErrorEvents: IAsyncEnumerable<string option>
+    vfs: VirtualFileSystem
   }
+
+  // Pure functions matching Server.fs implementation
+  let createReloadEventData(event: FileChangedEvent) =
+    Json.ToText(
+      {|
+        oldName = event.oldName
+        name = event.name
+      |},
+      false
+    )
+
+  let createHmrEventData (event: FileChangedEvent) (transform: FileTransform) =
+    let oldPath =
+      event.oldPath
+      |> Option.map(fun oldPath -> $"{oldPath}".Replace('\\', '/'))
+
+    let replaced = (UMX.untag event.name).Replace('\\', '/')
+
+    let userPath = $"{event.userPath}/{replaced}"
+
+    Json.ToText {|
+      oldName = event.oldName
+      oldPath = oldPath
+      name = replaced
+      url = $"{event.serverPath}/{replaced}"
+      localPath = userPath
+      content = transform.content
+    |}
 
   let sseBody
     ({
-       token = token
        fileChangedEvents = fileChangedEvents
+       vfs = vfs
      }: SseBodyArgs)
     (out: Sockets.Connection)
     : Async<unit> =
     asyncEx {
-
+      // Handle file change events
       for event in fileChangedEvents do
-        let data =
-          sprintf
-            """{"type": "file-changed", "path": "%s"}"""
-            (UMX.untag event.path)
+        match event.changeType with
+        | Changed ->
+          // Check if it's a CSS file for HMR
+          match vfs.Resolve event.serverPath with
+          | Some(TextFile file) when file.mimetype = "text/css" ->
+            // Send HMR event for CSS
+            let data =
+              createHmrEventData event {
+                content = file.content
+                extension = ".css"
+              }
 
-        let msg =
-          Message.createType
-            (string(DateTimeOffset.Now.ToUnixTimeSeconds()))
-            data
-            "file-changed"
+            let msg =
+              Message.createType
+                (string(DateTimeOffset.Now.ToUnixTimeSeconds()))
+                data
+                "replace-css"
 
-        // Fire and forget for subscription events
-        do! EventSource.send out msg :> Task
+            do! EventSource.send out msg :> Task
+          | _ ->
+            // Regular reload event for other files
+            let data = createReloadEventData event
+
+            let msg =
+              Message.createType
+                (string(DateTimeOffset.Now.ToUnixTimeSeconds()))
+                data
+                "reload"
+
+            do! EventSource.send out msg :> Task
+
+        | Created
+        | Deleted
+        | Renamed ->
+          // Regular reload event for created/deleted/renamed files
+          let data = createReloadEventData event
+
+          let msg =
+            Message.createType
+              (string(DateTimeOffset.Now.ToUnixTimeSeconds()))
+              data
+              "reload"
+
+          do! EventSource.send out msg :> Task
     }
 
   let sseHandler
+    (vfs: VirtualFileSystem)
     (fileChangedEvents: IObservable<FileChangedEvent>)
-    (compileErrorEvents: IObservable<string option>)
     : WebPart =
 
     fun ctx -> async {
       let! token = Async.CancellationToken
-      let fileChangedEvents = fileChangedEvents |> Observable.toAsyncEnumerable
 
-      let compileErrorEvents =
-        compileErrorEvents |> Observable.toAsyncEnumerable
+      let fileChangedEvents =
+        fileChangedEvents |> Observable.toCancellableAsyncEnumerable token
 
       return!
         handShake
           (sseBody {
-            token = token
             fileChangedEvents = fileChangedEvents
-            compileErrorEvents = compileErrorEvents
+            vfs = vfs
            }
            >> Sockets.SocketOp.ofAsync)
           ctx
@@ -347,17 +518,8 @@ module SpaFallback =
       then
         return None
       else
-        // Rewrite to index file
-        let indexFile = UMX.untag config.index
-
-        let newPath =
-          if indexFile.StartsWith('.') then
-            indexFile.[1..]
-          else
-            indexFile
-
         // Redirect to index
-        return! (Redirection.FOUND newPath) ctx
+        return! Redirection.FOUND "/" ctx
     }
 
 // ============================================================================
@@ -396,6 +558,16 @@ module PerlaHandlers =
       return! OK content ctx
     }
 
+  let mochaRunner(fsManager: PerlaFsManager) =
+    path "/~perla~/testing/mocha-runner.js"
+    >=> setMimeType "application/javascript"
+    >=> fun ctx -> async {
+      let! content =
+        fsManager.ResolveMochaRunnerScript() |> Async.AwaitCancellableTask
+
+      return! OK content ctx
+    }
+
   let indexHandler(config: PerlaConfig, fsManager: PerlaFsManager) =
     path "/"
     >=> setMimeType "text/html"
@@ -403,9 +575,9 @@ module PerlaHandlers =
       let content = fsManager.ResolveIndex |> AVal.force
       let map = fsManager.ResolveImportMap |> AVal.force
 
-      use context = BrowsingContext.New(Configuration.Default)
+      use context = BrowsingContext.New Configuration.Default
       let parser = context.GetService<IHtmlParser>() |> nonNull
-      use doc = parser.ParseDocument(content)
+      use doc = parser.ParseDocument content
       let body = Build.EnsureBody doc
       let head = Build.EnsureHead doc
 
@@ -415,7 +587,7 @@ module PerlaHandlers =
       head.AppendChild script |> ignore
 
       // remove standalone entry points, we don't need them in the browser
-      doc.QuerySelectorAll("[data-entry-point=standalone][type=module]")
+      doc.QuerySelectorAll "[data-entry-point=standalone][type=module]"
       |> Seq.iter(fun f -> f.Remove())
 
       if config.devServer.liveReload then
@@ -427,15 +599,197 @@ module PerlaHandlers =
       return! OK (doc.ToHtml()) ctx
     }
 
+  let testingIndexHandler
+    (
+      config: PerlaConfig,
+      fsManager: PerlaFsManager,
+      importMap: Perla.PkgManager.ImportMap
+    ) =
+    path "/"
+    >=> setMimeType "text/html"
+    >=> fun ctx -> async {
+      let content = fsManager.ResolveIndex |> AVal.force
+
+      use context = BrowsingContext.New(Configuration.Default)
+      let parser = context.GetService<IHtmlParser>() |> nonNull
+      use doc = parser.ParseDocument(content)
+
+      // remove any existing entry points, we don't need them in the tests
+      doc.QuerySelectorAll("[data-entry-point][type=module]")
+      |> Seq.iter(fun f -> f.Remove())
+
+      doc.QuerySelectorAll("[data-entry-point][rel=stylesheet]")
+      |> Seq.iter(fun f -> f.Remove())
+
+      doc.QuerySelectorAll("[data-entry-point=standalone][type=module]")
+      |> Seq.iter(fun f -> f.Remove())
+
+      let body = Build.EnsureBody doc
+      let head = Build.EnsureHead doc
+      let mochaStyles: Dom.IElement = doc.CreateElement "link"
+      mochaStyles.SetAttribute("href", "https://unpkg.com/mocha/mocha.css")
+      mochaStyles.SetAttribute("rel", "stylesheet")
+      mochaStyles.SetAttribute("type", "text/css")
+      head.AppendChild mochaStyles |> ignore
+
+      let script: Dom.IElement = doc.CreateElement "script"
+      script.SetAttribute("type", "importmap")
+      script.TextContent <- Json.ToText(importMap)
+      head.AppendChild script |> ignore
+
+      let mochaScript = doc.CreateElement "script"
+      mochaScript.SetAttribute("type", "application/javascript")
+      mochaScript.SetAttribute("src", "https://unpkg.com/mocha/mocha.js")
+      body.AppendChild mochaScript |> ignore
+
+      let mochaDiv = doc.CreateElement "div"
+      mochaDiv.SetAttribute("id", "mocha")
+      body.AppendChild mochaDiv |> ignore
+
+      let runnerScript = doc.CreateElement "script"
+      runnerScript.SetAttribute("type", "module")
+
+      let! runnerContent =
+        fsManager.ResolveMochaRunnerScript() |> Async.AwaitCancellableTask
+
+      runnerScript.TextContent <- runnerContent
+      body.AppendChild runnerScript |> ignore
+
+      if config.devServer.liveReload then
+        let liveReload = doc.CreateElement "script"
+        liveReload.SetAttribute("type", "application/javascript")
+        liveReload.SetAttribute("src", "/~perla~/livereload.js")
+        body.AppendChild liveReload |> ignore
+
+      return! OK (doc.ToHtml()) ctx
+    }
+
+  // Environment variables endpoint handler
+  let envHandler (fsManager: PerlaFsManager) (logger: ILogger) : WebPart =
+    fun ctx -> async {
+      let envVars = fsManager.DotEnvContents |> AVal.force
+
+      if Map.isEmpty envVars then
+        logger.LogWarning(
+          "An env file was requested but no env variables were found"
+        )
+
+        let message =
+          """If you want to use env variables, remember to prefix them with 'PERLA_' e.g.
+'PERLA_myApiKey' or 'PERLA_CLIENT_SECRET', then you will be able to import them via the env file"""
+
+        logger.LogWarning("Env Content not found. {Message}", message)
+
+        return!
+          (setMimeType "application/json"
+           >=> OK(Json.ToText({| message = message |}))
+           >=> Writers.setStatus HTTP_404)
+            ctx
+      else
+        let content =
+          envVars
+          |> Map.fold
+            (fun (sb: System.Text.StringBuilder) key value ->
+              sb.AppendLine $"export const {key} = \"{value}\"")
+            (System.Text.StringBuilder())
+          |> _.ToString()
+
+        return! (setMimeType "text/javascript" >=> OK content) ctx
+    }
+
+// ============================================================================
+// Testing Handlers
+// ============================================================================
+
+module TestingHandlers =
+  open Fake.IO
+  open System.Reactive.Subjects
+  open FsToolkit.ErrorHandling
+
+  let testingFiles
+    (fileGlobs: string seq option, testConfig: TestConfig)
+    : WebPart =
+    fun ctx -> async {
+      let glob: Globbing.LazyGlobbingPattern = {
+        BaseDirectory = "./tests"
+        Excludes = [
+          "**/bin/**"
+          "**/obj/**"
+          "**/*.fs"
+          "**/*.fsproj"
+          yield! testConfig.excludes
+        ]
+        Includes =
+          match fileGlobs with
+          | Some files ->
+            if files |> Seq.isEmpty then
+              [ "**/*.test.js"; "**/*.spec.js" ]
+            else
+              files |> Seq.toList
+          | None -> [ "**/*.test.js"; "**/*.spec.js" ]
+      }
+
+      let files = [|
+        for file in glob do
+          let systemPath =
+            (Path.GetFullPath file).Replace(Path.DirectorySeparatorChar, '/')
+
+          let index = systemPath.IndexOf("/tests/")
+          systemPath.Substring(index)
+      |]
+
+      return! (setMimeType "application/json" >=> OK(Json.ToText files)) ctx
+    }
+
+  let testingEnvironment(testConfig: TestConfig) : WebPart =
+    fun ctx -> async {
+      let result = {|
+        testConfig with
+            browsers =
+              (testConfig.browsers |> Seq.map Encoders.Browser).ToString()
+            browserMode =
+              (testConfig.browserMode |> Encoders.BrowserMode).ToString()
+            runId = Guid.NewGuid()
+      |}
+
+      return! (setMimeType "application/json" >=> OK(Json.ToText result)) ctx
+    }
+
+  let mochaSettings(mochaConfig: Map<string, obj> option) : WebPart =
+    fun ctx -> async {
+      let config = mochaConfig |> Option.defaultValue Map.empty
+      return! (setMimeType "application/json" >=> OK(Json.ToText config)) ctx
+    }
+
+  let testingEvents
+    (logger: ILogger, testEvents: ISubject<TestEvent>)
+    : WebPart =
+    fun ctx -> async {
+      try
+        use stream = new MemoryStream(ctx.request.rawForm)
+        use reader = new StreamReader(stream)
+        let! content = reader.ReadToEndAsync() |> Async.AwaitTask
+
+        match Json.TestEventFromJson content with
+        | Result.Ok testEvent ->
+          testEvents.OnNext testEvent
+          return! OK "Event processed" ctx
+        | Result.Error err ->
+          logger.LogError("Failed to parse test event: {Error}", err)
+          return! BAD_REQUEST "Invalid test event format" ctx
+      with ex ->
+        logger.LogError(ex, "Error processing test event")
+        return! ServerErrors.INTERNAL_ERROR "Internal server error" ctx
+    }
+
 // ============================================================================
 // Main Server Configuration
 // ============================================================================
 
 module SuaveServer =
-  open System.Threading
 
   let toLoggary(logger: ILogger) =
-    { new Suave.Logging.Logger with
+    { new Logging.Logger with
         member _.log
           (level: Logging.LogLevel)
           (messageThunk: Logging.LogLevel -> Logging.Message)
@@ -484,7 +838,7 @@ module SuaveServer =
             return ()
           }
 
-        member _.name = [| "PerlaLogger" |]
+        member _.name = [| "Perla:Server:" |]
     }
 
   let createApp(suaveCtx: SuaveContext) =
@@ -495,13 +849,38 @@ module SuaveServer =
       // Perla internal endpoints
       path "/~perla~/sse"
       >=> LiveReload.sseHandler
+        suaveCtx.VirtualFileSystem
         suaveCtx.FileChangedEvents
-        suaveCtx.CompileErrorEvents
 
       PerlaHandlers.liveReloadScript suaveCtx.FsManager
       PerlaHandlers.workerScript suaveCtx.FsManager
       PerlaHandlers.testingHelpers suaveCtx.FsManager
+      PerlaHandlers.mochaRunner suaveCtx.FsManager
       PerlaHandlers.indexHandler(config, suaveCtx.FsManager)
+
+      // Testing endpoints
+      pathStarts "/~perla~/testing/"
+      >=> choose [
+        path "/~perla~/testing/files"
+        >=> TestingHandlers.testingFiles(None, config.testing)
+
+        path "/~perla~/testing/environment"
+        >=> TestingHandlers.testingEnvironment config.testing
+
+        path "/~perla~/testing/mocha-settings"
+        >=> TestingHandlers.mochaSettings None
+
+        POST
+        >=> path "/~perla~/testing/events"
+        >=> TestingHandlers.testingEvents(suaveCtx.Logger, suaveCtx.TestEvents)
+      ]
+
+      // Environment variables endpoint (if enabled)
+      if config.enableEnv then
+        path(UMX.untag config.envPath)
+        >=> PerlaHandlers.envHandler suaveCtx.FsManager suaveCtx.Logger
+      else
+        never
 
       // Proxy endpoints (if configured)
       proxyWebparts
@@ -530,7 +909,6 @@ module SuaveServer =
         .withCancellationToken(cancellationToken)
         .withLogger(suaveCtx.Logger |> toLoggary)
 
-
     let app = createApp suaveCtx
-    suaveCtx.Logger.LogInformation($"Starting Suave server on {host}:{port}")
+    suaveCtx.Logger.LogInformation $"Starting Suave server on {host}:{port}"
     startWebServer serverConfig app

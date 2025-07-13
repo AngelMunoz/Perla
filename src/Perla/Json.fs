@@ -320,7 +320,7 @@ module internal Encoders =
 
 let DefaultJsonOptions() =
   JsonSerializerOptions(
-    WriteIndented = false,
+    WriteIndented = true,
     AllowTrailingCommas = true,
     ReadCommentHandling = JsonCommentHandling.Skip,
     UnknownTypeHandling = JsonUnknownTypeHandling.JsonElement,

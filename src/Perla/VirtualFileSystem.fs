@@ -57,6 +57,23 @@ type FileKind =
   | TextFile of FileContent
   | BinaryFile of BinaryFileInfo
 
+
+module FileKind =
+  let source(file: FileKind) =
+    match file with
+    | TextFile content -> content.source
+    | BinaryFile info -> info.source
+
+  let mimetype(file: FileKind) =
+    match file with
+    | TextFile content -> content.mimetype
+    | BinaryFile info -> info.mimetype
+
+  let filename(file: FileKind) =
+    match file with
+    | TextFile content -> content.filename
+    | BinaryFile info -> info.filename
+
 type VirtualFileEntry = {
   kind: FileKind
   lastModified: DateTime

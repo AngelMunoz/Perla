@@ -18,7 +18,7 @@ type SuaveContext = {
   Config: PerlaConfig aval
   FsManager: PerlaFsManager
   FileChangedEvents: IObservable<FileChangedEvent>
-  CompileErrorEvents: IObservable<string option>
+  TestEvents: ISubject<TestEvent>
 }
 
 /// MIME type utilities
@@ -47,8 +47,8 @@ module LiveReload =
 
   /// Create SSE handler for live reload events
   val sseHandler:
+    vfs: VirtualFileSystem ->
     fileChangedEvents: IObservable<FileChangedEvent> ->
-    compileErrorEvents: IObservable<string option> ->
       WebPart
 
 /// SPA fallback functionality
@@ -69,8 +69,39 @@ module PerlaHandlers =
   /// Testing helpers script endpoint
   val testingHelpers: fsManager: PerlaFsManager -> WebPart
 
+  /// Mocha test runner script endpoint
+  val mochaRunner: fsManager: PerlaFsManager -> WebPart
+
   /// Index page handler
   val indexHandler: config: PerlaConfig * fsManager: PerlaFsManager -> WebPart
+
+  /// Testing index page handler
+  val testingIndexHandler:
+    config: PerlaConfig *
+    fsManager: PerlaFsManager *
+    importMap: Perla.PkgManager.ImportMap ->
+      WebPart
+
+  /// Environment variables endpoint handler
+  val envHandler: fsManager: PerlaFsManager -> logger: ILogger -> WebPart
+
+/// Testing endpoints functionality
+module TestingHandlers =
+
+  /// Testing files endpoint
+  val testingFiles:
+    fileGlobs: string seq option * testConfig: TestConfig -> WebPart
+
+  /// Testing environment endpoint
+  val testingEnvironment: testConfig: TestConfig -> WebPart
+
+  /// Mocha settings endpoint
+  val mochaSettings: mochaConfig: Map<string, obj> option -> WebPart
+
+  /// Testing events POST endpoint
+  val testingEvents:
+    logger: ILogger * testEvents: System.Reactive.Subjects.ISubject<TestEvent> ->
+      WebPart
 
 /// Main Suave server configuration and startup
 module SuaveServer =
