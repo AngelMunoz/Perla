@@ -18,8 +18,27 @@ type SuaveContext = {
   Config: PerlaConfig aval
   FsManager: PerlaFsManager
   FileChangedEvents: IObservable<FileChangedEvent>
+}
+
+type SuaveTestingContext = {
+  Logger: ILogger
+  VirtualFileSystem: VirtualFileSystem
+  Config: PerlaConfig aval
+  FsManager: PerlaFsManager
+  FileChangedEvents: IObservable<FileChangedEvent>
   TestEvents: ISubject<TestEvent>
 }
+
+type SuaveServerContext =
+  | SuaveContext of SuaveContext
+  | SuaveTestingContext of SuaveTestingContext
+
+  member Logger: ILogger
+  member VirtualFileSystem: VirtualFileSystem
+  member Config: PerlaConfig aval
+  member FsManager: PerlaFsManager
+  member FileChangedEvents: IObservable<FileChangedEvent>
+  member TestEvents: ISubject<TestEvent> option
 
 /// MIME type utilities
 module MimeTypes =
@@ -107,10 +126,13 @@ module TestingHandlers =
 module SuaveServer =
 
   /// Create the main Suave application
-  val createApp: suaveCtx: SuaveContext -> WebPart
+  val createTestingApp: suaveCtx: SuaveServerContext -> WebPart
+
+  /// Create the main Suave application
+  val createApp: suaveCtx: SuaveServerContext -> WebPart
 
   /// Start the Suave server
   val startServer:
-    suaveCtx: SuaveContext ->
+    suaveCtx: SuaveServerContext ->
     cancellationToken: Threading.CancellationToken ->
       unit

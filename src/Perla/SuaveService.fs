@@ -185,8 +185,50 @@ type SuaveContext = {
   Config: PerlaConfig aval
   FsManager: PerlaFsManager
   FileChangedEvents: IObservable<FileChangedEvent>
+}
+
+type SuaveTestingContext = {
+  Logger: ILogger
+  VirtualFileSystem: VirtualFileSystem
+  Config: PerlaConfig aval
+  FsManager: PerlaFsManager
+  FileChangedEvents: IObservable<FileChangedEvent>
   TestEvents: ISubject<TestEvent>
 }
+
+type SuaveServerContext =
+  | SuaveContext of SuaveContext
+  | SuaveTestingContext of SuaveTestingContext
+
+  member this.Logger =
+    match this with
+    | SuaveContext ctx -> ctx.Logger
+    | SuaveTestingContext ctx -> ctx.Logger
+
+  member this.VirtualFileSystem =
+    match this with
+    | SuaveContext ctx -> ctx.VirtualFileSystem
+    | SuaveTestingContext ctx -> ctx.VirtualFileSystem
+
+  member this.Config =
+    match this with
+    | SuaveContext ctx -> ctx.Config
+    | SuaveTestingContext ctx -> ctx.Config
+
+  member this.FsManager =
+    match this with
+    | SuaveContext ctx -> ctx.FsManager
+    | SuaveTestingContext ctx -> ctx.FsManager
+
+  member this.FileChangedEvents =
+    match this with
+    | SuaveContext ctx -> ctx.FileChangedEvents
+    | SuaveTestingContext ctx -> ctx.FileChangedEvents
+
+  member this.TestEvents =
+    match this with
+    | SuaveContext _ -> None
+    | SuaveTestingContext ctx -> Some ctx.TestEvents
 
 // ============================================================================
 // MIME Type Detection
@@ -369,7 +411,7 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
       | None -> return! NOT_FOUND "File not found in virtual file system" ctx
     }
 
-  let resolveFile(suaveCtx: SuaveContext) : WebPart =
+  let resolveFile(suaveCtx: SuaveServerContext) : WebPart =
     fun ctx -> async {
       let requestPath = ctx.request.url.AbsolutePath
 
@@ -809,7 +851,7 @@ module SuaveServer =
         member _.name = [| "Perla:Server:" |]
     }
 
-  let createApp(suaveCtx: SuaveContext) =
+  let createTestApp(suaveCtx: SuaveServerContext) =
     let config = AVal.force suaveCtx.Config
     let proxyWebparts = ProxyService.createProxyWebparts config.devServer.proxy
 
@@ -840,7 +882,10 @@ module SuaveServer =
 
         POST
         >=> path "/~perla~/testing/events"
-        >=> TestingHandlers.testingEvents(suaveCtx.Logger, suaveCtx.TestEvents)
+        >=> TestingHandlers.testingEvents(
+          suaveCtx.Logger,
+          suaveCtx.TestEvents.Value
+        )
       ]
 
       // Environment variables endpoint (if enabled)
@@ -863,8 +908,10 @@ module SuaveServer =
       NOT_FOUND "Resource not found"
     ]
 
+  let createApp(suaveCtx: SuaveServerContext) = failwith "Not implemented "
+
   let startServer
-    (suaveCtx: SuaveContext)
+    (suaveCtx: SuaveServerContext)
     (cancellationToken: CancellationToken)
     =
     let config = AVal.force suaveCtx.Config
@@ -877,6 +924,10 @@ module SuaveServer =
         .withCancellationToken(cancellationToken)
         .withLogger(suaveCtx.Logger |> toLoggary)
 
-    let app = createApp suaveCtx
+    let app =
+      match suaveCtx with
+      | SuaveContext ctx -> failwith "not implemented for SuaveContext"
+      | SuaveTestingContext ctx -> createTestApp suaveCtx
+
     suaveCtx.Logger.LogInformation $"Starting Suave server on {host}:{port}"
     startWebServer serverConfig app
