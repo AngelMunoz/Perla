@@ -851,7 +851,7 @@ module SuaveServer =
         member _.name = [| "Perla:Server:" |]
     }
 
-  let createTestApp(suaveCtx: SuaveServerContext) =
+  let createTestingApp(suaveCtx: SuaveServerContext) =
     let config = AVal.force suaveCtx.Config
     let proxyWebparts = ProxyService.createProxyWebparts config.devServer.proxy
 
@@ -908,7 +908,10 @@ module SuaveServer =
       NOT_FOUND "Resource not found"
     ]
 
-  let createApp(suaveCtx: SuaveServerContext) = failwith "Not implemented "
+  let createApp(suaveCtx: SuaveServerContext) = failwith "Not implemented"
+
+  let createStaticServerApp(suaveCtx: SuaveServerContext) =
+    failwith "Not implemented"
 
   let startServer
     (suaveCtx: SuaveServerContext)
@@ -926,8 +929,27 @@ module SuaveServer =
 
     let app =
       match suaveCtx with
-      | SuaveContext ctx -> failwith "not implemented for SuaveContext"
-      | SuaveTestingContext ctx -> createTestApp suaveCtx
+      | SuaveContext ctx -> createApp suaveCtx
+      | SuaveTestingContext ctx -> createTestingApp suaveCtx
+
+    suaveCtx.Logger.LogInformation $"Starting Suave server on {host}:{port}"
+    startWebServer serverConfig app
+
+  let startStaticServer
+    (suaveCtx: SuaveContext)
+    (cancellationToken: CancellationToken)
+    =
+    let config = AVal.force suaveCtx.Config
+    let host = config.devServer.host
+    let port = config.devServer.port
+
+    let serverConfig =
+      defaultConfig
+        .withBindings([ HttpBinding.createSimple HTTP host port ])
+        .withCancellationToken(cancellationToken)
+        .withLogger(suaveCtx.Logger |> toLoggary)
+
+    let app = createStaticServerApp(SuaveContext suaveCtx)
 
     suaveCtx.Logger.LogInformation $"Starting Suave server on {host}:{port}"
     startWebServer serverConfig app

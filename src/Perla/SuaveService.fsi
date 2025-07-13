@@ -131,8 +131,16 @@ module SuaveServer =
   /// Create the main Suave application
   val createApp: suaveCtx: SuaveServerContext -> WebPart
 
+  /// Create a static server application
+  val createStaticServerApp: suaveCtx: SuaveServerContext -> WebPart
+
   /// Start the Suave server
   val startServer:
     suaveCtx: SuaveServerContext ->
+    cancellationToken: Threading.CancellationToken ->
+      unit
+
+  val startStaticServer:
+    suaveCtx: SuaveContext ->
     cancellationToken: Threading.CancellationToken ->
       unit
