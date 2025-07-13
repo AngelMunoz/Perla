@@ -1053,8 +1053,8 @@ module SuaveServer =
 
     let app =
       match suaveCtx with
-      | SuaveContext ctx -> createApp suaveCtx
-      | SuaveTestingContext ctx -> createTestingApp suaveCtx
+      | SuaveContext _ -> createApp suaveCtx
+      | SuaveTestingContext _ -> createTestingApp suaveCtx
 
     suaveCtx.Logger.LogInformation $"Starting Suave server on {host}:{port}"
     startWebServer serverConfig app
