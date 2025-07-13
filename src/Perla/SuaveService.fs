@@ -179,6 +179,32 @@ open System.Reactive.Subjects
 // Core Types
 // ============================================================================
 
+[<AutoOpen>]
+module TestableTypes =
+
+  type HttpResponse = {
+    Headers: Map<string, string>
+    Body: string
+    StatusCode: int
+    ContentType: string option
+  }
+
+  type HttpRequest = {
+    Path: string
+    Method: string
+    Query: Map<string, string>
+    Headers: Map<string, string>
+  }
+
+  type ResponseWriter = {
+    WriteText: string -> Task<unit>
+    WriteBytes: byte[] -> Task<unit>
+    SetHeader: string -> string -> unit
+    SetStatusCode: int -> unit
+    SetContentType: string -> unit
+    Flush: unit -> Task<unit>
+  }
+
 type SuaveContext = {
   Logger: ILogger
   VirtualFileSystem: VirtualFileSystem
@@ -793,6 +819,27 @@ module TestingHandlers =
     }
 
 // ============================================================================
+// Port Occupied Detection and Handling
+// ============================================================================
+
+module PortUtils =
+  open System.Net.NetworkInformation
+
+  let isAddressPortOccupied (address: string) (port: int) =
+    try
+      let props = IPGlobalProperties.GetIPGlobalProperties()
+      let listeners = props.GetActiveTcpListeners()
+
+      listeners
+      |> Array.exists(fun listener ->
+        listener.Port = port
+        && (listener.Address = IPAddress.Any
+            || listener.Address.ToString() = address
+            || (address = "localhost" && listener.Address = IPAddress.Loopback)))
+    with _ ->
+      false
+
+// ============================================================================
 // Main Server Configuration
 // ============================================================================
 
@@ -908,18 +955,95 @@ module SuaveServer =
       NOT_FOUND "Resource not found"
     ]
 
-  let createApp(suaveCtx: SuaveServerContext) = failwith "Not implemented"
+  let createApp(suaveCtx: SuaveServerContext) =
+    let config = AVal.force suaveCtx.Config
+    let proxyWebparts = ProxyService.createProxyWebparts config.devServer.proxy
+
+    choose [
+      // Perla internal endpoints
+      path "/~perla~/sse"
+      >=> LiveReload.sseHandler
+        suaveCtx.VirtualFileSystem
+        suaveCtx.FileChangedEvents
+
+      PerlaHandlers.liveReloadScript suaveCtx.FsManager
+      PerlaHandlers.workerScript suaveCtx.FsManager
+      PerlaHandlers.testingHelpers suaveCtx.FsManager
+      PerlaHandlers.mochaRunner suaveCtx.FsManager
+      PerlaHandlers.indexHandler(config, suaveCtx.FsManager)
+
+      // Environment variables endpoint (if enabled)
+      if config.enableEnv then
+        path(UMX.untag config.envPath)
+        >=> PerlaHandlers.envHandler suaveCtx.FsManager suaveCtx.Logger
+      else
+        never
+
+      // Proxy endpoints (if configured)
+      proxyWebparts
+
+      // Virtual file system (before SPA fallback)
+      VirtualFiles.resolveFile suaveCtx
+
+      // SPA fallback
+      SpaFallback.spaFallback config
+
+      // Final fallback
+      NOT_FOUND "Resource not found"
+    ]
 
   let createStaticServerApp(suaveCtx: SuaveServerContext) =
-    failwith "Not implemented"
+    let config = AVal.force suaveCtx.Config
+    let proxyWebparts = ProxyService.createProxyWebparts config.devServer.proxy
+
+    let outDir =
+      Path.Combine(".", UMX.untag config.build.outDir) |> Path.GetFullPath
+
+    choose [
+      // Proxy endpoints (if configured)
+      proxyWebparts
+
+      // serve static files from the output directory
+      Files.browseHome
+
+      // SPA fallback for static files
+      fun ctx -> async {
+        let path = ctx.request.url.AbsolutePath
+
+        // Skip if it's an API call or has file extension
+        if path.StartsWith("/api/") || Path.HasExtension(path) then
+          return None
+        else
+          // Serve index.html for SPA routes
+          let indexPath = Path.Combine(outDir, "index.html")
+
+          return! Files.sendFile indexPath false ctx
+      }
+
+      // Final fallback
+      NOT_FOUND "Resource not found"
+    ]
 
   let startServer
     (suaveCtx: SuaveServerContext)
     (cancellationToken: CancellationToken)
     =
     let config = AVal.force suaveCtx.Config
-    let host = config.devServer.host
-    let port = config.devServer.port
+
+    let host, port =
+      let host = config.devServer.host
+      let port = config.devServer.port
+      // Check if port is occupied and log if needed
+      if PortUtils.isAddressPortOccupied host port then
+        suaveCtx.Logger.LogWarning(
+          "Address {Host}:{Port} is busy, Suave will attempt to bind anyway",
+          host,
+          port
+        )
+
+        host, port + 1
+      else
+        host, port
 
     let serverConfig =
       defaultConfig
@@ -940,14 +1064,30 @@ module SuaveServer =
     (cancellationToken: CancellationToken)
     =
     let config = AVal.force suaveCtx.Config
-    let host = config.devServer.host
-    let port = config.devServer.port
+
+    let host, port =
+      let host = config.devServer.host
+      let port = config.devServer.port
+      // Check if port is occupied and log if needed
+      if PortUtils.isAddressPortOccupied host port then
+        suaveCtx.Logger.LogWarning(
+          "Address {Host}:{Port} is busy, Suave will attempt to bind anyway",
+          host,
+          port
+        )
+
+        host, port + 1
+      else
+        host, port
 
     let serverConfig =
       defaultConfig
         .withBindings([ HttpBinding.createSimple HTTP host port ])
         .withCancellationToken(cancellationToken)
         .withLogger(suaveCtx.Logger |> toLoggary)
+        .withHomeFolder(
+          UMX.untag config.build.outDir |> Path.GetFullPath |> Some
+        )
 
     let app = createStaticServerApp(SuaveContext suaveCtx)
 

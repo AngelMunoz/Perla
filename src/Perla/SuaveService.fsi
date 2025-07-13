@@ -49,6 +49,12 @@ module MimeTypes =
   /// Get content type for a file path, with fallback to default
   val getContentType: filePath: string -> string
 
+/// Port utilities for server binding
+module PortUtils =
+
+  /// Check if a port is occupied on the given address
+  val isAddressPortOccupied: address: string -> port: int -> bool
+
 /// HTTP proxy functionality using Suave.Proxy
 module ProxyService =
 
@@ -59,7 +65,7 @@ module ProxyService =
 module VirtualFiles =
 
   /// Create webpart that resolves files from VFS
-  val resolveFile: suaveCtx: SuaveContext -> WebPart
+  val resolveFile: suaveCtx: SuaveServerContext -> WebPart
 
 /// Live reload functionality using Server-Sent Events
 module LiveReload =
