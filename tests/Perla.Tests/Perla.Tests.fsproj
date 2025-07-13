@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>net9.0;net8.0</TargetFrameworks>
     <IsPackable>false</IsPackable>
@@ -37,7 +37,6 @@
     <Compile Include="Database.Tests.fs" />
     <Compile Include="Extensibility.Tests.fs" />
     <Compile Include="Build.Tests.fs" />
-    <Compile Include="Server.Tests.fs" />
     <Compile Include="SuaveService.Tests.fs" />
     <Compile Include="Scaffolding.Tests.fs" />
     <Compile Include="Library.Tests.fs" />

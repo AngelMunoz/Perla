@@ -50,8 +50,6 @@
     <Compile Include="Testing.fs" />
     <Compile Include="SuaveService.fsi" />
     <Compile Include="SuaveService.fs" />
-    <Compile Include="Server.fsi" />
-    <Compile Include="Server.fs" />
     <Compile Include="Configuration.fsi" />
     <Compile Include="Configuration.fs" />
     <Compile Include="Orchestration.fsi" />
@@ -90,7 +88,6 @@
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
     <PackageReference Include="FSharp.Compiler.Service" />
-    <PackageReference Include="FSharp.Control.AsyncSeq" />
     <PackageReference Include="FSharp.Control.TaskSeq" />
     <PackageReference Include="FSharp.Control.Reactive" />
     <PackageReference Include="FSharp.Data.Adaptive" />
@@ -105,8 +102,6 @@
     <PackageReference Include="FsHttp" />
     <PackageReference Include="LiteDB" />
     <PackageReference Include="Scriban" />
-    <PackageReference Include="Yarp.ReverseProxy" />
-    <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Microsoft.Playwright" />
     <PackageReference Include="Suave" />
     <PackageReference Include="System.IO.Pipelines" />
