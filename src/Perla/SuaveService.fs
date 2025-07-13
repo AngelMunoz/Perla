@@ -404,11 +404,6 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
 
       match vfs.Resolve(UMX.tag<ServerUrl> requestPath) with
       | Some file ->
-        logger.LogDebug(
-          "Serving file from virtual file system: {filesource}",
-          (FileKind.source file)
-        )
-
         match file with
         | TextFile fileContent ->
           let mimeType = fileContent.mimetype

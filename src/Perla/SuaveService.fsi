@@ -64,11 +64,57 @@ module ProxyService =
 /// Virtual file system integration
 module VirtualFiles =
 
+  // Types needed for internal testable API
+  [<Struct>]
+  type RequestedAs =
+    | JS
+    | Normal
+
+  type FileProcessingResult = {
+    ContentType: string
+    Content: byte[]
+    ShouldProcess: bool
+  }
+
   /// Create webpart that resolves files from VFS
   val resolveFile: suaveCtx: SuaveServerContext -> WebPart
 
+  /// Internal: Pure function to transform CSS content to JS (for testing)
+  val internal processCssAsJs: content: string -> url: string -> string
+
+  /// Internal: Pure function to transform JSON content to JS (for testing)
+  val internal processJsonAsJs: content: string -> string
+
+  /// Internal: Pure function to determine how to process a file (for testing)
+  val internal determineFileProcessing:
+    mimeType: string ->
+    requestedAs: RequestedAs ->
+    content: byte[] ->
+    reqPath: string ->
+      FileProcessingResult
+
 /// Live reload functionality using Server-Sent Events
 module LiveReload =
+
+  /// Create reload message for file changes
+  val createReloadMessage: event: FileChangedEvent -> Suave.EventSource.Message
+
+  /// Create HMR message for CSS files
+  val createHmrMessage:
+    event: FileChangedEvent -> file: FileContent -> Suave.EventSource.Message
+
+  /// Create live reload message (HMR for CSS, reload for others)
+  val createLiveReloadMessage:
+    vfs: VirtualFileSystem ->
+    event: FileChangedEvent ->
+      Suave.EventSource.Message
+
+  /// Internal: Pure function to create reload event data (for testing)
+  val internal createReloadEventData: event: FileChangedEvent -> string
+
+  /// Internal: Pure function to create HMR event data (for testing)
+  val internal createHmrEventData:
+    event: FileChangedEvent -> transform: Perla.Plugins.FileTransform -> string
 
   /// Create SSE handler for live reload events
   val sseHandler:
