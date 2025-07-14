@@ -66,7 +66,7 @@ module PerlaDirectories =
           this.PerlaArtifactsRoot |/ Constants.TemplatesDirectory
 
         member this.OfflineTemplates =
-          this.PerlaArtifactsRoot |/ Constants.OfflineTemplatesDirectory
+          this.AssemblyRoot |/ Constants.OfflineTemplatesDirectory
 
         member this.PerlaConfigPath =
           let cwd = DirectoryInfo(UMX.untag this.CurrentWorkingDirectory)

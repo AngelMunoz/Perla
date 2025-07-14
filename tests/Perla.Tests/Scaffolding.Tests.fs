@@ -44,14 +44,14 @@ module TestHelpers =
       {
         id = "basic"
         name = "Basic Template"
-        shortName = "basic"
+        shortname = "basic"
         description = Some "Basic web template"
         path = UMX.tag<SystemPath> "basic"
       }
       {
         id = "advanced"
         name = "Advanced Template"
-        shortName = "adv"
+        shortname = "adv"
         description = Some "Advanced web template"
         path = UMX.tag<SystemPath> "advanced"
       }
@@ -160,7 +160,7 @@ let ``TemplateConfigItem from sample should have correct structure``() =
 
   let basicTemplate = config.templates |> Seq.find(fun t -> t.id = "basic")
   Assert.Equal("Basic Template", basicTemplate.name)
-  Assert.Equal("basic", basicTemplate.shortName)
+  Assert.Equal("basic", basicTemplate.shortname)
   Assert.Equal(Some "Basic web template", basicTemplate.description)
 
 [<Fact>]

@@ -581,7 +581,7 @@ let ``ResolveOfflineTemplatesConfig should return decoded template configuration
     let template = config.templates |> Seq.head
     Assert.Equal("test-template", template.id)
     Assert.Equal("Test Template", template.name)
-    Assert.Equal("test", template.shortName)
+    Assert.Equal("test", template.shortname)
     Assert.Equal(Some "A test template", template.description)
   }
 

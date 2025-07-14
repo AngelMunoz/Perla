@@ -141,12 +141,14 @@ module RunNew =
     tplList
     |> Seq.tryPick(fun tpl ->
       let byId =
-        id |> Option.bind(fun id -> if tpl.id = id then Some tpl else None)
+        id
+        |> Option.bind(fun id ->
+          if $"perla.templates.{tpl.id}" = id then Some tpl else None)
 
       let byShortName =
         name
         |> Option.bind(fun shortName ->
-          if tpl.shortName = shortName then Some tpl else None)
+          if tpl.shortname = shortName then Some tpl else None)
 
       byId |> Option.orElse byShortName)
 
@@ -157,20 +159,27 @@ module RunNew =
     let progress = AnsiConsole.Progress()
     let files = sourcePath.GetFiles("*", SearchOption.AllDirectories)
 
+    let targetDir = DirectoryInfo(UMX.untag targetPath)
+    targetDir.Create()
+
     progress.Start(fun ctx ->
       let tsk =
         ctx.AddTask("Creating project...", true, maxValue = files.Length)
 
       files
       |> Array.Parallel.iter(fun file ->
-        let targetPath =
-          file.FullName.Replace(sourcePath.FullName, UMX.untag targetPath)
+        // Compute the relative path from the source root
+        let relPath = Path.GetRelativePath(sourcePath.FullName, file.FullName)
+        let destPath = Path.Combine(UMX.untag targetPath, relPath)
 
-        match file.Directory with
-        | null -> ()
-        | directory -> directory.Create()
+        destPath
+        |> Path.GetDirectoryName
+        |> nonNull
+        |> Path.GetFullPath
+        |> Directory.CreateDirectory
+        |> ignore
 
-        File.Copy(file.FullName, UMX.untag targetPath, true)
+        File.Copy(file.FullName, destPath, true)
         tsk.Increment 1)
 
       tsk.StopTask())
@@ -267,7 +276,7 @@ module Handlers =
         logger.LogInformation(
           "Found template '{name}' with short name '{shortName}'",
           found.name,
-          found.shortName
+          found.shortname
         )
 
         RunNew.writeFoundDecodedTemplate
@@ -282,7 +291,7 @@ module Handlers =
             .Title("Select a template to create a new project:")
             .EnableSearch()
             .UseConverter(fun (tpl: DecodedTemplateConfigItem) ->
-              $"{tpl.name} ({tpl.shortName}) - {tpl.description}")
+              $"{tpl.name} ({tpl.shortname}) - {tpl.description}")
             .AddChoices(templates)
 
         let! selected = AnsiConsole.PromptAsync(prompt, token)

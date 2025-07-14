@@ -86,14 +86,14 @@ module TestHelpers =
         id = "basic"
         name = "Basic Template"
         path = UMX.tag<SystemPath> "templates/basic"
-        shortName = "basic"
+        shortname = "basic"
         description = Some "A basic web template"
       }
       {
         id = "advanced"
         name = "Advanced Template"
         path = UMX.tag<SystemPath> "templates/advanced"
-        shortName = "advanced"
+        shortname = "advanced"
         description = Some "An advanced web template"
       }
     |]

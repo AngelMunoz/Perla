@@ -596,7 +596,7 @@ let ``TemplateConfigItemDecoder should decode correctly``() =
     Assert.Equal("template-1", item.id)
     Assert.Equal("React Template", item.name)
     Assert.Equal("./templates/react", item.path |> UMX.untag)
-    Assert.Equal("react", item.shortName)
+    Assert.Equal("react", item.shortname)
     Assert.Equal(Some "A React template", item.description)
   | Error error ->
     Assert.True(false, $"Expected Ok but got Error: {error.message}")

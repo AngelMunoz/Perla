@@ -13,7 +13,7 @@ type DecodedTemplateConfigItem = {
   id: string
   name: string
   path: string<SystemPath>
-  shortName: string
+  shortname: string
   description: string option
 }
 

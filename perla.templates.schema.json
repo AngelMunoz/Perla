@@ -1,88 +1,72 @@
 {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "Perla Templates Configuration",
-    "description": "Perla Templates Configuration Schema",
-    "type": "object",
-    "properties": {
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "title": "Perla Templates Configuration",
+  "description": "Perla Templates Configuration Schema",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "The name of the template"
+    },
+    "description": {
+      "type": "string",
+      "description": "The description of the template"
+    },
+    "author": {
+      "type": "string",
+      "description": "The author of the template"
+    },
+    "license": {
+      "type": "string",
+      "description": "The license of the template"
+    },
+    "repository": {
+      "type": "string",
+      "description": "The repository of the template"
+    },
+    "group": {
+      "type": "string",
+      "description": "A unique identifier for this set of templates"
+    },
+    "templates": {
+      "type": "array",
+      "description": "A list of objects containing information related to the templates",
+      "items": {
+        "$ref": "#/$defs/templateObject"
+      }
+    }
+  },
+  "required": ["name", "author", "license", "group", "templates"],
+  "$defs": {
+    "templateObject": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "A unique identifier for this template",
+          "required": true
+        },
         "name": {
-            "type": "string",
-            "description": "The name of the template",
-            "required": true
+          "type": "string",
+          "description": "The name of the template",
+          "required": true
         },
         "description": {
-            "type": "string",
-            "description": "The description of the template"
+          "type": "string",
+          "description": "The description of the template"
         },
-        "author": {
-            "type": "string",
-            "description": "The author of the template",
-            "required": true
+        "shortname": {
+          "type": "string",
+          "description": "A short name for the template",
+          "required": true
         },
-        "license": {
-            "type": "string",
-            "description": "The license of the template",
-            "required": true
-        },
-        "repository": {
-            "type": "string",
-            "description": "The repository of the template"
-        },
-        "group": {
-            "type": "string",
-            "description": "A unique identifier for this set of templates",
-            "required": true
-        },
-        "templates": {
-            "type": "array",
-            "description": "A list of objects containing information related to the templates",
-            "required": true,
-            "items": {
-                "$ref": "#/$defs/templateObject"
-            }
+        "path": {
+          "type": "string",
+          "description": "The path to the template relative to the root of the repository",
+          "required": true
         }
-    },
-    "required": [
-        "name",
-        "author",
-        "license",
-        "group",
-        "templates"
-    ],
-    "$defs": {
-        "templateObject": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string",
-                    "description": "A unique identifier for this template",
-                    "required": true
-                },
-                "name": {
-                    "type": "string",
-                    "description": "The name of the template",
-                    "required": true
-                },
-                "description": {
-                    "type": "string",
-                    "description": "The description of the template"
-                },
-                "shortname": {
-                    "type": "string",
-                    "description": "A short name for the template",
-                    "required": true
-                },
-                "path": {
-                    "type": "string",
-                    "description": "The path to the template relative to the root of the repository",
-                    "required": true
-                }
-            },
-            "required": [
-                "id",
-                "name",
-                "shortname",
-                "path"
-            ]
-        }
+      },
+      "required": ["id", "name", "shortname", "path"]
     }
+  }
 }

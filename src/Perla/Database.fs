@@ -200,7 +200,7 @@ module Database =
         Parent = repositoryId,
         Name = templateItem.name,
         Group = $"{config.group}.{templateItem.id}",
-        ShortName = templateItem.shortName,
+        ShortName = templateItem.shortname,
         Description = templateItem.description,
         FullPath =
           System.IO.Path.Combine(basePath, UMX.untag templateItem.path)
