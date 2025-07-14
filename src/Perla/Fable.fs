@@ -67,15 +67,11 @@ module Fable =
                 processId
               )
             | ProcessEvent.StandardOutput stdout ->
-              args.Logger.LogInformation stdout
-
               if stdout.ToLowerInvariant().Contains "watching" then
                 FableEvent.WaitingForChanges
               else
                 FableEvent.Log stdout
-            | ProcessEvent.StandardError stderr ->
-              args.Logger.LogError stderr
-              FableEvent.ErrLog stderr
+            | ProcessEvent.StandardError stderr -> FableEvent.ErrLog stderr
             | ProcessEvent.Exited exitCode ->
               args.Logger.LogInformation(
                 "Fable exited with code: [{ExitCode}]",

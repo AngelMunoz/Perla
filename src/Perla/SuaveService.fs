@@ -458,7 +458,7 @@ module LiveReload =
         oldName = event.oldName
         name = event.name
       |},
-      false
+      true
     )
 
   let createHmrEventData (event: FileChangedEvent) (transform: FileTransform) =
@@ -468,16 +468,17 @@ module LiveReload =
 
     let replaced = (UMX.untag event.name).Replace('\\', '/')
 
-    let userPath = $"{event.userPath}/{replaced}"
-
-    Json.ToText {|
-      oldName = event.oldName
-      oldPath = oldPath
-      name = replaced
-      url = $"{event.serverPath}/{replaced}"
-      localPath = userPath
-      content = transform.content
-    |}
+    Json.ToText(
+      {|
+        oldName = event.oldName
+        oldPath = oldPath
+        name = replaced
+        url = event.serverPath
+        localPath = replaced
+        content = transform.content
+      |},
+      true
+    )
   // Pure functions for creating SSE messages
   let createReloadMessage(event: FileChangedEvent) : Message =
     let data = createReloadEventData event
@@ -842,7 +843,7 @@ module SuaveServer =
 
   let toLoggary(logger: ILogger) =
     { new Logging.Logger with
-        member _.log
+        member this.log
           (level: Logging.LogLevel)
           (messageThunk: Logging.LogLevel -> Logging.Message)
           =
@@ -857,10 +858,41 @@ module SuaveServer =
             | Logging.LogLevel.Error -> LogLevel.Error
             | Logging.LogLevel.Fatal -> LogLevel.Critical
 
-          // Extract the message text from Suave's Message type
+          // Simpler implementation: replace {key[:format]} with value, supporting format specifiers
+          let formatMessage (template: string) (fields: Map<string, obj>) =
+            let regex =
+              System.Text.RegularExpressions.Regex(@"\{(\w+)(?::([^}]+))?\}")
+
+            regex.Replace(
+              template,
+              fun (m: System.Text.RegularExpressions.Match) ->
+                let key = m.Groups.[1].Value
+
+                let fmt =
+                  if m.Groups.Count > 2 && m.Groups.[2].Success then
+                    m.Groups.[2].Value
+                  else
+                    ""
+
+                match fields.TryFind key with
+                | Some(:? IFormattable as f) when
+                  not(System.String.IsNullOrEmpty(fmt))
+                  ->
+                  f.ToString(
+                    fmt,
+                    System.Globalization.CultureInfo.InvariantCulture
+                  )
+                | Some value -> string value
+                | None -> m.Value
+            )
+
           let messageText =
             match message.value with
-            | Logging.Event template -> template
+            | Logging.Event template ->
+              if message.fields.Count > 0 then
+                formatMessage template message.fields
+              else
+                template
             | Logging.Gauge(value, units) -> $"Gauge: {value} {units}"
 
           logger.Log(logLevel, messageText)
@@ -881,9 +913,36 @@ module SuaveServer =
               | Logging.LogLevel.Error -> LogLevel.Error
               | Logging.LogLevel.Fatal -> LogLevel.Critical
 
+            let formatMessage (template: string) (fields: Map<string, obj>) =
+              let regex = RegularExpressions.Regex(@"\{(\w+)(?::([^}]+))?\}")
+
+              regex.Replace(
+                template,
+                fun (m: RegularExpressions.Match) ->
+                  let key = m.Groups.[1].Value
+
+                  let fmt =
+                    if m.Groups.Count > 2 && m.Groups.[2].Success then
+                      m.Groups.[2].Value
+                    else
+                      ""
+
+                  match fields.TryFind key with
+                  | Some(:? IFormattable as f) when
+                    not(String.IsNullOrEmpty fmt)
+                    ->
+                    f.ToString(fmt, Globalization.CultureInfo.InvariantCulture)
+                  | Some value -> string value
+                  | None -> m.Value
+              )
+
             let messageText =
               match message.value with
-              | Logging.Event template -> template
+              | Logging.Event template ->
+                if message.fields.Count > 0 then
+                  formatMessage template message.fields
+                else
+                  template
               | Logging.Gauge(value, units) -> $"Gauge: {value} {units}"
 
             logger.Log(logLevel, messageText)
@@ -1031,9 +1090,10 @@ module SuaveServer =
       // Check if port is occupied and log if needed
       if PortUtils.isAddressPortOccupied host port then
         suaveCtx.Logger.LogWarning(
-          "Address {Host}:{Port} is busy, Suave will attempt to bind anyway",
+          "Address {Host}:{Port} is busy, Perla will bind to {Port}",
           host,
-          port
+          port,
+          port + 1
         )
 
         host, port + 1
@@ -1053,7 +1113,9 @@ module SuaveServer =
       | SuaveContext _ -> createApp suaveCtx
       | SuaveTestingContext _ -> createTestingApp suaveCtx
 
-    suaveCtx.Logger.LogInformation $"Starting Suave server on {host}:{port}"
+    suaveCtx.Logger.LogInformation
+      $"Starting the Perla DevServer at: http://{host}:{port}/"
+
     startWebServer serverConfig app
 
   let startStaticServer
@@ -1068,9 +1130,10 @@ module SuaveServer =
       // Check if port is occupied and log if needed
       if PortUtils.isAddressPortOccupied host port then
         suaveCtx.Logger.LogWarning(
-          "Address {Host}:{Port} is busy, Suave will attempt to bind anyway",
+          "Address {Host}:{Port} is busy, Perla will bind to {Port}",
           host,
-          port
+          port,
+          port + 1
         )
 
         host, port + 1
@@ -1078,6 +1141,8 @@ module SuaveServer =
         host, port
 
     let serverConfig =
+      let host = if host = "localhost" then "127.0.0.1" else host
+
       defaultConfig
         .withBindings([ HttpBinding.createSimple HTTP host port ])
         .withCancellationToken(cancellationToken)
@@ -1088,5 +1153,7 @@ module SuaveServer =
 
     let app = createStaticServerApp(SuaveContext suaveCtx)
 
-    suaveCtx.Logger.LogInformation $"Starting Suave server on {host}:{port}"
+    suaveCtx.Logger.LogInformation
+      $"Starting the Perla DevServer at: http://{host}:{port}/"
+
     startWebServer serverConfig app

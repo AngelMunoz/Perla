@@ -272,20 +272,34 @@ module VirtualFs =
           files.[targetPath] <- entry
           logger.LogTrace("Processed binary file {FilePath}", sourcePath)
         else
-          let! token = Async.CancellationToken
           // Read file with FileShare.ReadWrite to avoid lock issues
           let! content = asyncEx {
+            let! token = Async.CancellationToken
 
-            use fs =
-              new FileStream(
-                sourcePath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read
+            try
+              use fs =
+                new FileStream(
+                  sourcePath,
+                  FileMode.Open,
+                  FileAccess.Read,
+                  FileShare.ReadWrite
+                )
+
+              use sr = new StreamReader(fs)
+              return! sr.ReadToEndAsync token
+            with ex ->
+              logger.LogWarning(
+                ex,
+                "Could not read file {FilePath} due to IO exception (possibly locked by another process)",
+                sourcePath
               )
-
-            use sr = new StreamReader(fs)
-            return! sr.ReadToEndAsync(token)
+              // Try to return the content from the existing entry if available
+              match files.TryGetValue targetPath with
+              | true, entry ->
+                match entry.kind with
+                | TextFile content -> return content.content
+                | _ -> return ""
+              | false, _ -> return ""
           }
 
 

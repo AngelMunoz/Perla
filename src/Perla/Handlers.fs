@@ -591,7 +591,7 @@ module Handlers =
         {
           Logger = container.Logger
           VirtualFileSystem = container.VirtualFileSystem
-          Config = AVal.constant config
+          Config = container.Configuration.PerlaConfig
           FsManager = container.FsManager
           FileChangedEvents = container.VirtualFileSystem.FileChanges
         }
@@ -658,7 +658,7 @@ module Handlers =
         "Fable service cancelled before starting."
       )
 
-      return 1
+      return 0
     else
 
       let esbuildPlugin =
