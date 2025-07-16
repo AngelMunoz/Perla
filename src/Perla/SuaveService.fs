@@ -632,10 +632,6 @@ module PerlaHandlers =
       script.TextContent <- Json.ToText map
       head.AppendChild script |> ignore
 
-      // remove standalone entry points, we don't need them in the browser
-      doc.QuerySelectorAll "[data-entry-point=standalone][type=module]"
-      |> Seq.iter(_.Remove())
-
       if config.devServer.liveReload then
         let liveReload = doc.CreateElement "script"
         liveReload.SetAttribute("type", "application/javascript")
