@@ -14,7 +14,7 @@
     <PackageVersion Include="FSharp.Control.Reactive" Version="6.1.2" />
     <PackageVersion Include="FSharp.Core" Version="9.0.300" />
     <PackageVersion Include="FSharp.Data.Adaptive" Version="1.2.24" />
-    <PackageVersion Include="FSharp.SystemCommandLine" Version="2.0.0-beta5.7" />
+    <PackageVersion Include="FSharp.SystemCommandLine" Version="2.0.0-beta5.8" />
     <PackageVersion Include="FSharp.UMX" Version="1.1.0" />
     <PackageVersion Include="FsHttp" Version="15.0.1" />
     <PackageVersion Include="FsToolkit.ErrorHandling" Version="5.0.0" />

@@ -1,4 +1,4 @@
-﻿namespace Perla.Commands
+namespace Perla.Commands
 
 open System.CommandLine
 open FSharp.SystemCommandLine
@@ -10,13 +10,13 @@ open Perla.Types
 
 [<Class; Sealed>]
 type PerlaOptions =
-  static member PackageSource: Option<Perla.PkgManager.DownloadProvider voption>
-  static member Browsers: Option<Browser Set>
-  static member DisplayMode: Option<ListFormat>
+  static member PackageSource: ActionInput<Perla.PkgManager.DownloadProvider voption>
+  static member Browsers: ActionInput<Browser Set>
+  static member DisplayMode: ActionInput<ListFormat>
 
 [<Class; Sealed>]
 type PerlaArguments =
-  static member Properties: Argument<string array>
+  static member Properties: ActionInput<string array>
 
 [<RequireQualifiedAccess>]
 module SharedInputs =

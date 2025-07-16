@@ -21,70 +21,52 @@ open FSharp.SystemCommandLine.Input
 type PerlaOptions =
 
   static member PackageSource =
-
-    let inline parser(result: ArgumentResult) =
+    option<PkgManager.DownloadProvider voption> "--source"
+    |> alias "-s"
+    |> desc "The source to download packages from. Defaults to jspm.io"
+    |> acceptOnlyFromAmong [ "jspm.io"; "unpkg"; "jsdelivr" ]
+    |> defaultValue ValueNone
+    |> customParser(fun result ->
       match result.Tokens |> Seq.tryHead with
       | Some token ->
         PkgManager.DownloadProvider.fromString token.Value |> ValueSome
-      | None -> ValueNone
-
-    Option<PkgManager.DownloadProvider voption>(
-      "--source",
-      "-s",
-      CustomParser = parser,
-      Description = "The source to download packages from. Defaults to jspm.io",
-      Required = false
-    )
-      .AcceptOnlyFromAmong("jspm.io", "unpkg", "jsdelivr")
+      | None -> ValueNone)
 
   static member Browsers =
-    let inline parser(result: ArgumentResult) =
+    option<Browser Set> "--browsers"
+    |> alias "-b"
+    |> desc "Version of the package to install"
+    |> arity ArgumentArity.ZeroOrMore
+    |> allowMultipleArgumentsPerToken
+    |> acceptOnlyFromAmong [ "chromium"; "firefox"; "webkit"; "edge"; "chrome" ]
+    |> defaultValue Set.empty
+    |> customParser(fun result ->
       result.Tokens
       |> Seq.map(fun token -> token.Value |> Browser.FromString)
-      |> Set.ofSeq
+      |> Set.ofSeq)
 
-    Option<Browser Set>(
-      "--browsers",
-      "-b",
-      CustomParser = parser,
-      Description = "Version of the package to install",
-      Arity = ArgumentArity.ZeroOrMore,
-      AllowMultipleArgumentsPerToken = true
-    )
-      .AcceptOnlyFromAmong("chromium", "firefox", "webkit", "edge", "chrome")
-
-  static member DisplayMode: Option<ListFormat> =
-    let parser(result: ArgumentResult) =
+  static member DisplayMode =
+    option<ListFormat> "--list-format"
+    |> desc "The chosen format to display the existing templates"
+    |> acceptOnlyFromAmong [ "table"; "text" ]
+    |> defaultValue ListFormat.HumanReadable
+    |> customParser(fun result ->
       match result.Tokens |> Seq.tryHead with
       | Some token ->
         match token.Value with
         | "table" -> ListFormat.HumanReadable
         | "text" -> ListFormat.TextOnly
         | _ -> ListFormat.HumanReadable
-      | None -> ListFormat.HumanReadable
-
-    Option<ListFormat>(
-      "--list-format",
-      CustomParser = parser,
-      Description = "The chosen format to display the existing templates",
-      Required = false
-    )
-      .AcceptOnlyFromAmong("table", "text")
+      | None -> ListFormat.HumanReadable)
 
 [<Class; Sealed>]
 type PerlaArguments =
-
-  static member Properties: Argument<string array> =
-    let parser(result: ArgumentResult) =
-      result.Tokens |> Seq.map(_.Value) |> Seq.distinct |> Seq.toArray
-
-    Argument<string array>(
-      "properties",
-      CustomParser = parser,
-      Description =
-        "A property, properties or json path-like string names to describe",
-      Arity = ArgumentArity.ZeroOrMore
-    )
+  static member Properties =
+    argument<string array> "properties"
+    |> desc "A property, properties or json path-like string names to describe"
+    |> arity ArgumentArity.ZeroOrMore
+    |> customParser(fun result ->
+      result.Tokens |> Seq.map _.Value |> Seq.distinct |> Seq.toArray)
 
 type GlobalOptions = {
   ci: bool
@@ -176,7 +158,7 @@ module GlobalOptions =
 module SharedInputs =
 
   let source: ActionInput<Perla.PkgManager.DownloadProvider voption> =
-    PerlaOptions.PackageSource |> ofOption
+    PerlaOptions.PackageSource
 
 [<RequireQualifiedAccess>]
 module DescribeInputs =
@@ -271,8 +253,7 @@ module TemplateInputs =
     |> alias "-r"
     |> description "If it exists, removes the template repository for Perla"
 
-  let displayMode: ActionInput<ListFormat> =
-    PerlaOptions.DisplayMode |> ofOption
+  let displayMode: ActionInput<ListFormat> = PerlaOptions.DisplayMode
 
 [<RequireQualifiedAccess>]
 module ProjectInputs =
@@ -307,7 +288,7 @@ module BuildInputs =
 
 [<RequireQualifiedAccess>]
 module TestingInputs =
-  let browsers: ActionInput<Browser Set> = PerlaOptions.Browsers |> ofOption
+  let browsers: ActionInput<Browser Set> = PerlaOptions.Browsers
 
   let files: ActionInput<string array> =
     option "--tests"
