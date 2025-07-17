@@ -367,6 +367,7 @@ module PlatformOps =
           =
           cancellableTask {
             let! token = CancellableTask.getCancellationToken()
+            let output = Path.Combine(outdir, entrypoint)
 
             let command =
               Cli
@@ -379,7 +380,7 @@ module PlatformOps =
                 .WithArguments(fun argsBuilder ->
                   argsBuilder.Add(entrypoint).Add("--bundle")
                   |> (if minify then _.Add("--minify") else id)
-                  |> _.Add($"--outdir={outdir}")
+                  |> _.Add($"--outfile={output}")
                   |> _.Add("--preserve-symlinks")
                   |> buildEsbuildFileLoaders fileLoaders
                   |> ignore)
