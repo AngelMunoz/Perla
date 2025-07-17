@@ -124,7 +124,7 @@ module LiveReload =
 module SpaFallback =
 
   /// Create SPA fallback webpart
-  val spaFallback: configA: PerlaConfig aval -> WebPart
+  val spaFallback : configA: aval<PerlaConfig> -> fsManager: PerlaFsManager -> WebPart
 
 /// Perla-specific request handlers
 module PerlaHandlers =

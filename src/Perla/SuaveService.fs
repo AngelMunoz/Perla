@@ -429,7 +429,7 @@ document.head.appendChild(style).innerHTML=String.raw`{content}`;"""
              ))
               ctx
 
-      | None -> return! NOT_FOUND "File not found in virtual file system" ctx
+      | None -> return None
     }
 
   let resolveFile(suaveCtx: SuaveServerContext) : WebPart =
@@ -541,28 +541,6 @@ module LiveReload =
     }
 
 // ============================================================================
-// SPA Fallback
-// ============================================================================
-
-module SpaFallback =
-
-  let spaFallback(_: PerlaConfig aval) : WebPart =
-    fun ctx -> async {
-      let path = ctx.request.url.AbsolutePath
-
-      // Skip if it's an API call, Perla internal path, or has file extension
-      if
-        path.StartsWith "/api/"
-        || path.StartsWith "/~perla~/"
-        || Path.HasExtension path
-      then
-        return None
-      else
-        // Redirect to index
-        return! Redirection.FOUND "/" ctx
-    }
-
-// ============================================================================
 // Perla-specific Handlers
 // ============================================================================
 
@@ -609,9 +587,7 @@ module PerlaHandlers =
     }
 
   let indexHandler(configA: PerlaConfig aval, fsManager: PerlaFsManager) =
-    path "/"
-    >=> setMimeType "text/html"
-    >=> fun ctx -> async {
+    fun ctx -> async {
       let content = fsManager.ResolveIndex |> AVal.force
 
       let map =
@@ -638,15 +614,13 @@ module PerlaHandlers =
         liveReload.SetAttribute("src", "/~perla~/livereload.js")
         body.AppendChild liveReload |> ignore
 
-      return! OK (doc.ToHtml()) ctx
+      return! (setMimeType "text/html" >=> OK (doc.ToHtml())) ctx
     }
 
   let testingIndexHandler
     (configA: PerlaConfig aval, fsManager: PerlaFsManager)
     =
-    path "/"
-    >=> setMimeType "text/html"
-    >=> fun ctx -> async {
+    fun ctx -> async {
       let content = fsManager.ResolveIndex |> AVal.force
 
       use context = BrowsingContext.New(Configuration.Default)
@@ -708,7 +682,7 @@ module PerlaHandlers =
         liveReload.SetAttribute("src", "/~perla~/livereload.js")
         body.AppendChild liveReload |> ignore
 
-      return! OK (doc.ToHtml()) ctx
+      return! (setMimeType "text/html" >=> OK (doc.ToHtml())) ctx
     }
 
   // Environment variables endpoint handler
@@ -742,6 +716,28 @@ module PerlaHandlers =
           |> _.ToString()
 
         return! (setMimeType "text/javascript" >=> OK content) ctx
+    }
+
+// ============================================================================
+// SPA Fallback
+// ============================================================================
+
+module SpaFallback =
+
+  let spaFallback (configA: PerlaConfig aval) (fsManager: PerlaFsManager) : WebPart =
+    fun ctx -> async {
+      let path = ctx.request.url.AbsolutePath
+
+      // Skip if it's an API call, Perla internal path, or has file extension
+      if
+        path.StartsWith "/api/"
+        || path.StartsWith "/~perla~/"
+        || Path.HasExtension path
+      then
+        return None
+      else
+        // Serve index.html directly (do not redirect)
+        return! PerlaHandlers.indexHandler(configA, fsManager) ctx
     }
 
 // ============================================================================
@@ -973,7 +969,12 @@ module SuaveServer =
       PerlaHandlers.workerScript suaveCtx.FsManager
       PerlaHandlers.testingHelpers suaveCtx.FsManager
       PerlaHandlers.mochaRunner suaveCtx.FsManager
-      PerlaHandlers.indexHandler(suaveCtx.Config, suaveCtx.FsManager)
+
+      // Virtual file system (before SPA fallback)
+      VirtualFiles.resolveFile suaveCtx
+
+      // Serve index.html for root
+      path "/" >=> PerlaHandlers.indexHandler(suaveCtx.Config, suaveCtx.FsManager)
 
       // Testing endpoints
       pathStarts "/~perla~/testing/"
@@ -1005,11 +1006,8 @@ module SuaveServer =
       // Proxy endpoints (if configured)
       proxyWebparts
 
-      // Virtual file system (before SPA fallback)
-      VirtualFiles.resolveFile suaveCtx
-
-      // SPA fallback
-      SpaFallback.spaFallback suaveCtx.Config
+      // SPA fallback for extensionless paths
+      SpaFallback.spaFallback suaveCtx.Config suaveCtx.FsManager
 
       // Final fallback
       NOT_FOUND "Resource not found"
@@ -1030,7 +1028,12 @@ module SuaveServer =
       PerlaHandlers.workerScript suaveCtx.FsManager
       PerlaHandlers.testingHelpers suaveCtx.FsManager
       PerlaHandlers.mochaRunner suaveCtx.FsManager
-      PerlaHandlers.indexHandler(suaveCtx.Config, suaveCtx.FsManager)
+
+      // Virtual file system (before SPA fallback)
+      VirtualFiles.resolveFile suaveCtx
+
+      // Serve index.html for root
+      path "/" >=> PerlaHandlers.indexHandler(suaveCtx.Config, suaveCtx.FsManager)
 
       // Environment variables endpoint (if enabled)
       if config.enableEnv then
@@ -1042,11 +1045,8 @@ module SuaveServer =
       // Proxy endpoints (if configured)
       proxyWebparts
 
-      // Virtual file system (before SPA fallback)
-      VirtualFiles.resolveFile suaveCtx
-
-      // SPA fallback
-      SpaFallback.spaFallback suaveCtx.Config
+      // SPA fallback for extensionless paths
+      SpaFallback.spaFallback suaveCtx.Config suaveCtx.FsManager
 
       // Final fallback
       NOT_FOUND "Resource not found"
