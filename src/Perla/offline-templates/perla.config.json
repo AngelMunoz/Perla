@@ -22,6 +22,13 @@
       "description": "Just perla.json and index.html, configured to use local dependencies."
     },
     {
+      "id": "fable.empty",
+      "name": "Empty Fable",
+      "shortname": "fempty",
+      "path": "./fable-empty",
+      "description": "The Fable Compiler + Perla"
+    },
+    {
       "id": "fable.feliz",
       "name": "Fable Feliz",
       "shortname": "feliz",
@@ -29,67 +36,11 @@
       "description": "Fable Compiler + Feliz React SPA template"
     },
     {
-      "id": "fable.lit",
-      "name": "Fable Lit",
-      "shortname": "flit",
-      "path": "./fable-lit",
-      "description": "Fable Compiler + Lit SPA template"
-    },
-    {
-      "id": "fable.sutil",
-      "name": "Fable Sutil",
-      "shortname": "fsutil",
-      "path": "./fable-sutil",
-      "description": "Fable Compiler + Sutil F# Framework SPA template"
-    },
-    {
-      "id": "lit.js",
-      "name": "Lit Javascript",
-      "shortname": "litjs",
-      "path": "./lit-js",
-      "description": "Lit WebComponent Framework SPA template"
-    },
-    {
-      "id": "preact.jsx",
-      "name": "Preact JSX",
-      "shortname": "prejsx",
-      "path": "./preact-jsx",
-      "description": "Preact JSX SPA template"
-    },
-    {
-      "id": "preact.tsx",
-      "name": "Preact TSX",
-      "shortname": "pretsx",
-      "path": "./preact-tsx",
-      "description": "Preact TSX SPA template"
-    },
-    {
-      "id": "react.jsx",
-      "name": "React Jsx",
-      "shortname": "react",
-      "path": "./react-jsx",
-      "description": "React JSX SPA template"
-    },
-    {
-      "id": "react.tsx",
-      "name": "React TSX",
-      "shortname": "reacts",
-      "path": "./react-tsx",
-      "description": "React TSX SPA template"
-    },
-    {
-      "id": "solid.js",
-      "name": "Solid JS",
-      "shortname": "solid",
-      "path": "./solid-js",
-      "description": "Solidjs Web SPA template"
-    },
-    {
-      "id": "vue.jsx",
-      "name": "VUE JSX",
-      "shortname": "vuejsx",
-      "path": "./vue-jsx",
-      "description": "Vue.js JSX SPA template"
+      "id": "jsx.empty",
+      "name": "Empty JSX",
+      "shortname": "jsx",
+      "path": "./empty-jsx",
+      "description": "An Empty JSX template"
     }
   ]
 }
