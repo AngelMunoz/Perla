@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/dev/perla.schema.json",
+  "schema-version": "2025-07",
+  "useLocalPkgs": true,
+  "plugins": ["perla-esbuild-plugin"],
+  "esbuild": {
+    "jsxAutomatic": true,
+    "jsxImportSource": "preact"
+  },
+  "dependencies": {
+    "preact": "10.11.3"
+  }
+}

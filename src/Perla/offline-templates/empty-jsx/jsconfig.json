@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "lib": ["DOM", "ES2020"],
+    "erasableSyntaxOnly": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
+  },
+  "exclude": ["node_modules", "**/node_modules/*", "dist/*", ".tmp/*"],
+  "include": ["src/**/*"],
+  "typeAcquisition": {
+    "enable": true
+  }
+}

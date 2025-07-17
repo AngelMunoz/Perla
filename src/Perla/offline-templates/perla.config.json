@@ -25,7 +25,7 @@
       "id": "fable.empty",
       "name": "Empty Fable",
       "shortname": "fempty",
-      "path": "./fable-empty",
+      "path": "./empty-fable",
       "description": "The Fable Compiler + Perla"
     },
     {
