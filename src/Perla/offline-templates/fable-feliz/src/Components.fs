@@ -3,6 +3,23 @@ namespace App
 open Feliz
 open Feliz.Router
 
+module Routing =
+    /// <summary>
+    /// Page discriminated union for typed routing
+    /// </summary>
+    type Page =
+        | Home
+        | Hello
+        | Counter
+        | NotFound
+
+    // string list -> Page
+    let parseUrl = function
+        | [] -> Page.Home
+        | [ "hello" ] -> Page.Hello
+        | [ "counter" ] -> Page.Counter
+        | _ -> Page.NotFound
+
 type Components =
     /// <summary>
     /// The simplest possible React component.
@@ -26,19 +43,39 @@ type Components =
         ]
 
     /// <summary>
+    /// A simple toolbar with navigation links
+    /// </summary>
+    [<ReactComponent>]
+    static member Toolbar() =
+        Html.div [
+            prop.className "toolbar"
+            prop.children [
+                Html.a [ prop.className "toolbar-link"; prop.href "/"; prop.text "Index" ]
+                Html.a [ prop.className "toolbar-link"; prop.href "/hello"; prop.text "Hello" ]
+                Html.a [ prop.className "toolbar-link"; prop.href "/counter"; prop.text "Counter" ]
+            ]
+        ]
+
+    /// <summary>
     /// A React component that uses Feliz.Router
     /// to determine what to show based on the current URL
     /// </summary>
     [<ReactComponent>]
     static member Router() =
-        let (currentUrl, updateUrl) = React.useState(Router.currentUrl())
-        React.router [
-            router.onUrlChanged updateUrl
-            router.children [
-                match currentUrl with
-                | [ ] -> Html.h1 "Index"
-                | [ "hello" ] -> Components.HelloWorld()
-                | [ "counter" ] -> Components.Counter()
-                | otherwise -> Html.h1 "Not found"
+        let page = Routing.parseUrl(Router.currentPath())
+        let currentPage =
+            match page with
+            | Routing.Page.Home -> Html.h1 "Index"
+            | Routing.Page.Hello -> Components.HelloWorld()
+            | Routing.Page.Counter -> Components.Counter()
+            | Routing.Page.NotFound -> Html.h1 "Not found"
+        Html.div [
+            prop.className "page-container"
+            prop.children [
+                Components.Toolbar()
+                React.router [
+                    router.onUrlChanged (fun _ -> ()) // No need to update state
+                    router.children currentPage
+                ]
             ]
         ]

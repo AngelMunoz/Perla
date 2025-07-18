@@ -1,12 +1,13 @@
 {
   "imports": {
-    "date-fns": "https://ga.jspm.io/npm:date-fns@2.29.3/esm/index.js",
-    "react": "https://ga.jspm.io/npm:react@18.2.0/dev.index.js",
-    "react-dom": "https://ga.jspm.io/npm:react-dom@18.2.0/dev.index.js"
+    "date-fns": "https://ga.jspm.io/npm:date-fns@2.29.3/index.js",
+    "react": "https://ga.jspm.io/npm:react@19.1.0/index.js",
+    "react-dom": "https://ga.jspm.io/npm:react-dom@19.1.0/index.js",
+    "react-dom/client": "https://ga.jspm.io/npm:react-dom@19.1.0/client.js"
   },
   "scopes": {
     "https://ga.jspm.io/": {
-      "scheduler": "https://ga.jspm.io/npm:scheduler@0.23.2/dev.index.js"
+      "scheduler": "https://ga.jspm.io/npm:scheduler@0.26.0/index.js"
     }
   }
 }

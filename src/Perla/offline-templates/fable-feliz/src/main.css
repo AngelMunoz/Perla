@@ -1,0 +1,116 @@
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  font-family: "Segoe UI", "Roboto", "Arial", sans-serif;
+  background: #f0f2f5;
+  color: #222;
+}
+
+html {
+  box-sizing: border-box;
+}
+
+*,
+*:before,
+*:after {
+  box-sizing: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+  margin-top: 0;
+}
+
+.toolbar {
+  display: flex;
+  gap: 1rem;
+  background: #f5f5f5;
+  padding: 1rem 2rem;
+  border-bottom: 1px solid #e0e0e0;
+  align-items: center;
+  width: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  border-radius: 0 0 16px 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.toolbar-link {
+  color: #1976d2;
+  text-decoration: none;
+  font-weight: 500;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.toolbar-link:hover {
+  background: #e3f2fd;
+  color: #0d47a1;
+}
+
+.page-container {
+  max-width: 700px;
+  margin: 5.5rem auto 2rem auto;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border-radius: 8px;
+  padding: 2rem;
+  padding-top: 1rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #181a1b;
+    color: #e0e0e0;
+  }
+  .toolbar {
+    background: #23272a;
+    border-bottom: 1px solid #2c2f33;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  }
+  .toolbar-link {
+    color: #90caf9;
+  }
+  .toolbar-link:hover {
+    background: #263245;
+    color: #fff;
+  }
+  .page-container {
+    background: #23272a;
+    color: #e0e0e0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  body {
+    background: #f0f2f5;
+    color: #222;
+  }
+  .toolbar {
+    background: #f5f5f5;
+    border-bottom: 1px solid #e0e0e0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+  }
+  .toolbar-link {
+    color: #1976d2;
+  }
+  .toolbar-link:hover {
+    background: #e3f2fd;
+    color: #0d47a1;
+  }
+  .page-container {
+    background: #fff;
+    color: #222;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+}
