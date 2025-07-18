@@ -269,7 +269,15 @@ type SpectreSink() =
             | "PlBrowser" -> "darkgoldenrod"
             | _ -> "white"
 
-          let prefixText = kvp.Value.ToString().Trim('"')
+          let prefixText =
+            match kvp.Value with
+            | :? Serilog.Events.ScalarValue as scalar ->
+              match scalar.Value with
+              | :? string as s -> s
+              | null -> "null"
+              | v -> v.ToString() |> nonNull
+            | v -> v.ToString()
+
           $"[{color}]{prefixText}[/]")
         |> String.concat ""
 

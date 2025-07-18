@@ -109,20 +109,35 @@ module VirtualFs =
     |> defaultIfNull ""
     |> function
       | ".json" -> MimeTypeNames.ApplicationJson
+      | ".jsx"
+      | ".ts"
+      | ".tsx" -> MimeTypeNames.DefaultJavaScript
       | others -> MimeTypeNames.FromExtension others
 
   let shouldIgnoreFile(path: string) =
     let normalized = path.Replace("\\", "/")
+    let filename = Path.GetFileName(normalized)
 
     // Check if it's a directory
-    if Directory.Exists(path) then
+    if Directory.Exists(path) || isNull filename then
       true
     else
+      let filename = nonNull filename
+
       normalized.Contains("/bin/")
       || normalized.Contains("/obj/")
       || normalized.EndsWith(".fsproj")
       || normalized.EndsWith(".fs")
       || normalized.EndsWith(".fsx")
+      // Ignore common temp/backup files
+      || filename.EndsWith("~")
+      || filename.EndsWith(".tmp")
+      || filename.EndsWith(".swp")
+      || filename.EndsWith(".swx")
+      || filename.EndsWith(".bak")
+      || filename.StartsWith(".#")
+      || filename.Contains("___jb_tmp___")
+      || filename.Contains("___jb_old___")
 
   let collectSourceFiles (logger: ILogger) (mountedDirs: MountedDirectories) = [
     for KeyValue(serverPath, userPath) in mountedDirs do
@@ -695,6 +710,31 @@ module VirtualFs =
     let fileChangedSubject = Subject<FileChangedEvent>.broadcast
     let mutable connection: IDisposable option = None
 
+    let tryJsFallback
+      (lookup: string<ServerUrl> -> 'a option)
+      (url: string<ServerUrl>)
+      =
+      let s = UMX.untag url
+
+      if s.EndsWith(".ts") || s.EndsWith(".tsx") || s.EndsWith(".jsx") then
+        let jsUrl =
+          s.Substring(0, s.LastIndexOf(".")) + ".js" |> UMX.tag<ServerUrl>
+
+        match lookup jsUrl with
+        | Some v -> Some v
+        | None -> lookup url
+      else
+        lookup url
+
+    let lookup(u: string<ServerUrl>) =
+      match u with
+      | Found files entry ->
+        args.Logger.LogTrace("Resolved file {Url}", UMX.untag u)
+        Some entry.kind
+      | _ ->
+        args.Logger.LogTrace("File not found {Url}", UMX.untag u)
+        None
+
     args.Logger.LogDebug("Creating new Virtual File System instance")
 
     { new VirtualFileSystem with
@@ -702,7 +742,6 @@ module VirtualFs =
           if (UMX.untag url).Contains("node_modules") then
             match url with
             | Found nodeModulesFiles entry ->
-              // Read file content on demand
               match entry.kind with
               | TextFile content ->
                 let filePath = UMX.untag content.source
@@ -716,13 +755,7 @@ module VirtualFs =
               | _ -> Some entry.kind
             | _ -> None
           else
-            match url with
-            | Found files entry ->
-              args.Logger.LogTrace("Resolved file {Url}", UMX.untag url)
-              Some entry.kind
-            | _ ->
-              args.Logger.LogTrace("File not found {Url}", UMX.untag url)
-              None
+            tryJsFallback lookup url
 
         member _.Load(mountedDirs: MountedDirectories) = async {
           args.Logger.LogDebug(

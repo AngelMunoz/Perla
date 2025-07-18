@@ -1,4 +1,45 @@
-﻿//@ts-check
+﻿/**
+ * @typedef {Window & { __perlaClientLogForwarding?: boolean }} PerlaWindow
+ */
+
+(function () {
+  var win = window;
+  if (win.__perlaClientLogForwarding) return;
+  win.__perlaClientLogForwarding = true;
+
+  function sendLogToServer(payload) {
+    try {
+      fetch("/~perla~/log-client-error", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([payload]),
+        keepalive: true,
+      });
+    } catch (e) {
+      // fail silently
+    }
+  }
+
+  window.addEventListener("error", function (event) {
+    if (
+      event &&
+      event.message &&
+      event.message.includes("Failed to resolve module specifier")
+    ) {
+      sendLogToServer({
+        level: "error",
+        message: event.message,
+        url: window.location.href,
+        userAgent: navigator.userAgent,
+        timestamp: new Date().toISOString(),
+        stack: event.error && event.error.stack ? event.error.stack : undefined,
+        extra: {},
+      });
+    }
+  });
+})();
+
+//@ts-check
 
 const worker = new Worker("/~perla~/worker.js");
 worker.postMessage({ event: "connect" });

@@ -650,7 +650,7 @@ module PerlaHandlers =
         let liveReload = doc.CreateElement "script"
         liveReload.SetAttribute("type", "application/javascript")
         liveReload.SetAttribute("src", "/~perla~/livereload.js")
-        body.AppendChild liveReload |> ignore
+        head.AppendChild liveReload |> ignore
 
       return! (setMimeType "text/html" >=> OK(doc.ToHtml())) ctx
     }
@@ -718,7 +718,7 @@ module PerlaHandlers =
         let liveReload = doc.CreateElement "script"
         liveReload.SetAttribute("type", "application/javascript")
         liveReload.SetAttribute("src", "/~perla~/livereload.js")
-        body.AppendChild liveReload |> ignore
+        head.AppendChild liveReload |> ignore
 
       return! (setMimeType "text/html" >=> OK(doc.ToHtml())) ctx
     }
@@ -857,6 +857,97 @@ module TestingHandlers =
       | Result.Error err ->
         logger.LogError("Failed to parse test event: {Error}", err)
         return! BAD_REQUEST "Invalid test event format" ctx
+    }
+
+// ============================================================================
+// Client Log Forwarding Endpoint
+// ============================================================================
+
+module ClientLog =
+
+  type ClientLogLevel =
+    | Debug
+    | Info
+    | Warn
+    | Error
+
+  let tryParseLogLevel(level: string) =
+    match level.ToLowerInvariant() with
+    | "debug" -> Debug
+    | "info"
+    | "log" -> Info
+    | "warn" -> Warn
+    | "error" -> Error
+    | _ -> Info
+
+  let tryExtractModuleResolutionError(msg: string) : string option =
+    let pattern =
+      System.Text.RegularExpressions.Regex(
+        @"Failed to resolve module specifier ""([^\""]+)"""
+      )
+
+    let m = pattern.Match(msg)
+
+    if m.Success && m.Groups.Count > 1 then
+      Some m.Groups.[1].Value
+    else
+      None
+
+  let clientLogHandler(logger: ILogger) : WebPart =
+    path "/~perla~/log-client-error"
+    >=> POST
+    >=> fun ctx -> async {
+      let decoded =
+        JDeck.Decoding.fromBytes(
+          ctx.request.rawForm,
+          JDeck.Decode.Decode.sequence(fun _ -> ClientLogMessageDecoder)
+        )
+
+      let log logMsg =
+        match tryParseLogLevel logMsg.level with
+        | Debug -> logger.LogDebug(logMsg.message)
+        | Info -> logger.LogInformation(logMsg.message)
+        | Warn -> logger.LogWarning(logMsg.message)
+        | Error ->
+          logger.LogError
+            $"{logMsg.timestamp}:{logMsg.message} - {logMsg.stack}"
+
+      use _ =
+        Serilog.Context.LogContext.PushProperty(
+          "PlBrowser",
+          Logger.Constants.BrowserPrefix
+        )
+
+      match decoded with
+      | Ok logs ->
+        for logMsg in logs do
+          log logMsg
+
+          match tryExtractModuleResolutionError logMsg.message with
+          | Some specifier ->
+            logger.LogInformation
+              $"It seems you or your dependencies tried to call a deep import for this package, please add it as a dependency calling perla add {specifier}"
+          | None -> ()
+
+        return! OK "Logged" ctx
+      | _ ->
+        let decoded =
+          JDeck.Decoding.fromBytes(ctx.request.rawForm, ClientLogMessageDecoder)
+
+        match decoded with
+        | Ok logMsg ->
+          log logMsg
+
+          match tryExtractModuleResolutionError logMsg.message with
+          | Some specifier ->
+            logger.LogInformation
+              $"It seems you or your dependencies tried to call a deep import for this package, please add it as a dependency calling perla add {specifier}"
+          | None -> ()
+
+          return! OK "Logged" ctx
+        | _ ->
+          logger.LogError "Failed to parse client log"
+          return! BAD_REQUEST "Invalid log format" ctx
     }
 
 // ============================================================================
@@ -1006,6 +1097,7 @@ module SuaveServer =
         suaveCtx.VirtualFileSystem
         suaveCtx.FileChangedEvents
 
+      ClientLog.clientLogHandler suaveCtx.Logger
       PerlaHandlers.liveReloadScript suaveCtx.FsManager
       PerlaHandlers.workerScript suaveCtx.FsManager
       PerlaHandlers.testingHelpers suaveCtx.FsManager
@@ -1066,6 +1158,7 @@ module SuaveServer =
         suaveCtx.VirtualFileSystem
         suaveCtx.FileChangedEvents
 
+      ClientLog.clientLogHandler suaveCtx.Logger
       PerlaHandlers.liveReloadScript suaveCtx.FsManager
       PerlaHandlers.workerScript suaveCtx.FsManager
       PerlaHandlers.testingHelpers suaveCtx.FsManager

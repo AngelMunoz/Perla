@@ -88,6 +88,17 @@ type DecodedPerlaConfig = {
   dependencies: PkgDependency Set option
 }
 
+type DecodedClientLogMessage = {
+  level: string
+  message: string
+  logger: string option
+  url: string
+  userAgent: string
+  timestamp: string
+  stack: string option
+  extra: Map<string, string>
+}
+
 [<AutoOpen>]
 module internal Decoders =
   val DownloadProviderDecoder: Decoder<PkgManager.DownloadProvider>
@@ -102,6 +113,8 @@ module internal Decoders =
   val ImportFailed: Decoder<TestEvent>
   val SuiteEventArgs: Decoder<Guid * TestStats * Suite>
   val TestEventDecoder: Decoder<TestEvent>
+
+  val ClientLogMessageDecoder: Decoder<DecodedClientLogMessage>
 
 [<RequireQualifiedAccess>]
 module internal Encoders =

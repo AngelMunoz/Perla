@@ -102,6 +102,17 @@ type DecodedPerlaConfig = {
   dependencies: PkgDependency Set option
 }
 
+type DecodedClientLogMessage = {
+  level: string
+  message: string
+  logger: string option
+  url: string
+  userAgent: string
+  timestamp: string
+  stack: string option
+  extra: Map<string, string>
+}
+
 [<AutoOpen>]
 module internal Decoders =
 
@@ -317,6 +328,35 @@ module internal Decoders =
         Description = description
       }
     }
+
+  let ClientLogMessageDecoder: Decoder<DecodedClientLogMessage> =
+    fun element -> decode {
+      let! level = Required.Property.get ("level", Required.string) element
+      let! message = Required.Property.get ("message", Required.string) element
+      let! logger = Optional.Property.get ("logger", Required.string) element
+      let! url = Required.Property.get ("url", Required.string) element
+
+      let! userAgent =
+        Required.Property.get ("userAgent", Required.string) element
+
+      let! timestamp =
+        Required.Property.get ("timestamp", Required.string) element
+
+      let! stack = Optional.Property.get ("stack", Required.string) element
+      let! extra = Optional.Property.map ("extra", Required.string) element
+
+      return {
+        level = level
+        message = message
+        logger = logger
+        url = url
+        userAgent = userAgent
+        timestamp = timestamp
+        stack = stack
+        extra = defaultArg extra Map.empty
+      }
+    }
+
 
 [<RequireQualifiedAccess>]
 module internal Encoders =

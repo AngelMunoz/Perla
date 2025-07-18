@@ -76,3 +76,49 @@ export async function getPerlaTestEnv() {
     );
   }
 }
+
+(function () {
+  if (window.__perlaClientLogForwarding) return;
+  window.__perlaClientLogForwarding = true;
+
+  function sendLogToServer(payload) {
+    try {
+      fetch("/~perla~/log-client-error", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      });
+    } catch (e) {
+      // fail silently
+    }
+  }
+
+  ["log", "info", "warn", "error", "debug"].forEach(function (level) {
+    var orig = console[level];
+    console[level] = function () {
+      orig && orig.apply(console, arguments);
+      try {
+        var args = Array.prototype.slice.call(arguments);
+        sendLogToServer({
+          level: level,
+          message: args
+            .map(function (a) {
+              try {
+                return typeof a === "string" ? a : JSON.stringify(a);
+              } catch {
+                return String(a);
+              }
+            })
+            .join(" "),
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString(),
+          stack: level === "error" ? new Error().stack : undefined,
+        });
+      } catch (e) {
+        // fail silently
+      }
+    };
+  });
+})();
