@@ -75,29 +75,30 @@ module SuaveServiceTests =
       Assert.Equal("reload", message.``type``.Value)
 
     [<Fact>]
-    let ``createHmrMessage should create proper HMR message for CSS``() =
+    let ``createHmrMessages should create proper HMR messages for CSS``() =
       // Arrange
       let event = createTestFileChangedEvent Changed "/styles.css" "styles.css"
       let cssFile = createTestTextFile "body { color: red; }" "text/css"
 
       // Act
-      let message = createHmrMessage event cssFile
+      let messages = createHmrMessages event cssFile
 
       // Assert
-      Assert.NotNull(message)
-
-      // Should be replace-css type
-      Assert.Equal("replace-css", message.``type``.Value)
-
-      // The message should contain HMR data including content
-      let data = message.data
-      Assert.Contains("styles.css", data)
-      Assert.Contains("body { color: red; }", data)
-      Assert.Contains("content", data)
-      Assert.Contains("localPath", data)
+      Assert.Equal(2, messages.Length)
+      let styleMsg = messages |> List.find(fun m -> m.data.Contains("content"))
+      let linkMsg = messages |> List.find(fun m -> m.data.Contains("href"))
+      Assert.NotNull(styleMsg)
+      Assert.NotNull(linkMsg)
+      Assert.Equal("replace-css", styleMsg.``type``.Value)
+      Assert.Equal("replace-css", linkMsg.``type``.Value)
+      Assert.Contains("styles.css", styleMsg.data)
+      Assert.Contains("body { color: red; }", styleMsg.data)
+      Assert.Contains("styles.css", linkMsg.data)
 
     [<Fact>]
-    let ``createLiveReloadMessage should return HMR message for CSS files``() =
+    let ``createLiveReloadMessages should return HMR messages for CSS files``
+      ()
+      =
       // Arrange
       let event = createTestFileChangedEvent Changed "/styles.css" "styles.css"
       let cssFile = createTestTextFile "body { color: blue; }" "text/css"
@@ -112,15 +113,20 @@ module SuaveServiceTests =
         :> VirtualFileSystem
 
       // Act
-      let message = createLiveReloadMessage fakeVfs event
+      let messages = createLiveReloadMessages fakeVfs event
 
       // Assert
-      Assert.Equal("replace-css", message.``type``.Value)
-      let data = message.data
-      Assert.Contains("body { color: blue; }", data)
+      Assert.Equal(2, messages.Length)
+      let styleMsg = messages |> List.find(fun m -> m.data.Contains("content"))
+      let linkMsg = messages |> List.find(fun m -> m.data.Contains("href"))
+      Assert.NotNull(styleMsg)
+      Assert.NotNull(linkMsg)
+      Assert.Equal("replace-css", styleMsg.``type``.Value)
+      Assert.Equal("replace-css", linkMsg.``type``.Value)
+      Assert.Contains("body { color: blue; }", styleMsg.data)
 
     [<Fact>]
-    let ``createLiveReloadMessage should return reload message for non-CSS files``
+    let ``createLiveReloadMessages should return reload message for non-CSS files``
       ()
       =
       // Arrange
@@ -139,31 +145,32 @@ module SuaveServiceTests =
         :> VirtualFileSystem
 
       // Act
-      let message = createLiveReloadMessage fakeVfs event
+      let messages = createLiveReloadMessages fakeVfs event
 
       // Assert
-      Assert.Equal("reload", message.``type``.Value)
+      Assert.Single(messages) |> ignore
+      Assert.Equal("reload", messages.Head.``type``.Value)
 
     [<Fact>]
-    let ``createLiveReloadMessage should return reload message for created files``
+    let ``createLiveReloadMessages should return reload message for created files``
       ()
       =
       // Arrange
       let event =
         createTestFileChangedEvent Created "/new-file.css" "new-file.css"
 
-      // Create a fake VFS (doesn't matter what it returns for created files)
       let fakeVfs =
         new FakeVirtualFileSystem(fun _ -> None) :> VirtualFileSystem
 
       // Act
-      let message = createLiveReloadMessage fakeVfs event
+      let messages = createLiveReloadMessages fakeVfs event
 
       // Assert
-      Assert.Equal("reload", message.``type``.Value)
+      Assert.Single(messages) |> ignore
+      Assert.Equal("reload", messages.Head.``type``.Value)
 
     [<Fact>]
-    let ``createLiveReloadMessage should return reload message for deleted files``
+    let ``createLiveReloadMessages should return reload message for deleted files``
       ()
       =
       // Arrange
@@ -173,18 +180,18 @@ module SuaveServiceTests =
           "/deleted-file.css"
           "deleted-file.css"
 
-      // Create a fake VFS
       let fakeVfs =
         new FakeVirtualFileSystem(fun _ -> None) :> VirtualFileSystem
 
       // Act
-      let message = createLiveReloadMessage fakeVfs event
+      let messages = createLiveReloadMessages fakeVfs event
 
       // Assert
-      Assert.Equal("reload", message.``type``.Value)
+      Assert.Single(messages) |> ignore
+      Assert.Equal("reload", messages.Head.``type``.Value)
 
     [<Fact>]
-    let ``createLiveReloadMessage should return reload message for renamed files``
+    let ``createLiveReloadMessages should return reload message for renamed files``
       ()
       =
       // Arrange
@@ -194,18 +201,18 @@ module SuaveServiceTests =
           "/renamed-file.css"
           "renamed-file.css"
 
-      // Create a fake VFS
       let fakeVfs =
         new FakeVirtualFileSystem(fun _ -> None) :> VirtualFileSystem
 
       // Act
-      let message = createLiveReloadMessage fakeVfs event
+      let messages = createLiveReloadMessages fakeVfs event
 
       // Assert
-      Assert.Equal("reload", message.``type``.Value)
+      Assert.Single(messages) |> ignore
+      Assert.Equal("reload", messages.Head.``type``.Value)
 
     [<Fact>]
-    let ``createLiveReloadMessage should return reload message when file not found in VFS``
+    let ``createLiveReloadMessages should return reload message when file not found in VFS``
       ()
       =
       // Arrange
@@ -215,54 +222,15 @@ module SuaveServiceTests =
           "/missing-file.css"
           "missing-file.css"
 
-      // Create a fake VFS that returns None for all files
       let fakeVfs =
         new FakeVirtualFileSystem(fun _ -> None) :> VirtualFileSystem
 
       // Act
-      let message = createLiveReloadMessage fakeVfs event
+      let messages = createLiveReloadMessages fakeVfs event
 
       // Assert
-      Assert.Equal("reload", message.``type``.Value)
-
-  [<Fact>]
-  let ``createReloadEventData should serialize event data``() =
-    let event = {
-      changeType = Changed
-      serverPath = UMX.tag<ServerUrl> "/foo.js"
-      userPath = UMX.tag<UserPath> "/"
-      name = UMX.tag<SystemPath> "foo.js"
-      path = UMX.tag<SystemPath> "/foo.js"
-      oldName = None
-      oldPath = None
-    }
-
-    let data = createReloadEventData event
-    Assert.Contains("foo.js", data)
-    Assert.Contains("name", data)
-
-  [<Fact>]
-  let ``createHmrEventData should serialize HMR event data``() =
-    let event = {
-      changeType = Changed
-      serverPath = UMX.tag<ServerUrl> "/foo.css"
-      userPath = UMX.tag<UserPath> "/user"
-      name = UMX.tag<SystemPath> "foo.css"
-      path = UMX.tag<SystemPath> "/foo.css"
-      oldName = Some(UMX.tag<SystemPath> "old.css")
-      oldPath = Some(UMX.tag<SystemPath> "/old.css")
-    }
-
-    let transform: Perla.Plugins.FileTransform = {
-      content = "body{}"
-      extension = ".css"
-      fileLocation = "/some/path/to/file"
-    }
-
-    let data = createHmrEventData event transform
-    Assert.Contains("foo.css", data)
-    Assert.Contains("old.css", data)
-    Assert.Contains("body{}", data)
+      Assert.Single(messages) |> ignore
+      Assert.Equal("reload", messages.Head.``type``.Value)
 
 module MimeTypesTests =
 

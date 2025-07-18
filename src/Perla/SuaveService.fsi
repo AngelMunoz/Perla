@@ -97,22 +97,23 @@ module LiveReload =
   /// Create reload message for file changes
   val createReloadMessage: event: FileChangedEvent -> EventSource.Message
 
-  /// Create HMR message for CSS files
-  val createHmrMessage:
-    event: FileChangedEvent -> file: FileContent -> EventSource.Message
+  /// Create HMR messages for CSS files (both style and link targets)
+  val createHmrMessages:
+    event: FileChangedEvent -> file: FileContent -> EventSource.Message list
 
-  /// Create live reload message (HMR for CSS, reload for others)
-  val createLiveReloadMessage:
+  /// Create live reload messages (HMR for CSS, reload for others)
+  val createLiveReloadMessages:
     vfs: VirtualFileSystem ->
     event: FileChangedEvent ->
-      EventSource.Message
+      EventSource.Message list
 
-  /// Internal: Pure function to create reload event data (for testing)
-  val internal createReloadEventData: event: FileChangedEvent -> string
-
-  /// Internal: Pure function to create HMR event data (for testing)
-  val internal createHmrEventData:
-    event: FileChangedEvent -> transform: Perla.Plugins.FileTransform -> string
+  /// Create SSE body for live reload events
+  val sseBody:
+    vfs: VirtualFileSystem ->
+    fileChangedEvents:
+      System.Collections.Generic.IAsyncEnumerable<FileChangedEvent> ->
+    out: Suave.Sockets.Connection ->
+      Async<unit>
 
   /// Create SSE handler for live reload events
   val sseHandler:
@@ -124,7 +125,8 @@ module LiveReload =
 module SpaFallback =
 
   /// Create SPA fallback webpart
-  val spaFallback : configA: aval<PerlaConfig> -> fsManager: PerlaFsManager -> WebPart
+  val spaFallback:
+    configA: aval<PerlaConfig> -> fsManager: PerlaFsManager -> WebPart
 
 /// Perla-specific request handlers
 module PerlaHandlers =

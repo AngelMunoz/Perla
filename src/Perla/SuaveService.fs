@@ -452,7 +452,8 @@ module LiveReload =
 
   open Suave.EventSource
   // Pure functions matching Server.fs implementation
-  let createReloadEventData(event: FileChangedEvent) =
+  // For reload events (non-HMR)
+  let createReloadEventDataSimple(event: FileChangedEvent) =
     Json.ToText(
       {|
         oldName = event.oldName
@@ -461,55 +462,90 @@ module LiveReload =
       true
     )
 
-  let createHmrEventData (event: FileChangedEvent) (transform: FileTransform) =
+  let createReloadMessage(event: FileChangedEvent) : Message =
+    let data = createReloadEventDataSimple event
+    let id = string(DateTimeOffset.Now.ToUnixTimeSeconds())
+    Message.createType id data "reload"
+
+  let createHmrEventData
+    (event: FileChangedEvent)
+    (transform: FileTransform)
+    (target: string)
+    =
     let oldPath =
       event.oldPath
       |> Option.map(fun oldPath -> $"{oldPath}".Replace('\\', '/'))
 
     let replaced = (UMX.untag event.name).Replace('\\', '/')
 
-    Json.ToText(
-      {|
-        oldName = event.oldName
-        oldPath = oldPath
-        name = replaced
-        url = event.serverPath
-        localPath = replaced
-        content = transform.content
-      |},
-      true
-    )
-  // Pure functions for creating SSE messages
-  let createReloadMessage(event: FileChangedEvent) : Message =
-    let data = createReloadEventData event
-    let id = string(DateTimeOffset.Now.ToUnixTimeSeconds())
-    Message.createType id data "reload"
+    match target with
+    | "style" ->
+      Json.ToText(
+        {|
+          target = "style"
+          url = (UMX.untag event.serverPath)
+          content = transform.content
+        |},
+        true
+      )
+    | "link" ->
+      Json.ToText(
+        {|
+          target = "link"
+          href = (UMX.untag event.serverPath)
+        |},
+        true
+      )
+    | _ -> failwith "Unknown target for HMR event"
 
-  let createHmrMessage (event: FileChangedEvent) (file: FileContent) : Message =
-    let data =
-      createHmrEventData event {
-        content = file.content
-        extension = ".css"
-        fileLocation = UMX.untag file.source
-      }
+  let createHmrMessages
+    (event: FileChangedEvent)
+    (file: FileContent)
+    : Message list =
+    let styleMsg =
+      let data =
+        createHmrEventData
+          event
+          {
+            content = file.content
+            extension = ".css"
+            fileLocation = UMX.untag file.source
+          }
+          "style"
 
-    let id = string(DateTimeOffset.Now.ToUnixTimeSeconds())
-    Message.createType id data "replace-css"
+      let id = string(DateTimeOffset.Now.ToUnixTimeSeconds())
+      Message.createType id data "replace-css"
 
-  let createLiveReloadMessage
+    let linkMsg =
+      let data =
+        createHmrEventData
+          event
+          {
+            content = file.content
+            extension = ".css"
+            fileLocation = UMX.untag file.source
+          }
+          "link"
+
+      let id = string(DateTimeOffset.Now.ToUnixTimeSeconds())
+      Message.createType id data "replace-css"
+
+    [ styleMsg; linkMsg ]
+
+  let createLiveReloadMessages
     (vfs: VirtualFileSystem)
     (event: FileChangedEvent)
-    : Message =
+    : Message list =
     match event.changeType with
     | Changed ->
       // Check if it's a CSS file for HMR
       match vfs.Resolve event.serverPath with
       | Some(TextFile file) when file.mimetype = "text/css" ->
-        createHmrMessage event file
-      | _ -> createReloadMessage event
+        createHmrMessages event file
+      | _ -> [ createReloadMessage event ]
     | Created
     | Deleted
-    | Renamed -> createReloadMessage event
+    | Renamed -> [ createReloadMessage event ]
 
   let sseBody
     vfs
@@ -519,8 +555,10 @@ module LiveReload =
     asyncEx {
       // Handle file change events
       for event in fileChangedEvents do
-        let msg = createLiveReloadMessage vfs event
-        do! send out msg :> Task
+        let msgs = createLiveReloadMessages vfs event
+
+        for msg in msgs do
+          do! send out msg :> Task
     }
 
   let sseHandler
@@ -614,7 +652,7 @@ module PerlaHandlers =
         liveReload.SetAttribute("src", "/~perla~/livereload.js")
         body.AppendChild liveReload |> ignore
 
-      return! (setMimeType "text/html" >=> OK (doc.ToHtml())) ctx
+      return! (setMimeType "text/html" >=> OK(doc.ToHtml())) ctx
     }
 
   let testingIndexHandler
@@ -682,7 +720,7 @@ module PerlaHandlers =
         liveReload.SetAttribute("src", "/~perla~/livereload.js")
         body.AppendChild liveReload |> ignore
 
-      return! (setMimeType "text/html" >=> OK (doc.ToHtml())) ctx
+      return! (setMimeType "text/html" >=> OK(doc.ToHtml())) ctx
     }
 
   // Environment variables endpoint handler
@@ -724,7 +762,10 @@ module PerlaHandlers =
 
 module SpaFallback =
 
-  let spaFallback (configA: PerlaConfig aval) (fsManager: PerlaFsManager) : WebPart =
+  let spaFallback
+    (configA: PerlaConfig aval)
+    (fsManager: PerlaFsManager)
+    : WebPart =
     fun ctx -> async {
       let path = ctx.request.url.AbsolutePath
 
@@ -737,7 +778,7 @@ module SpaFallback =
         return None
       else
         // Serve index.html directly (do not redirect)
-        return! PerlaHandlers.indexHandler(configA, fsManager) ctx
+        return! PerlaHandlers.indexHandler (configA, fsManager) ctx
     }
 
 // ============================================================================
@@ -974,7 +1015,8 @@ module SuaveServer =
       VirtualFiles.resolveFile suaveCtx
 
       // Serve index.html for root
-      path "/" >=> PerlaHandlers.indexHandler(suaveCtx.Config, suaveCtx.FsManager)
+      path "/"
+      >=> PerlaHandlers.indexHandler(suaveCtx.Config, suaveCtx.FsManager)
 
       // Testing endpoints
       pathStarts "/~perla~/testing/"
@@ -1033,7 +1075,8 @@ module SuaveServer =
       VirtualFiles.resolveFile suaveCtx
 
       // Serve index.html for root
-      path "/" >=> PerlaHandlers.indexHandler(suaveCtx.Config, suaveCtx.FsManager)
+      path "/"
+      >=> PerlaHandlers.indexHandler(suaveCtx.Config, suaveCtx.FsManager)
 
       // Environment variables endpoint (if enabled)
       if config.enableEnv then
