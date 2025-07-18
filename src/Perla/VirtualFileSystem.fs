@@ -663,6 +663,8 @@ module VirtualFs =
     // Set up the processing pipeline
     fileChangeObservables
     |> Observable.mergeSeq
+    // map to task/async and then using switchmap drops events
+    // we'd rather use flatmapAsync for this case
     |> Observable.flatmapAsync(fun event -> async {
       do! processFileChangeEvent deps event
       return event
