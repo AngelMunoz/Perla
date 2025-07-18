@@ -1,5 +1,5 @@
 #r "nuget: Markdig, 0.30.4"
-#r "nuget: Perla.Plugins, 1.0.0-beta-004"
+#r "nuget: Perla.Plugins, 1.0.0-beta-028"
 
 open Perla.Plugins
 open Markdig
