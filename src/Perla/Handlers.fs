@@ -530,7 +530,11 @@ module Handlers =
         externals |> Seq.map UMX.untag |> Seq.toList
       )
 
-    container.BuildService.MoveOrCopyOutput(config, tempDir, esbuildOutput)
+    container.BuildService.MoveOrCopyOutput(
+      config,
+      tempDir,
+      esbuildOutput.outputDir
+    )
 
     // Step 10: Write index.html
     let jsPaths = seq {
@@ -544,7 +548,8 @@ module Handlers =
         document,
         map,
         jsPaths,
-        cssPaths
+        cssPaths,
+        esbuildOutput.cssFiles
       )
 
     // // cleanup temporary directory

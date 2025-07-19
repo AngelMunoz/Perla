@@ -204,8 +204,7 @@ module EntryPointsTests =
     let document = createDocument(html)
 
     // Act
-    let cssBundles, htmlBundles, standaloneBundles =
-      Build.EntryPoints(document)
+    let cssBundles, htmlBundles, standaloneBundles = Build.EntryPoints(document)
 
     // Assert
     // CSS bundles should filter out empty href
@@ -515,3 +514,156 @@ module IndexTests =
     Assert.True(result.Length > 0)
     // The result should be a string representation of the HTML document
     Assert.IsType<string>(result)
+
+module FileCollectionTests =
+  open TestHelpers
+  open System.IO
+
+  [<Fact>]
+  let ``collectFilesFromDirectory should collect both CSS and JS files correctly``
+    ()
+    =
+    // Arrange
+    let tempDir = Path.GetTempPath() |> UMX.tag<SystemPath>
+    let testDir = Path.Combine(UMX.untag tempDir, "test-combined-collection")
+    let testDirTagged = UMX.tag<SystemPath> testDir
+
+    try
+      Directory.CreateDirectory(testDir) |> ignore
+
+      // Create CSS files
+      File.WriteAllText(
+        Path.Combine(testDir, "main.css"),
+        "body { color: red; }"
+      )
+
+      File.WriteAllText(
+        Path.Combine(testDir, "theme.css"),
+        "body { background: blue; }"
+      )
+
+      // Create JS files
+      File.WriteAllText(Path.Combine(testDir, "app.js"), "console.log('app');")
+
+      File.WriteAllText(
+        Path.Combine(testDir, "vendor.js"),
+        "console.log('vendor');"
+      )
+
+      // Create a subdirectory with mixed files
+      let subDir = Path.Combine(testDir, "components")
+      Directory.CreateDirectory(subDir) |> ignore
+
+      File.WriteAllText(
+        Path.Combine(subDir, "button.css"),
+        "button { border: 1px solid; }"
+      )
+
+      File.WriteAllText(
+        Path.Combine(subDir, "utils.js"),
+        "export function helper() {}"
+      )
+
+      // Create a file that should be ignored
+      File.WriteAllText(
+        Path.Combine(testDir, "readme.txt"),
+        "This should be ignored"
+      )
+
+      // Act
+      let cssFiles, jsFiles = Build.collectFilesFromDirectory testDirTagged
+      let cssList = cssFiles |> Seq.toList
+      let jsList = jsFiles |> Seq.toList
+
+      // Assert
+      Assert.Equal(3, cssList.Length)
+      Assert.Contains(UMX.tag<ServerUrl> "/main.css", cssList)
+      Assert.Contains(UMX.tag<ServerUrl> "/theme.css", cssList)
+      Assert.Contains(UMX.tag<ServerUrl> "/components/button.css", cssList)
+
+      Assert.Equal(3, jsList.Length)
+      Assert.Contains(UMX.tag<ServerUrl> "/app.js", jsList)
+      Assert.Contains(UMX.tag<ServerUrl> "/vendor.js", jsList)
+      Assert.Contains(UMX.tag<ServerUrl> "/components/utils.js", jsList)
+
+      // Verify non-CSS/JS files are ignored
+      Assert.DoesNotContain(UMX.tag<ServerUrl> "/readme.txt", cssList)
+      Assert.DoesNotContain(UMX.tag<ServerUrl> "/readme.txt", jsList)
+
+    finally
+      if Directory.Exists(testDir) then
+        Directory.Delete(testDir, true)
+
+  [<Fact>]
+  let ``collectFilesFromDirectory should throw when directory does not exist``
+    ()
+    =
+    // Arrange
+    let nonExistentDir = UMX.tag<SystemPath> "/path/that/does/not/exist"
+
+    // Act & Assert
+    Assert.Throws<DirectoryNotFoundException>(fun () ->
+      let _ = Build.collectFilesFromDirectory nonExistentDir
+      ())
+
+  [<Fact>]
+  let ``WriteIndex should avoid duplicates with different path formats``() =
+    // Arrange
+    let document = createEmptyDocument()
+    let importMap = createImportMap()
+
+    // Original CSS paths with relative format
+    let originalCssPaths = [
+      UMX.tag<ServerUrl> "./src/root.css"
+      UMX.tag<ServerUrl> "./src/main.css"
+    ]
+
+    // Esbuild CSS files with absolute format (same files, different path format)
+    let esbuildCssFiles = [
+      UMX.tag<ServerUrl> "/src/root.css" // This should be detected as duplicate
+      UMX.tag<ServerUrl> "/src/components/button.css" // This should be added
+    ]
+
+    let jsPaths = [ UMX.tag<ServerUrl> "/js/app.js" ]
+
+    // Simulate the duplicate detection logic from WriteIndex
+    let normalizePath(path: string<ServerUrl>) =
+      let pathStr = UMX.untag path
+
+      if pathStr.StartsWith("./") then "/" + pathStr.Substring(2)
+      elif pathStr.StartsWith("/") then pathStr
+      else "/" + pathStr
+
+    let existingCssSet = originalCssPaths |> Seq.map normalizePath |> Set.ofSeq
+    let esbuildCssSet = esbuildCssFiles |> Seq.map normalizePath |> Set.ofSeq
+
+    let newCssFiles = Set.difference esbuildCssSet existingCssSet
+
+    let newCssUrls =
+      newCssFiles
+      |> Set.map(fun normalizedPath ->
+        // Find the original esbuild path that normalizes to this path
+        esbuildCssFiles
+        |> Seq.find(fun path -> normalizePath path = normalizedPath))
+
+    let allCssPaths = Seq.append originalCssPaths newCssUrls
+
+    // Act - Call Build.Index with the deduplicated paths
+    let _ = Build.Index(document, importMap, jsPaths, allCssPaths)
+
+    // Assert - Check the actual HTML document
+    let cssLinks = document.QuerySelectorAll("link[rel=stylesheet]")
+    Assert.Equal(3, cssLinks.Length) // Should have 3 unique files
+
+    // Should contain the original files
+    let hrefs =
+      cssLinks |> Seq.map(fun link -> link.GetAttribute("href")) |> Seq.toList
+
+    Assert.Contains("./src/root.css", hrefs)
+    Assert.Contains("./src/main.css", hrefs)
+
+    // Should contain the new file from esbuild
+    Assert.Contains("/src/components/button.css", hrefs)
+
+    // Should NOT contain the duplicate
+    Assert.DoesNotContain("/src/root.css", hrefs)

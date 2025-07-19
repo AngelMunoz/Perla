@@ -31,6 +31,9 @@ module Build =
     jsExtras: string<ServerUrl> seq *
     cssExtras: string<ServerUrl> seq ->
       string
+
+  val collectFilesFromDirectory:
+    string<SystemPath> -> string<ServerUrl> seq * string<ServerUrl> seq
 // --- BuildService interface and args ---
 type BuildServiceArgs = {
   Logger: Microsoft.Extensions.Logging.ILogger
@@ -40,6 +43,12 @@ type BuildServiceArgs = {
   VirtualFileSystem: Perla.VirtualFs.VirtualFileSystem
   FableService: Perla.Fable.FableService
   Directories: Perla.PerlaDirectories
+}
+
+type EsbuildOutput = {
+  outputDir: string<SystemPath>
+  cssFiles: string<ServerUrl> seq
+  jsFiles: string<ServerUrl> seq
 }
 
 [<Interface>]
@@ -64,7 +73,7 @@ type BuildService =
     cssPaths: seq<string<Perla.Units.ServerUrl>> *
     jsBundleEntrypoints: seq<string<Perla.Units.ServerUrl>> *
     externals: string list ->
-      CancellableTask<string<SystemPath>>
+      CancellableTask<EsbuildOutput>
 
   abstract MoveOrCopyOutput:
     config: PerlaConfig aval *
@@ -77,7 +86,8 @@ type BuildService =
     document: AngleSharp.Html.Dom.IHtmlDocument *
     map: Perla.PkgManager.ImportMap *
     jsPaths: seq<string<Perla.Units.ServerUrl>> *
-    cssPaths: seq<string<Perla.Units.ServerUrl>> ->
+    cssPaths: seq<string<Perla.Units.ServerUrl>> *
+    esbuildCssFiles: seq<string<Perla.Units.ServerUrl>> ->
       CancellableTask<unit>
 
 module BuildService =
