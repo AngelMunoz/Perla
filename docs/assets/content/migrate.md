@@ -23,7 +23,7 @@ Here's the list of breaking changes for the `perla.json` file
 #### Removed Properties
 
 - packages ->
-  Removed and replaced: refer to `dependencies` and `devDependencies` nodes
+  Removed and replaced: refer to `dependencies`
 
 - fable
 
@@ -157,25 +157,6 @@ Here's the list of breaking changes for the `perla.json` file
 
   Moved from `devServer`: Use these settings to enable the usage of perla specific environment variables, please refer to the [dev server] documentation for more information.
 
-- dependencies
-- devDependencies ->
-
-  **_NEW_**: While the `packages` node existed before it was mostly to inform what was installed in the current application, it was hard to actually make it useful for something as the major driver was the import map itself, in this version the depencies take a more useful role please refer to the [package manager] documentation for more information.
-
-  ```diff
-  - "dependencies": {
-  -   "rxjs" : "https://unpkg.com/rxjs@7.6.0?module"
-  -  }
-
-  # now should be written as
-
-  + "dependencies": [
-  +   { "name": "rxjs", "version": "7.6.0" }
-  + ]
-  ```
-
-  Please note that when you port the dependencies to the new format, it is recommended to remove the existing `perla.json.importmap` file so you don't get outdated resolutions, manual resolutions should be added after the new import map is generated.
-
 - fable
 
   - sourceMaps ->
@@ -211,7 +192,7 @@ Here's the list of breaking changes for the `perla.json` file
     +   "includes: [ "assets/images/*", "documents/*/*.html" ]
     +  }
 
-    # New: copy files that live within the virtual file system to the output directory
+    # Experimental: copy files that live within the virtual file system to the output directory
     + "build": {
     +   "includes: [ "vfs:src/*/*.html" ]
     +  }
@@ -275,6 +256,47 @@ Here's the list of breaking changes for the `perla.json` file
 
     If you don't specify these settings you have to manually add the corresponding jsx helpers in each jsx/tsx file
 
+### Deprecated Configuration Options
+
+The following configuration options are still present in the schema for backward compatibility, but are **deprecated** and should not be used in new `perla.json` files. If you are migrating, you should remove or replace these options as described below:
+
+#### Top-level deprecated options
+
+- `runConfiguration` (use the default production/dev behavior instead)
+- `devDependencies` (no longer used)
+- `packages` (replaced by `dependencies`)
+
+#### Deprecated options in `build`
+
+- `esBuildPath` (moved to `esbuild.esBuildPath`)
+- `esbuildVersion` (moved to `esbuild.version`)
+- `copyPaths` (replaced by `includes` and `excludes`)
+- `target` (moved to `esbuild.ecmaVersion`)
+- `format` (moved to `esbuild` or handled automatically)
+- `bundle` (bundling is always enabled)
+- `minify` (moved to `esbuild.minify`)
+- `jsxFactory` (no longer needed, use `esbuild.jsxAutomatic` and `esbuild.jsxImportSource`)
+- `jsxFragment` (no longer needed, use `esbuild.jsxAutomatic` and `esbuild.jsxImportSource`)
+- `externals` (moved to `esbuild.externals`)
+- `injects` (moved to `esbuild.injects`)
+- `fileLoaders` (moved to `esbuild.fileLoaders`)
+
+#### Deprecated options in `devServer`
+
+- `autoStart` (no longer needed)
+- `mountDirectories` (moved to top-level `mountDirectories`)
+- `enableEnv` (moved to top-level `enableEnv`)
+- `envPath` (moved to top-level `envPath`)
+- `watchConfig` (removed, no replacement)
+
+#### Deprecated options in `fable`
+
+- `autoStart` (no longer needed)
+
+If you find any of these options in your configuration, please update them to the new structure or remove them. For more details, see the comments in `perla.schema.json`.
+
+---
+
 ### Command Line Interface
 
 The perla CLI was also modified as we moved from argu to [Fsharp.Systemcommandline] the new perla options are the following:
@@ -284,6 +306,7 @@ The perla CLI was also modified as we moved from argu to [Fsharp.Systemcommandli
 **_NEW_**:
 
 ```text
+perla --help
 Description:
   The Perla Dev Server!
 
@@ -291,26 +314,21 @@ Usage:
   Perla [command] [options]
 
 Options:
-  --version       Show version information
   -?, -h, --help  Show help and usage information
-  --info <info>   Brings the Help dialog []
+  --version       Show version information
 
 Commands:
-  serve                                              My Command
-  build                                              Builds the SPA application for distribution
-  init                                               Initialized a given directory or perla itself
-  search <package> <page>                            Search a package name in the Skypack api, this will bring potential results []
-  show <package>                                     Shows information about a package if the name matches an existing one
-  remove <package>                                   removes a package from the
-  add <package>                                      Shows information about a package if the name matches an existing one
-  list                                               Lists the current dependencies in a table or an npm style json string
-  restore                                            Restore the import map based on the selected mode, defaults to production
-  templates:add <templateRepositoryName> <branch>     Adds a new template from a particular repository
-  templates:update <templateRepositoryName> <branch>  Updates an existing template in the templates database
-  templates:list <simple|table>                      My Command []
-  templates:delete <templateRepositoryName>          Removes a template from the templates database
-  new <name> <templateName>                          Creates a new project based on the selected template if it exists
-  test                                               Runs client side tests in a headless browser
+  create, generate, n, new <name>        Creates a new project based on the selected template if it exists
+  install                                Installs the project dependencies from the perla.json file
+  add <packages>                         Adds a package to the project dependencies
+  remove <packages>                      Removes a package from the project dependencies
+  list, ls                               Lists the current dependencies in a table or an npm style json string
+  s, serve, start                        Starts the development server and if fable projects are present it also takes
+                                         care of it.
+  b, build                               Builds the SPA application for distribution
+  t, templates <TemplateRepositoryName>  Handles Template Repository operations such as list, add, update, and remove
+                                         templates []
+  describe, ds <properties>              Describes the perla.json file or it's properties as requested
 ```
 
 If you want to have a brief overview how the old CLI was here's for comparison:

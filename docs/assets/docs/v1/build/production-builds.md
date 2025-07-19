@@ -3,27 +3,21 @@
 
 ## Production Builds
 
-Perla sets a few defaults when it comes to final builds/bundles which can be overriden in the `build` and `esbuild` properties in the `perla.json` configuration file.
+Perla sets a few defaults when it comes to final builds/bundles which can be overridden in the `build` and `esbuild` properties in the `perla.json` configuration file.
 
 Relevant Properties in `perla.json`:
 
-- **RunConfiguration**:
-
-  This mode is by default set to `Production` meaning that the import map that will be generated for the project will fetch the minified and production ready sources from the selected provider, you can change this to `Development` to use development optimized dependencies but don't forget to set this to Production when you're releasing a new version.
-
 - **Provider**:
 
-  This is the provider that will be used to fetch the dependencies, by default it's set to `jspm` as it is the most stable CDN available but you can change it to `unpkg` or `skypack` or `jsdelivr` if you prefer. Please keep in mind that the provider will be used for both development and production builds.
+  This is the provider that will be used to fetch the dependencies, by default it's set to `jspm` as it is the most stable CDN available that works with our tooling but you can change it to `unpkg`, or `jsdelivr` if you prefer.
 
 - **Build**:
 
-  Build runs after esbuild, it makes sure all of the contents of the esbuild output and the build options are properly copied to the final destination directory, these files are grabbed from the virtual file system introduced in v1.
+  Build runs after esbuild, ensuring all contents of the esbuild output and the build options are properly copied to the final destination directory. These files are grabbed from the virtual file system introduced in v1.
 
 - **Esbuild**:
 
-  Esbuild will take the typescript/javascript sources and transpile them taking into account the values provided in the esbuild property, this controls what version of the output will be used (e.g. ES2020 which is supported by evergreen browsers at the time of writing)
-
-If you want to copy assets from your local directory to the output directory (e.g. Images), then you would need to
+  Perla provides sensible defaults for esbuild that should work for most applications. However, you can override these defaults by specifying properties in the `esbuild` section of your `perla.json` for convenience. Esbuild will take the TypeScript/JavaScript sources and transpile them according to the values provided, such as the target output version (e.g., ES2020, which is supported by evergreen browsers at the time of writing).
 
 ### Esbuild's Target
 

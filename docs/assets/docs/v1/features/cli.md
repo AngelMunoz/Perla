@@ -38,29 +38,9 @@ In your [perla.json] look for the `build` object to configure it.
 
 > Please check [Package Manager] for a more complete reference.
 
-You have a project now, what about dependencies? what if you want to use something like `lodash` or `monent`? Then simply type `perla add moment` or `perla add lodash -s jspm` if you want a different source for your packages.
+You have a project now, what about dependencies? what if you want to use something like `lodash` or `moment`? Then simply type `perla add moment lodash`.
 
-If you're not sure what the correct name for your dependency is then try searching for it `perla search -n lodash-es`, if you think that might be the correct package then you can see more details about it `perla show -p lodash-es`
-
-> **NOTE**: It is always worth mentioning, please ensure you are using the correct packages to prevent bundle bloat or security holes in your applications
-
-## Interactive Mode
-
-When Perla starts in dev server mode, Perla also accepts commands for [Fable] and the dev server itself some of these options are
-
-- Server Commands
-  - `restart`
-  - `start`
-  - `stop`
-- Fable Commands
-  - `restart:fable`
-  - `start:fable`
-  - `stop:fable`
-- CLI Commands
-  - `clear` or `cls`
-  - `exit`
-
-Besides supporting <kbd>Ctrl</kbd> + <kbd>C</kbd> to stop the Perla process, the interactive mode also supports the rest of the Perla CLI commands (except from `build`, `serve`, `init`) so even if you're developing your SPA you can add dependencies on the fly without having to restart your server (after all the dependencies live on CDN's)
+> **NOTE**: It is always worth mentioning, please ensure you are using the correct packages to prevent bundle bloat or security holes in your applications.
 
 ## Scaffolding
 
@@ -68,8 +48,7 @@ Besides supporting <kbd>Ctrl</kbd> + <kbd>C</kbd> to stop the Perla process, the
 
 It's quite annoying to have something set up manually each time you need to start a new project, Perla provides scaffolding features that are extensible via Scriban templates (the syntax is like handlebars) and F# script files.
 
-- `perla add GitHubUsername/Repository` - will download that repository for future references
-- `perla list-templates` - Will show you the templates you have downloaded
-- `perla update GitHubUsername/Repository` - Will re-download the github repository
-- `perla remove GitHubUsername/Repository` - will remove said repository
-- `perla new -t Repository/template -n my-new-project` - will create a new prla project under the `my-new-project` directory, if you have multiple repositories with the same name for some reason you can disambiguate by writing the github username as well (`-t GitHubUsername/Repository/template`)
+- `perla templates ls` - Will show you the templates you have downloaded
+- `perla templates GitHubUsername/Repository --add` - will download that repository for future references
+- `perla templates GitHubUsername/Repository --update` - Will re-download the github repository
+- `perla templates GitHubUsername/Repository --remove` - will remove said repository

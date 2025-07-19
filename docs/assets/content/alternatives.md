@@ -4,15 +4,13 @@
 
 # Alternatives
 
-The very inspiration for this project are:
+This project draws inspiration from:
 
 - [Snowpack]
 - [Vite]
 
-And at the same time they are the more complete alternatives.
+These tools are well-established in the JavaScript ecosystem and offer a wide range of features, including support for JavaScript plugins. This enables them to handle assets like `sass`, `less`, `pug`, `vue files`, and more.
 
-Why do I say "_More Complete_" alternatives? We live in a world dominated by Javascript when it comes to web tooling, when [esbuild] came to the picture was when people started looking into creating tooling for javascript outside the javascript language.
+Our goal is to stay as close to web standards as possible, without compromising too much on the developer experience. We aim to provide a streamlined workflow that leverages native browser capabilities where feasible.
 
-These projects support Javascript Plugins, and that means support for things like `sass`, `less`, `pug`, `vue files`, and other cool things we're unable to support just yet.
-
-If your projects are complex enough or need these kinds of assets don't hesitate to take a look at them, although they are cross-platform as well they require node.js tooling which is something we don't require at all.
+If your projects require advanced asset processing or integration with such plugins, you may want to explore these alternatives. While they are also cross-platform, they typically depend on Node.js tooling, whereas this project does not require Node.js at all.

@@ -1,55 +1,25 @@
-[.net tool]: https://docs.microsoft.com/en-us/dotnet/core/tools/global-tools
-
 # Installation
 
-Perla provides two ways for installation
+You can install Perla manually by downloading the latest release from the [releases page](https://github.com/AngelMunoz/Perla/releases/latest) and adding it to your path.
 
-- For most people, you only need to download the corresponding zip file for your platform and ensure it is on your path, this process will be simplified once we have a stable release.
-- If you're a .NET user you can install Perla as a global or local [.NET Tool].
+If you prefer a more automated approach, you can use the provided install scripts, they're available on this repository for you to review the contents before running them.
 
-# Binary Files
+For Linux or macOS, you can run the following command in your terminal:
 
-1. Go to https://github.com/AngelMunoz/Perla/releases
-2. Pick your release and from the release Assets download your platform zip file (example: `win10-x64.zip` or `osx-x64.zip`)
-3. Uncompress the zip to the directory you want to keep perla on (example: `$HOME/Apps/perla` or `C:\Users\User\Apps\perla`)
-4. Ensure Perla is on the system's `PATH`
-   - Linux
-     - on your `~/.bashrc` append the following
-     ```sh
-     # replace $HOME/Apps/perla with your chosen location
-     export PERLA_PATH=$HOME/Apps/perla
-     export PATH=$PERLA_PATH:$PATH
-     ```
-     - Log out and Log in again for it to make effect
-   - MacOS
-     - on your `~/.zshrc` append the following
-     ```sh
-     # replace $HOME/Apps/perla with your chosen location
-     export PERLA_PATH=$HOME/Apps/perla
-     export PATH=$PERLA_PATH:$PATH
-     ```
-     - Log out and Log in again for it to make effect
-   - Windows
-     - Press <kbd>Win</kbd>+<kbd>R</kbd>
-     - Type `SystemPropertiesAdvanced.exe` and press enter
-     - Press the `Environment Variables` button at the bottom of the dialog
-     - Update the `PATH` variable with the location of your `perla.exe` file
-     - Log out and Log in again for it to make effect
+```bash
+curl -fsSL https://raw.githubusercontent.com/AngelMunoz/Perla/dev/install.sh | bash
+```
 
-# .NET Users
+For Windows (or Linux, MacOS if you've installed pwsh), you can use powershell to run the install script:
 
-The easiest way to install Perla is using .NET since we provide it as a .NET tool
+```powershell
+iwr https://raw.githubusercontent.com/AngelMunoz/Perla/dev/install.ps1 -UseBasicParsing | iex
+```
 
-To install it as a tool:
+If you prefer to use the dotnet (global | local) tool, you can install it using the following command:
 
-> **_NOTE_**: Perla V1 is in the works, and early previews are out already, if you want to try the early bits, provide feedback or just get a feel of what's next pleas add the `--prerelease` flag to the commands below
+```bash
+dotnet tool install --global Perla
+```
 
-- As a global tool:
-  ```sh
-  dotnet tool install --global Perla # --prerelease # grab the latest pre-release
-  ```
-- As a local tool:
-  ```sh
-  dotnet new tool-manifest # if you are setting up for the first time
-  dotnet tool install --local Perla # --prerelease # grab the latest pre-release
-  ```
+Once you're done with the installation, you can run `perla --help` to verify that the installation was successful.

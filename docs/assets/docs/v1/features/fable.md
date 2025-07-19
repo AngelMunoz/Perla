@@ -28,7 +28,7 @@ src/
     Main.fs
 ```
 
-You can start of with the `Sutil` or `Feliz` Templates from `https://github.com/angelMunoz/perla-templates` or start from scratch, while _scaffolding_ is part of the project goals, it is not implemented yet in the mean time you need to type some commands if you want to go from scratch
+You can start of with the empty fable template (`perla new my-project -t fempty`) or the Feliz (`perla new my-project -t feliz`) Templates or start from scratch.
 
 ```text
 mkdir project
@@ -36,8 +36,8 @@ cd project
 dotnet new tool-manifest
 dotnet tool install perla
 dotnet tool install fable
+dotnet tool install fantomas
 dotnet new classlib -o src -n App
-perla init --with-fable true
 touch index.html
 ```
 
@@ -55,7 +55,7 @@ your `index.html` should have something like this
         untill it is natively supported in the browser -->
     <script
       async
-      src="https://ga.jspm.io/npm:es-module-shims@1.0.0/dist/es-module-shims.js"
+      src="https://ga.jspm.io/npm:es-module-shims@2.6.1/dist/es-module-shims.js"
       crossorigin="anonymous"
     ></script>
   </head>
@@ -68,17 +68,13 @@ your `index.html` should have something like this
 
 then you can start with `dotnet perla serve` and it will automatically start the Fable Compilation in watch mode as well as the saturn dev server
 
-## TSX/JSX/JS/TS
-
-Something that is not well known but possible in things like webpack/vite/snowpack Fable setups is that you can mix TSX/JSX/JS/TS files with your Fable sources, Perla allows this as well so feel free to mix and match F# and JS/TS files without worrying about compatibility.
-
 ### Migrating from Webpack Based projects
 
 If for some reason you have a spare project based on webpack or you believe in Perla and want to proceed further here's a checklist you need to fill first
 
 - [x] You're not using SASS/LESS or any other CSS pre-processor
 - [x] You're not using CSS Modules (the popular solution, not the browser spec)
-- [x] You don't depend on Javascript Plugins to transform content at build time (like converting markdown to html)
+- [x] You don't depend on plugins that required node.js to run
 
 That's it.
 
@@ -87,9 +83,6 @@ Some things to take into account as well:
 - There is no way to run tests at the moment.
 
   Current node based tooling has test runners like mocha that run unit tests on compiled F# -> JS code, Perla doesn't have an alternative for that yet.
-
-- Your builds won't be "local" anymore
-  While your F# code is local to your apps, the dependencies (such as react) are going to be imported from a CDN once built and bundled, you should evaluate if this is a concern for you.
 
 #### Migration Steps
 
@@ -125,7 +118,7 @@ Your HTML file should look along these lines
         untill it is natively supported in the browser -->
     <script
       async
-      src="https://ga.jspm.io/npm:es-module-shims@1.0.0/dist/es-module-shims.js"
+      src="https://ga.jspm.io/npm:es-module-shims@2.6.1/dist/es-module-shims.js"
       crossorigin="anonymous"
     ></script>
     <link
@@ -143,14 +136,19 @@ Your HTML file should look along these lines
 </html>
 ```
 
-4. Run `dotnet perla init --with-fable true` in the root of your project or to the CWD you're going to run the _Perla CLI_.
-
 5. Install your dependencies. Example:
 
-   - `dotnet perla add react`
-   - `dotnet perla add react-dom`
+   - `dotnet perla add react react-dom react-dom/client`
 
    To identify which dependencies are the ones you actually need, they are usually in the `dependencies` object inside your `package.json`
+
+   > **_NOTE_**: If your project has deep imports (like react-dom/client above) you will have to add those with the perla CLI too, otherwise you will get an error like
+   >
+   > ```text
+   > Uncaught TypeError: Failed to resolve module specifier "react-dom/client". Relative references must start with either "/", "./", or "../".
+   > ```
+   >
+   > which means that the import map is missing the `react-dom/client` entry.
 
 6. Do a test run
 
@@ -159,12 +157,12 @@ Your HTML file should look along these lines
 7. Check in the browser's console for errors like
 
    ```text
-   Uncaught TypeError: Failed to resolve module specifier "react-dom".
+   Uncaught TypeError: Failed to resolve module specifier "components/button".
    Relative references must start with either "/", "./", or "../".
    ```
 
-   That usually means you are missing a package from your npm dependencies or that you are trying to do something like `importSideEffects "./my-module"` when the correct import must include the `.js` extension `importSideEffects "./my-module.js"`
+   That usually means you are missing a package from your npm dependencies or that you are trying to do something like `importSideEffects "components/button"` when the correct import must include the `.js` extension `importSideEffects "./components/button.js"`
 
-   If at this point you don't see any error and your application is working then you can finally delete any `node_modules`, `package.json`, and `package-lock.json`
+   If at this point you don't see any error and your application is working then you can finally remove any `package.json`, and `package-lock.json`
 
 ## Congratulations, Welcome to Perla :)

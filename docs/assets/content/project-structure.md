@@ -19,16 +19,17 @@ With that, Perla will know what should be served and where
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/v1.0.0/perla.schema.json",
-  "index": "./index.html",
-  "provider": "jspm",
-  "runConfiguration": "production",
-  "mountDirectories": {
-    "/src": "./src"
+  "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/dev/perla.schema.json",
+  "schema-version": "2025-07",
+  "fable": {
+    "project": "./src/App.fsproj",
+    "sourceMaps": true
   },
-  "devServer": {
-    "port": 7331,
-    "host": "localhost"
+  "dependencies": {
+    "date-fns": "2.29.3",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-dom/client": "19.1.0"
   }
 }
 ```
@@ -54,7 +55,7 @@ With that, Perla will know what should be served and where
     <!-- This shim is required for import maps to work propperly-->
     <script
       async
-      src="https://ga.jspm.io/npm:es-module-shims@1.6.2/dist/es-module-shims.js"
+      src="https://ga.jspm.io/npm:es-module-shims@2.6.1/dist/es-module-shims.js"
       crossorigin="anonymous"
     ></script>
   </head>
