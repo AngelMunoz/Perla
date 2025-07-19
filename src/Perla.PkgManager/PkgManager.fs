@@ -396,13 +396,147 @@ module PkgManager =
       // Unscoped: valid if no '/' at all
       not(key.Contains "/")
 
+  // Clean up directories for packages that are no longer in the import map
+  let private cleanupRemovedPackages
+    (logger: ILogger)
+    (config: PkgManagerConfiguration)
+    (currentMap: ImportMap)
+    =
+    let localCacheDir = DirectoryInfo(Path.Combine(config.cwd, "node_modules"))
+    let perlaDir = DirectoryInfo(Path.Combine(localCacheDir.FullName, ".perla"))
+
+    // Get all package names from the current import map
+    let currentPackages = currentMap.imports |> Map.keys |> Set.ofSeq
+
+    logger.LogTrace(
+      "Current packages in import map: {packages}",
+      currentPackages
+    )
+
+    // Get all top-level directories in node_modules (excluding .perla)
+    let existingDirectories =
+      if localCacheDir.Exists then
+        localCacheDir.GetDirectories()
+        |> Array.filter(fun dir -> dir.Name <> ".perla")
+        |> Array.map(fun dir ->
+          // For scoped packages, we need to check if this is a scope directory
+          if dir.Name.StartsWith("@") then
+            // This is a scope directory, check its subdirectories
+            dir.GetDirectories()
+            |> Array.map(fun subDir -> $"{dir.Name}/{subDir.Name}")
+          else
+            // Regular package directory
+            [| dir.Name |])
+        |> Array.concat
+        |> Set.ofArray
+      else
+        Set.empty
+
+    logger.LogTrace(
+      "Existing directories in node_modules: {directories}",
+      existingDirectories
+    )
+
+    // Find directories that exist but are not in the current import map
+    let directoriesToRemove = Set.difference existingDirectories currentPackages
+
+    logger.LogDebug("Directories to remove: {directories}", directoriesToRemove)
+
+    for directory in directoriesToRemove do
+      // Remove the flat symlink
+      let flatPkgPath = Path.Combine(localCacheDir.FullName, directory)
+
+      if Directory.Exists(flatPkgPath) then
+        logger.LogTrace("Removing flat symlink: {path}", flatPkgPath)
+
+        try
+          Directory.Delete(flatPkgPath, true)
+
+          logger.LogTrace(
+            "Successfully removed flat symlink: {path}",
+            flatPkgPath
+          )
+        with ex ->
+          logger.LogWarning(
+            "Failed to remove flat symlink {path}: {error}",
+            flatPkgPath,
+            ex.Message
+          )
+
+      // Remove the corresponding .perla symlink if it exists
+      // We need to find the full package name (with version) in .perla
+      if perlaDir.Exists then
+        let perlaDirectories = perlaDir.GetDirectories()
+
+        for perlaDir in perlaDirectories do
+          // Extract the package name from the .perla directory name
+          // e.g., "htm@3.1.1" -> "htm", "@babel/core@1.2.3" -> "@babel/core"
+          let packageName =
+            match ProviderOps.extractPkgAndVersion perlaDir.Name with
+            | Some(name, _) -> name
+            | None -> perlaDir.Name
+
+          if packageName = directory then
+            let perlaPkgPath = perlaDir.FullName
+
+            logger.LogTrace("Removing .perla symlink: {path}", perlaPkgPath)
+
+            try
+              Directory.Delete(perlaPkgPath, true)
+
+              logger.LogTrace(
+                "Successfully removed .perla symlink: {path}",
+                perlaPkgPath
+              )
+            with ex ->
+              logger.LogWarning(
+                "Failed to remove .perla symlink {path}: {error}",
+                perlaPkgPath,
+                ex.Message
+              )
+
+      // For scoped packages, also check if we need to remove the scope directory
+      // if it's empty after removing the package
+      if directory.Contains("/") then
+        let scopeName = directory.Split('/').[0] // e.g., "@babel" from "@babel/core"
+        let scopePath = Path.Combine(localCacheDir.FullName, scopeName)
+
+        if Directory.Exists(scopePath) then
+          let remainingPackagesInScope =
+            scopePath
+            |> DirectoryInfo
+            |> fun dir -> dir.GetDirectories()
+            |> Array.map(fun subDir -> $"{scopeName}/{subDir.Name}")
+            |> Array.filter(fun pkg -> Set.contains pkg currentPackages)
+
+          // If no packages remain in this scope, remove the scope directory
+          if Array.isEmpty remainingPackagesInScope then
+            logger.LogTrace("Removing empty scope directory: {path}", scopePath)
+
+            try
+              Directory.Delete(scopePath, true)
+
+              logger.LogTrace(
+                "Successfully removed empty scope directory: {path}",
+                scopePath
+              )
+            with ex ->
+              logger.LogWarning(
+                "Failed to remove empty scope directory {path}: {error}",
+                scopePath,
+                ex.Message
+              )
+
+
   let goOffline
     (dependencies: PkgManagerServiceArgs)
     (options: DownloadOption seq)
     (map: ImportMap)
     =
     cancellableTask {
-      let { logger = logger } = dependencies
+      let { logger = logger; config = config } = dependencies
+
+      logger.LogDebug("Starting goOffline with import map: {map}", map)
 
       // Filter out deep imports (not valid top-level package keys)
       let filteredImports =
@@ -451,24 +585,27 @@ module PkgManager =
         match matchingKey with
         | None -> importUrl
         | Some key ->
-          let uri = Uri importUrl
-          let filePath = ProviderOps.extractFilePath logger uri
-          // If extractFilePath returned the original URL (couldn't extract), keep it as is
-          if filePath = importUrl then
-            importUrl
-          else
-            let basePath =
-              if isScoped then
-                // Scoped packages point to .perla/<package@version>
-                Path.Combine(localPrefix, ".perla", key)
-              else
-                // Non-scoped packages point to a flat structure
-                let packageName =
-                  ProviderOps.extractPackageNameForFlatStructure key
+          // Try to create a URI, but handle invalid URI formats gracefully
+          match Uri.TryCreate(importUrl, UriKind.Absolute) with
+          | true, uri ->
+            let filePath = ProviderOps.extractFilePath logger (nonNull uri)
+            // If extractFilePath returned the original URL (couldn't extract), keep it as is
+            if filePath = importUrl then
+              importUrl
+            else
+              let basePath =
+                if isScoped then
+                  // Scoped packages point to .perla/<package@version>
+                  Path.Combine(localPrefix, ".perla", key)
+                else
+                  // Non-scoped packages point to a flat structure
+                  let packageName =
+                    ProviderOps.extractPackageNameForFlatStructure key
 
-                Path.Combine(localPrefix, packageName)
+                  Path.Combine(localPrefix, packageName)
 
-            Path.Combine(basePath, filePath).Replace('\\', '/')
+              Path.Combine(basePath, filePath).Replace('\\', '/')
+          | false, _ -> importUrl
 
       // Helper function to update a scope map
       let updateScopeMap(scopeMap: Map<string, string>) =
@@ -511,6 +648,9 @@ module PkgManager =
       }
 
       logger.LogDebug("Generated offline map {map}", offlineMap)
+
+      // Clean up directories for removed packages
+      cleanupRemovedPackages logger config offlineMap
 
       return offlineMap
     }

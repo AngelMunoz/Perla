@@ -989,85 +989,158 @@ module Handlers =
     let logger = container.Logger
     let map = container.FsManager.ResolveImportMap |> AVal.force
 
-    // Find all packages that exist in the import map
+    // Common helper: map config provider to Provider enum
+    let provider =
+      match config.provider with
+      | JsDelivr -> Provider.JsDelivr
+      | Unpkg -> Provider.Unpkg
+      | JspmIo -> Provider.JspmIo
+
+    // Common helper: validate packages and get list to remove
     let packagesToRemove =
-      options.packages
-      |> Seq.choose(fun pkg ->
-        match map.FindDependency pkg with
-        | None ->
-          logger.LogWarning(
-            "Package '{name}' not found in the import map.",
-            pkg
-          )
+      if config.useLocalPkgs then
+        // Check against perla.json dependencies
+        options.packages
+        |> Seq.choose(fun pkg ->
+          let found =
+            config.dependencies
+            |> Set.exists(fun dep ->
+              dep.package.Equals(
+                pkg,
+                StringComparison.InvariantCultureIgnoreCase
+              ))
 
-          None
-        | Some(name, _) -> Some name)
-      |> Seq.toList
+          if found then
+            Some pkg
+          else
+            logger.LogWarning(
+              "Package '{name}' not found in the perla.json dependencies.",
+              pkg
+            )
 
-    if List.isEmpty packagesToRemove then
+            None)
+      else
+        // Check against import map
+        options.packages
+        |> Seq.choose(fun pkg ->
+          match map.FindDependency pkg with
+          | None ->
+            logger.LogWarning(
+              "Package '{name}' not found in the import map.",
+              pkg
+            )
+
+            None
+          | Some(name, _) -> Some name)
+
+    if Seq.isEmpty packagesToRemove then
       logger.LogError("No valid packages found to remove.")
       return 1
-    else
-      let packageNames = String.concat ", " packagesToRemove
+    else if config.useLocalPkgs then
+      logger.LogDebug("Using useLocalPkgs = true flow")
+      // useLocalPkgs = true flow
+      // Remove user provided packages that match on package name
+      let remainingDependencies =
+        config.dependencies
+        |> Set.filter(fun dep ->
+          not(
+            packagesToRemove
+            |> Seq.exists(fun pkg ->
+              dep.package.Equals(
+                pkg,
+                StringComparison.InvariantCultureIgnoreCase
+              ))
+          ))
 
+      // Convert remaining dependencies to install strings with versions
+      let remainingPackages =
+        remainingDependencies
+        |> Set.map(fun { package = package; version = version } ->
+          match package, Some version with
+          | InstallString s -> s
+          | _ ->
+            logger.LogError("Invalid package name: {package}", package)
+            failwith $"Invalid package name: {package}")
+
+      // Regenerate import map with remaining packages
+      let! newMap =
+        logger.Spinner(
+          "Regenerating import map with remaining packages...",
+          container.PkgManager.Install(
+            remainingPackages,
+            [ DefaultProvider provider ],
+            token
+          )
+        )
+
+      match newMap with
+      | GeneratorResponseKind.ResponseError err ->
+        logger.LogError("Unable to regenerate import map: {error}", err.error)
+        return 1
+      | GeneratorResponseKind.Success newMapResponse ->
+        logger.LogDebug(
+          "Successfully regenerated import map, calling goOffline"
+        )
+        // Call goOffline to download local packages
+        let! result =
+          logger.Spinner(
+            "Consolidating local packages...",
+            container.PkgManager.GoOffline(
+              newMapResponse.map,
+              [ Provider config.provider ],
+              token
+            )
+          )
+
+        logger.LogDebug("goOffline completed successfully")
+
+        // Update config and save files
+        let configUpdates = ResizeArray()
+
+        configUpdates.Add(
+          PerlaConfig.PerlaWritableField.Dependencies remainingDependencies
+        )
+
+        do! container.FsManager.SaveImportMap result
+        do! container.FsManager.SavePerlaConfig configUpdates
+        logger.LogInformation("Packages removed successfully.")
+        return 0
+    else
+      // useLocalPkgs = false flow
       let! uninstallResponse =
         logger.Spinner(
-          $"Uninstalling packages: {packageNames}...",
+          "Uninstalling packages...",
           container.PkgManager.Uninstall(
             map,
             packagesToRemove,
-            [
-              DefaultProvider(
-                match config.provider with
-                | JsDelivr -> Provider.JsDelivr
-                | Unpkg -> Provider.Unpkg
-                | JspmIo -> Provider.JspmIo
-              )
-            ],
+            [ DefaultProvider provider ],
             token
           )
         )
 
       match uninstallResponse with
       | GeneratorResponseKind.ResponseError err ->
-        logger.LogError("Unable to install packages: {error}", err.error)
+        logger.LogError("Unable to uninstall packages: {error}", err.error)
         return 1
       | GeneratorResponseKind.Success uninstallResponse ->
+        let packageUpdates =
+          uninstallResponse.map.ExtractDependencies()
+          |> Set.map(fun (name, version) ->
+            let dep: PkgDependency = {
+              package = name
+              version = version.Value |> UMX.tag<Semver>
+            }
 
-      let packageUpdates =
-        // extract the dependencies before we save the offline map
-        uninstallResponse.map.ExtractDependencies()
-        |> Set.map(fun (name, version) ->
-          let dep: PkgDependency = {
-            package = name
-            // dependencies from a GeneratorResponse have embedded versions even if they are not specified
-            version = version.Value |> UMX.tag<Semver>
-          }
+            dep)
+          |> PerlaConfig.PerlaWritableField.Dependencies
 
-          dep)
-        |> PerlaConfig.PerlaWritableField.Dependencies
+        let configUpdates = ResizeArray()
+        configUpdates.Add packageUpdates
 
-      let configUpdates = ResizeArray()
-      configUpdates.Add packageUpdates
-
-      if config.useLocalPkgs then
-        let! result =
-          logger.Spinner(
-            "Consolidating local packages...",
-            container.PkgManager.GoOffline(
-              uninstallResponse.map,
-              [ Provider config.provider ],
-              token
-            )
-          )
-
-        do! container.FsManager.SaveImportMap result
-      else
         do! container.FsManager.SaveImportMap uninstallResponse.map
-
-      do! container.FsManager.SavePerlaConfig configUpdates
-      logger.LogInformation("Packages installed successfully.")
-      return 0
+        do! container.FsManager.SavePerlaConfig configUpdates
+        logger.LogInformation("Packages removed successfully.")
+        return 0
 
   }
 
