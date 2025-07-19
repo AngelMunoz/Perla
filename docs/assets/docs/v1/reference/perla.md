@@ -22,138 +22,96 @@ A full `perla.json` file looks like this:
   // we tag each release on github if you're running a particular version of perla you can
   // use the git tag version of the schema
   "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/dev/perla.schema.json",
+  // Version of the schema used for this configuration file
+  "schema-version": "2025-07",
+  // The main index file to be processed by perla
   "index": "./index.html",
+  // The CDN provider to use for dependencies (jspm, unpkg, jsdelivr)
   "provider": "jspm",
-  "runConfiguration": "production",
-  // mount local directories on specific URL paths
+  // Use local packages from node_modules if true
+  "useLocalPkgs": false,
+  // List of plugins to use (perla-esbuild-plugin is required for JS/CSS/TSX/JSX/TS)
+  "plugins": [],
+  // Map server paths to local directories
   "mountDirectories": {
-    // resources under ./src will be available in /src URL
-    "/src": "./src",
-    // e.g. ./assets/docs/index.md -> /public/docs/indexmd
-    "/assets": "./public",
-    // useful for service workers
-    "/": "./workers"
+    "/src": "./src", // resources under ./src will be available at /src
+    "/assets": "./assets", // static assets
+    "/": "./sw" // service worker files
   },
-  // If you're using perla plugins list the order of execution,
-  // if you're not using anything you can omit this value
-  // but the "perla-esbuild-plugin" value must always be there
-  // for perla to be able to process css/js/tsx/jsx/ts files
-  "plugins": ["perla-esbuild-plugin"],
-  // pass environment variables to perla
+  // Enable providing environmental variables at dev time
   "enableEnv": true,
-  // where to import these variables from
+  // URL to serve the env vars for perla
   "envPath": "/env.js",
-  // list of packages you will pull from the specified provider
-  "dependencies": [
-    // these are actual dependencies that your app needs to work
-    { "name": "lodash", "version": "4.17.15" }
-  ],
-  "devDependencies": [
-    // list of dependencies you want to use at dev/testing time only
-    { "name": "rxjs-spy", "version": "8.0.2" },
-    // assertions with chai for example
-    { "name": "@esm-bundle/chai", "version": "4.3.4" }
-  ],
-  "fable": {
-    // F# project to compile
-    "project": "./src/App.fsproj",
-    // output extension of the fable files
-    "extension": ".fs.js",
-    // enable Fable source map output
-    "sourceMaps": true,
-    // where to output these files
-    "outDir": "path/to/dist"
+  // Project dependencies (package name: version)
+  "dependencies": {
+    "@preact/signals": "1.1.2",
+    "lit": "2.0.0"
   },
+  // Fable compiler configuration (for F# projects)
+  "fable": {
+    "project": "./src/App.fsproj", // F# project to compile
+    "extension": ".fs.js", // Output extension for compiled files
+    "sourceMaps": true, // Enable Fable source maps
+    "outDir": "./dist" // Output directory for compiled files
+  },
+  // Dev server configuration
   "devServer": {
-    // port to run the dev server on
-    "port": 7331,
-    // host to run the dev server like localhost or 0.0.0.0
-    "host": "localhost",
-    // enable reload on change for sources
-    "liveReload": true,
-    // use HTTPs by default
-    "useSSL": true,
-    // add a dev proxy for  server requests
+    "host": "localhost", // Host to bind the dev server
+    "port": 7331, // Port to listen on
+    "useSSL": false, // Enable SSL for local development
+    "liveReload": true, // Enable live reload on file changes
     "proxy": {
-      // proxy anything request that targets /api/ to localhost on port 5000
-      "/api/{**catch-all}": "http://localhost:5000",
-      // this can be used for web sockets as well
-      // proxy calls to /ws to /sockets/ws
-      "/ws": "http://localhost:5000/sockets"
+      "/api/{**catch-all}": "http://localhost:5000", // Proxy API requests
+      "/ws": "http://localhost:8080/sockets" // Proxy WebSocket requests
     }
   },
-  // these settings can be used to fine-tune certain esbuild options
+  // esbuild configuration
   "esbuild": {
-    // do you have a custom esbuild version? you can point at it
-    "esBuildPath": "/path/to/esbuild",
-    // pin the esbuild version you want to use in case our default is not up to date
-    "version": "0.25.6",
-    // Allow your code to compile down to better supported spec
-    "ecmaVersion": "es2020",
-    // if you need to debug output code, this setting might be handy
-    "minify": true,
-    // injects will only run at build time
-    // and are injected into every file processed by esbuild
-    "injects": ["./license.js"],
-    "externals": [
-      // mark a dependency as external and don't include it in the
-      // esbuild bundling process example:
-      // import config from '/api/config.js'
-      "/api/config.js"
-      // esbuild would usually try to look at the contents of config.js and bundle them
-      // in this case it is left alone and will be present in the bundle's output
-    ],
-    // specify esbuild loaders for extensions
+    "esBuildPath": "/path/to/esbuild", // Absolute path to esbuild executable
+    "version": "0.12.28", // esbuild version
+    "ecmaVersion": "es2020", // Target ECMAScript version
+    "minify": true, // Enable minification
+    "injects": ["./LICENSE.js"], // Files to inject at build time
+    "externals": ["lit"], // Libraries to exclude from the bundle
     "fileLoaders": {
       ".png": "file",
-      ".svg": "file",
       ".woff": "file",
-      ".woff2": "file"
+      ".woff2": "file",
+      ".svg": "file"
     },
-    // use the following options to configure jsx transforms
-    // configure preact for example
-    "jsxAutomatic": true,
-    "jsxImportSource": "preact"
+    "jsxAutomatic": true, // Enable automatic JSX transform
+    "jsxImportSource": "preact" // Source for JSX imports
   },
+  // Production build configuration
   "build": {
-    // globbing patterns that specify something has to be copied
-    // from the local or virtual file system over the build's output
-    "includes": [
-      // include compiled HTML files from the virtual file system
-      "vfs:**/**/*.html",
-      // copy all of the markdown files from the local file system
-      "**/**/*.md"
-    ],
-    // globbing patterns that specify something has to be copied
-    // from the local or virtual file system over the build's output
-    "excludes": [
-      "./**/obj/**",
-      "./**/bin/**",
-      "./**/*.fs",
-      "./**/*.fsproj",
-      // example for the virtual file system
-      "vfs:**/.spec.js"
-    ],
-    // where should the build output its result
-    "outDir": "./dist",
-    // if you don't want to emit an environment file
-    // because you might have an endpoint that does that already
-    "emitEnvFile": true
+    "outDir": "./dist", // Output directory for build
+    "includes": ["**/**/*.html", "./assets/**/*.png"], // Files to include in build output
+    "excludes": ["**/*.exclude-me.*"], // Files to exclude from build output
+    "emitEnvFile": true // Emit environment file in build output
   },
+  // Testing configuration (powered by Playwright)
   "testing": {
-    "headless": true,
-    // u
-    "watch": false,
-    // run the test suites for each browser in parallel
-    "browserMode": "parallel",
-    // which browsers to run the tests against
-    "browsers": ["chromium"],
-    // similarly to the build's includes/excludes but this applies for testing files
-    // these must be valid javascript files
-    "excludes": [],
-    "includes": ["**/*.test.js", "**/*.spec.js"]
+    "browsers": ["chromium", "webkit"], // Browsers to run test suites with
+    "includes": ["**/featureA/*.spec.js", "**/*.test.js"], // Test file patterns to include
+    "excludes": ["**/feature-b/*.spec.js", "**/*.e2e.js"], // Test file patterns to exclude
+    "watch": false, // Run tests in watch mode
+    "headless": true, // Run browsers in headless mode
+    "browserMode": "parallel" // Run test suites in parallel across browsers
+  },
+
+  // Deprecated properties (move these to the bottom of your config if you still use them)
+  // These are kept for backward compatibility and may be removed in future versions
+  "runConfiguration": "production", // DEPRECATED: Use for legacy mode selection
+  "devDependencies": [
+    // DEPRECATED: Use dependencies for all packages
+    { "name": "rxjs-spy", "version": "8.0.2" },
+    { "name": "@esm-bundle/chai", "version": "4.3.4" }
+  ],
+  "packages": {
+    // DEPRECATED: Use dependencies instead
+    "lit": "https://cdn.skypack.dev/lit"
   }
 }
 ```
 
-Please keep in mind that most of the time you need at most like 4-5 properties and a couple of nodes, the less you have to configure in your app the better if you think we could simplfy things even more please let us know!
+Please keep in mind that most of the time you need at most 4-5 properties and a couple of nodes. The less you have to configure in your app, the better. If you think we could simplify things even more, please let us know!

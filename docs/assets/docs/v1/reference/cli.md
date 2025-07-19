@@ -2,133 +2,86 @@
 
 ## CLI Reference
 
-- Serve - `perla serve`
+### Serve - `perla serve`
 
-  Starts a development server for modern Javascript development
+Starts a development server for modern JavaScript development.
 
-  - Auto Start - `perla serve -a false`, `perla serve --auto-start`
+- `-p`, `--port <number>`: Port to listen on (default: 7331)
+- `--host <host>`: Host to bind the dev server (default: localhost)
+- `--ssl`: Enable SSL for local development (default: false)
 
-    Starts the server without action required by the user.
+### Build - `perla build`
 
-  - Port - `perla serve -p 8080`, `perla serve --port 8080`
+Builds the SPA application for distribution.
 
-    Select the server port, defaults to 7331
+- `-p`, `--preview`: Enable preview mode (build and start a static server)
 
-  - Host - `perla serve -h 0.0.0.0`, `perla serve --host 0.0.0.0`
+### New - `perla new`
 
-    Server host, defaults to localhost
+Creates a new Perla-based project from a template.
 
-  - Use SSL - `perla serve -s true`, `perla serve --use-ssl true`
+- `name`: Name of the new project (required)
+- `--id <template-id>`: Fully qualified template name (e.g. perla.templates.vanilla.js)
+- `-t`, `--template <shortname>`: Short name of the template (e.g. ff)
+- `--skip`, `-s`, `-y`: Skip interactive prompts and use defaults
 
-    Forces the requests to go through HTTPS. Defaults to false
+### Templates - `perla templates`
 
-- Build - `perla build`
+Handles template repository operations (list, add, update, remove).
 
-  - Index File - `perla build -i start.html`, `perla build --index start.html`
+- `TemplateRepositoryName`: The User/repository name combination
+- `-a`, `--add`: Add the template repository
+- `-u`, `--update`: Update the template repository
+- `-r`, `--remove`: Remove the template repository
+- `--list-format <table|text>`: Format to display templates (default: table)
 
-    The Entry File for the web application. Defaults to index.html
+### Add - `perla add`
 
-  - Esbuild Version - `perla build -ev 0.13.1`, `perla build --esbuild-version 0.13.1`
+Adds a package to the project dependencies.
 
-    Use a specific esbuild version
+- `packages`: One or more package names to add (required)
 
-  - Out Dir - `perla build -o ./public`, `perla build --out-dir ./public`
+### Remove - `perla remove`
 
-    Where to output the files. Defaults to ./dist
+Removes a package from the project dependencies.
 
-- Init - `perla init`
+- `packages`: One or more package names to remove (required)
 
-  Sets perla up to start new projects.
+### Install - `perla install`
 
-  - Set up esbuild & default templates - `perla init -k full`, `perla init --init-kind full`
+Installs the project dependencies from the perla.json file.
 
-    - Skip prompts - `perla init -k full -y true`, `perla init --init-kind full --yes true`
+- `-o`, `--offline`: Install packages without network access
+- `-s`, `--source <provider>`: The source to download packages from (jspm.io, unpkg, jsdelivr)
 
-  Generate an empty `perla.json` file:
+### List - `perla list`
 
-  - Path - `perla init -k simple -p ./client`, `perla init --init-kind simple --path ./client`
+Lists the current dependencies in a table or npm-style JSON string.
 
-    Where to write the config file
+- `--as-package-json`, `-j`: Show the packages in npm's package.json format
 
-  - With Fable - `perla init -k simple --wf true`, `perla init --init-kind simple --with-fable true`
+### Test - `perla test`
 
-    Include fable options in the config file
+Runs client-side tests in a headless browser (hidden command).
 
-- Search - `perla search`
+- `-b`, `--browsers <browser>`: Browsers to run tests with (chromium, firefox, webkit, edge, chrome)
+- `-t`, `--tests <pattern>`: Glob of tests to run
+- `-s`, `--skip <pattern>`: Glob of tests to skip
+- `-hl`, `--headless`: Run browsers in headless mode
+- `-w`, `--watch`: Watch for file changes and re-run tests
+- `-bs`, `--browser-sequential`: Run each browser's test suite in sequence
 
-  Searches a package in the skypack API.
+### Describe - `perla describe`
 
-  - Name - `perla -n lodash`, `perla --name lodash`
+Describes the perla.json file or its properties as requested.
 
-    The name of the package to search for.
+- `properties`: One or more property names or JSON path-like strings
+- `-c`, `--current`: Print the current configuration from perla.json
 
-  - Page - `perla -p 2`, `perla --page 2`
+---
 
-    Page number to search at.
+### Deprecated or Unavailable Commands/Options
 
-- Show - `perla show`
+- `perla init`, `perla search`, `perla show`, `perla List Template`, `perla add-template`, `perla update-template`, `perla remove-template`, `perla version`
 
-  Gets the skypack information about a package.
-
-  - Package - `perla -p lodash`, `perla show --package lodash`
-
-    The name of the package to show information about.
-
-- Add - `perla add`
-
-  Generates an entry in the import map.
-
-  - Package - `perla add react`, `perla add react`
-
-    The name of the package to show information about.
-
-  - Alias - `perla add react@16 -a react-sixteen`, `perla add react@16 --alias react-sixteen`
-
-    Specifier for this particular module.
-
-  - Source - `perla add react -s jspm`, `perla add react --source jspm`
-
-    The name of the source you want to install a package from. e.g. unpkg or skypack. Available options:
-
-    - `jspm`
-    - `unpkg`
-
-- Remove - `perla remove`
-
-  Removes an entry in the import map.
-
-  - Package - `perla remove react-sixteen`, `perla remove react-sixteen`
-
-    The name of the package to remove from the import map this can also be aliased name.
-
-- List - `perla list`
-
-  List entries in the import map.
-
-  - As Package Json - `perla list --as-package-json`
-
-  List packages in npm's package.json format.
-
-- New - `perla new -t template-name -n project-name`
-
-  Creates a new Perla based project.
-
-- List Template - `perla List Template`
-
-  - Shows existing templates available to scaffold.
-
-- Add Template - `perla add-template -n GitHubUsername/repository -b main`
-
-  - Downloads a GitHub repository to the templates directory.
-
-- Update Template - `perla update-template -n GitHubUsername/repository -b main`
-
-  - Downloads a new version of the specified template.
-
-- Remove Template - `perla remove-template GitHubUsername/repository`
-
-  - Removes an existing templating repository.
-
-- Version - `perla version`
-
-  Prints out the cli version to the console.
+  These commands/options are not present in the current CLI implementation or have been replaced. Please refer to the above commands for supported operations.

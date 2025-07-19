@@ -1,5 +1,5 @@
-#r "nuget: Markdig, 0.30.4"
-#r "nuget: Perla.Plugins, 1.0.0-beta-028"
+#r "nuget: Markdig, 0.41.3"
+#r "nuget: Perla.Plugins, 1.0.0-beta-029"
 
 open Perla.Plugins
 open Markdig
@@ -16,8 +16,9 @@ let shouldProcess: FilePredicate =
 
 let transform: Transform =
   fun args -> {
-    content = Markdown.ToHtml(args.content, pipeline.Value)
-    extension = ".html"
+    args with
+        content = Markdown.ToHtml(args.content, pipeline.Value)
+        extension = ".html"
   }
 
 plugin "markdown-plugin" {
