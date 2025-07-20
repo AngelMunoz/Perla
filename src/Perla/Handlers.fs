@@ -2,6 +2,7 @@ namespace Perla.Handlers
 
 open System
 open System.IO
+open System.Threading.Tasks
 
 open Microsoft.Extensions.Logging
 
@@ -184,7 +185,7 @@ module RunNew =
 
   let handleTemplateNotFound(logger: ILogger) =
     logger.LogWarning(
-      "No templates found in the offline templates, please add a template to the perla database or the offline templates."
+      "No templates found in the Default Templates, please add a template to the perla database or the Default Templates."
     )
 
     logger.LogInformation(
@@ -223,7 +224,7 @@ module Handlers =
 
     let handleOfflineTemplates() = cancellableTask {
       logger.LogWarning
-        "No templates found in the perla database, searching in the default offline templates."
+        "No templates found in the perla database, searching in the default Default Templates."
 
       let! otConfig = container.FsManager.ResolveOfflineTemplatesConfig()
       let tplList = otConfig.templates
@@ -368,15 +369,26 @@ module Handlers =
         // List the templates using the service and return
         let templates = templateService.ListTemplateItems()
 
+        // Also get Default Templates
+        let! otConfig = container.FsManager.ResolveOfflineTemplatesConfig()
+        let offlineTemplates = otConfig.templates
+
+
         match listFormat with
         | ListFormat.HumanReadable ->
+          // Use a single table for both lists, with a divider row
           let table =
             Table()
               .AddColumn("Name")
               .AddColumn("Short Name")
               .AddColumn("Description")
+              .Title("Templates")
 
-          for template in templates do
+          // Downloaded templates
+          let templatesList = List.ofSeq templates
+          let offlineTemplatesList = List.ofSeq offlineTemplates
+
+          for template in templatesList do
             let description =
               template.Description
               |> Option.defaultValue "No description provided"
@@ -384,8 +396,30 @@ module Handlers =
             table.AddRow(template.Name, template.ShortName, description)
             |> ignore
 
+          // Divider row
+          if
+            not(List.isEmpty templatesList)
+            && not(List.isEmpty offlineTemplatesList)
+          then
+            table.AddRow(
+              Markup("[grey]───────────────[/]"),
+              Markup("[grey]───────────────[/]"),
+              Markup("[grey]───────────────[/]")
+            )
+            |> ignore
+
+          // Offline templates
+          for tpl in offlineTemplatesList do
+            let description =
+              tpl.Description |> Option.defaultValue "No description provided"
+
+            table.AddRow(tpl.Name, tpl.ShortName, description) |> ignore
+
           AnsiConsole.Write(table)
+
         | ListFormat.TextOnly ->
+          logger.LogInformation("Downloaded Templates:")
+
           for template in templates do
             let description =
               template.Description
@@ -393,6 +427,17 @@ module Handlers =
 
             logger.LogInformation
               $"{template.Name} ({template.ShortName}) - {description}"
+
+          logger.LogInformation("")
+          logger.LogInformation("Default Templates:")
+
+          for tpl in offlineTemplates do
+            let description =
+              tpl.Description |> Option.defaultValue "No description provided"
+
+            logger.LogInformation(
+              $"{tpl.Name} ({tpl.ShortName}) - {description}"
+            )
 
         return 0
 
@@ -446,30 +491,71 @@ module Handlers =
           return 1
     }
 
-  // Helper to adaptively add /node_modules mount if needed
-  let withNodeModules(config: PerlaConfig aval) =
-    config
-    |> AVal.map(fun config ->
-      let hasKey =
-        config.mountDirectories
-        |> Map.containsKey(UMX.tag<ServerUrl> "/node_modules")
+  // Helper to adaptively add fable outDir mount if needed
+  let withFableOutDirMount(config: PerlaConfig aval) = adaptive {
+    let! config = config
 
-      if config.useLocalPkgs && not hasKey then
-        {
-          config with
-              mountDirectories =
-                config.mountDirectories
-                |> Map.add
-                  (UMX.tag<ServerUrl> "/node_modules")
-                  (UMX.tag<UserPath> "./node_modules")
-        }
-      else
-        config)
+    let outDirOpt = option {
+      let! fable = config.fable
+      let! outDir = fable.outDir |> Option.map UMX.untag
+
+      let relPath =
+        if outDir.StartsWith("./") then outDir.Substring(1)
+        elif outDir.StartsWith(".\\") then outDir.Substring(1)
+        elif outDir.StartsWith("/") then outDir
+        else "/" + outDir
+
+      let serverPath = relPath.Replace("\\", "/")
+
+      let alreadyMounted =
+        config.mountDirectories
+        |> Map.exists(fun k v ->
+          UMX.untag v = outDir || UMX.untag k = serverPath)
+
+      if alreadyMounted then
+        return! None
+
+      return UMX.tag<ServerUrl> serverPath, UMX.tag<UserPath> outDir
+    }
+
+    match outDirOpt with
+    | Some(serverPath, outDir) ->
+
+      return {
+        config with
+            mountDirectories =
+              config.mountDirectories |> Map.add serverPath outDir
+      }
+    | None -> return config
+  }
+
+  // Helper to adaptively add /node_modules mount if needed
+  let withNodeModules(config: PerlaConfig aval) = adaptive {
+    let! config = config
+
+    let hasKey =
+      config.mountDirectories
+      |> Map.containsKey(UMX.tag<ServerUrl> "/node_modules")
+
+    if config.useLocalPkgs && not hasKey then
+      return {
+        config with
+            mountDirectories =
+              config.mountDirectories
+              |> Map.add
+                (UMX.tag<ServerUrl> "/node_modules")
+                (UMX.tag<UserPath> "./node_modules")
+      }
+    else
+      return config
+  }
+
+  let withDefaultMounts = withNodeModules >> withFableOutDirMount
 
   let runBuild (container: AppContainer) (options: BuildOptions) = cancellableTask {
     let! token = CancellableTask.getCancellationToken()
 
-    let config = container.Configuration.PerlaConfig |> withNodeModules
+    let config = container.Configuration.PerlaConfig |> withDefaultMounts
 
     let buildOutDir = config |> AVal.map _.build.outDir |> AVal.force
 
@@ -515,7 +601,9 @@ module Handlers =
       |> AVal.map2 ImportMaps.cleanupLocalPaths (config |> AVal.map _.paths)
       |> AVal.force
 
-    let externals = ImportMaps.getExternalsFromPaths(config |> AVal.map _.paths)
+    let externals = ImportMaps.getExternals map
+
+    container.Logger.LogInformation("Externals {externals}", externals)
 
     let cssPaths, jsBundleEntrypoints, jsStandalonePaths =
       Build.EntryPoints document
@@ -583,23 +671,26 @@ module Handlers =
     let! cancellationToken = CancellableTask.getCancellationToken()
 
     let configA =
-      container.Configuration.PerlaConfig
-      |> AVal.map(fun config -> {
-        config with
-            devServer = {
-              config.devServer with
-                  port = defaultArg options.port config.devServer.port
-                  host = defaultArg options.host config.devServer.host
-                  useSSL = defaultArg options.ssl config.devServer.useSSL
-            }
-            esbuild.minify = false
-      })
-      |> withNodeModules
+      adaptive {
+        let! config = container.Configuration.PerlaConfig
+
+        return {
+          config with
+              devServer = {
+                config.devServer with
+                    port = defaultArg options.port config.devServer.port
+                    host = defaultArg options.host config.devServer.host
+                    useSSL = defaultArg options.ssl config.devServer.useSSL
+              }
+              esbuild.minify = false
+        }
+      }
+      |> withDefaultMounts
 
     let config = configA |> AVal.force
     let fableConfig = config.fable
 
-    let mutable isFableFirstRunDone = fableConfig.IsSome && false
+    let fableFirstRunTcs = TaskCompletionSource()
 
     match fableConfig with
     | Some config ->
@@ -607,19 +698,20 @@ module Handlers =
         "Fable configuration found. Running Fable service."
 
       let work = asyncEx {
-        let events = container.FableService.Monitor config
+        let! token = Async.CancellationToken
+        let events = container.FableService.Monitor(config, token)
 
         for event in events do
           match event with
           | FableEvent.Log _ -> ()
           | FableEvent.ErrLog _ -> ()
           | FableEvent.WaitingForChanges ->
-            if not isFableFirstRunDone then
-              isFableFirstRunDone <- true
+            if not fableFirstRunTcs.Task.IsCompleted then
+              fableFirstRunTcs.TrySetResult() |> ignore
               container.Logger.LogInformation "Fable service is ready."
             else
               container.Logger.LogInformation
-                "Fable service waiting for changes."
+                "Fable service is waiting for changes."
       }
 
       Async.Start(work, cancellationToken)
@@ -627,11 +719,10 @@ module Handlers =
       container.Logger.LogWarning
         "Fable configuration not found. Skipping Fable service."
 
-      isFableFirstRunDone <- true
+      fableFirstRunTcs.TrySetResult() |> ignore
 
-    while not cancellationToken.IsCancellationRequested
-          && not isFableFirstRunDone do
-      do! Async.Sleep(TimeSpan.FromMilliseconds(100.))
+    // Wait for either the Fable first run to complete or cancellation
+    do! fableFirstRunTcs.Task
 
     if cancellationToken.IsCancellationRequested then
       container.Logger.LogInformation(

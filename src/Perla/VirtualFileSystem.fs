@@ -459,7 +459,11 @@ module VirtualFs =
       let mimeType = getMimeType filename
       let targetPath = transformSourcePath systemPath userPath serverPath
 
-      if sourcePath.Contains("node_modules") then
+      // Treat fable_modules like node_modules: static, do not process
+      if
+        sourcePath.Contains("node_modules")
+        || sourcePath.Contains("fable_modules")
+      then
         do! processNodeModulesFile deps systemPath targetPath filename extension
       else
         deps.logger.LogDebug(
@@ -494,9 +498,10 @@ module VirtualFs =
       )
 
       let isNodeModules = (UMX.untag event.path).Contains("node_modules")
+      let isFableModules = (UMX.untag event.path).Contains("fable_modules")
 
-      if isNodeModules then
-        // We do not watch or process node_modules file changes
+      // Do not watch or process file changes in node_modules or fable_modules
+      if isNodeModules || isFableModules then
         ()
       else
         match event.changeType with
@@ -611,7 +616,8 @@ module VirtualFs =
             watcher.Deleted
           |> Observable.filter(fun e ->
             not(shouldIgnoreFile e.FullPath)
-            && not(e.FullPath.Contains("node_modules")))
+            && not(e.FullPath.Contains("node_modules"))
+            && not(e.FullPath.Contains("fable_modules")))
           |> Observable.map(fun (e: FileSystemEventArgs) ->
             let systemPath = UMX.tag<SystemPath> e.FullPath
 
@@ -645,7 +651,8 @@ module VirtualFs =
           watcher.Renamed
           |> Observable.filter(fun e ->
             not(shouldIgnoreFile e.FullPath)
-            && not(e.FullPath.Contains("node_modules")))
+            && not(e.FullPath.Contains("node_modules"))
+            && not(e.FullPath.Contains("fable_modules")))
           |> Observable.map(fun (e: RenamedEventArgs) ->
             let systemPath = UMX.tag<SystemPath> e.FullPath
             let relativeUserPath = Path.GetRelativePath(fullPath, e.FullPath)
@@ -735,11 +742,12 @@ module VirtualFs =
         args.Logger.LogTrace("File not found {Url}", UMX.untag u)
         None
 
-    args.Logger.LogDebug("Creating new Virtual File System instance")
-
     { new VirtualFileSystem with
         member _.Resolve(url: string<ServerUrl>) =
-          if (UMX.untag url).Contains("node_modules") then
+          if
+            (UMX.untag url).Contains("node_modules")
+            || (UMX.untag url).Contains("fable_modules")
+          then
             match url with
             | Found nodeModulesFiles entry ->
               match entry.kind with
@@ -826,7 +834,10 @@ module VirtualFs =
             | TextFile content ->
               let fileSource = UMX.untag content.source
 
-              if fileSource.Contains("node_modules") then
+              if
+                fileSource.Contains("node_modules")
+                || fileSource.Contains("fable_modules")
+              then
                 File.Copy(fileSource, targetPath, true)
               else
                 File.WriteAllText(targetPath, content.content)

@@ -382,23 +382,16 @@ module BuildService =
             config.plugins |> List.contains Constants.PerlaEsbuildPluginName
 
           if isEsbuildPluginPresent then
-            if config.useLocalPkgs then
-              args.Logger.LogDebug(
-                "Copying all files from esbuild output to outDir (esbuild present, useLocalPkgs true)"
-              )
+            args.Logger.LogDebug(
+              "Copying all files from esbuild output to outDir (esbuild present)"
+            )
 
-              args.Logger.LogDebug("{from} -> {to}", esbuildOutputPath, outDir)
+            args.Logger.LogDebug("{from} -> {to}", esbuildOutputPath, outDir)
 
-              args.FsManager.CopyFiles(
-                DirectoryInfo(UMX.untag esbuildOutputPath),
-                UMX.tag outDir
-              )
-            else
-              args.Logger.LogDebug(
-                "esbuild present, useLocalPkgs false: skipping full esbuild output copy (only globs will be copied)"
-              )
-
-              () // Only CopyGlobs below
+            args.FsManager.CopyFiles(
+              DirectoryInfo(UMX.untag esbuildOutputPath),
+              UMX.tag outDir
+            )
           else
             args.Logger.LogDebug(
               "Copying all files from tempDir to outDir (esbuild not present)"
@@ -470,6 +463,9 @@ module BuildService =
 
             let outPath =
               Path.Combine(UMX.untag config.build.outDir, "index.html")
+
+            // Ensure the output directory exists before writing
+            Directory.CreateDirectory(UMX.untag config.build.outDir) |> ignore
 
             do! File.WriteAllTextAsync(outPath, indexContent, token)
           }

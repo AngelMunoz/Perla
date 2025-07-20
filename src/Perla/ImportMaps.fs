@@ -195,21 +195,11 @@ module ImportMaps =
       with_transform transform
     }
 
-  let getExternalsFromPaths
-    (map: Map<string<BareImport>, string<ResolutionUrl>> aval)
-    =
+  /// Extracts all external import specifiers from an ImportMap (from both imports and scopes)
+  let getExternals(importMap: ImportMap) =
+    let importKeys = importMap.imports |> Map.toSeq |> Seq.map fst
 
+    let scopeKeys =
+      importMap.scopes |> Map.values |> Seq.collect(Map.toSeq >> Seq.map fst)
 
-    map
-    |> AVal.map(fun map -> [
-      for KeyValue(k, v) in map do
-        if
-          not(isRelativePath(UMX.untag v))
-          || System.Uri.IsWellFormedUriString(
-            UMX.untag v,
-            System.UriKind.Absolute
-          )
-        then
-          k
-    ])
-    |> AVal.force
+    Seq.append importKeys scopeKeys |> Seq.distinct |> Seq.toList

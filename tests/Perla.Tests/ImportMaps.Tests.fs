@@ -78,72 +78,39 @@ let ``replaceImports: import x from '/components/other.js'``() =
   Assert.Equal(expected, actual)
 
 [<Fact>]
-let ``getExternalsFromPaths: should extract external imports``() =
-  // Setup a map with both local and external paths
-  let pathsMap =
-    [
-      (UMX.tag<Units.BareImport> "react",
-       UMX.tag<Units.ResolutionUrl> "https://esm.sh/react")
-      (UMX.tag<Units.BareImport> "lodash",
-       UMX.tag<Units.ResolutionUrl> "https://cdn.skypack.dev/lodash")
-      (UMX.tag<Units.BareImport> "local-lib",
-       UMX.tag<Units.ResolutionUrl> "./local/path/lib.js")
-      (UMX.tag<Units.BareImport> "local-lib2",
-       UMX.tag<Units.ResolutionUrl> "local/path/lib2.js")
-      (UMX.tag<Units.BareImport> "rooted-path",
-       UMX.tag<Units.ResolutionUrl> "/local/path/lib2.js")
-    ]
-    |> Map.ofList
+let ``getExternals: should extract all externals from ImportMap imports and scopes``
+  ()
+  =
+  let importMap = {
+    Perla.PkgManager.ImportMap.imports =
+      [
+        "@preact/signals",
+        "https://ga.jspm.io/npm:@preact/signals@2.2.1/dist/signals.module.js"
+        "@preact/signals-core",
+        "https://ga.jspm.io/npm:@preact/signals-core@1.11.0/dist/signals-core.module.js"
+      ]
+      |> Map.ofList
+    Perla.PkgManager.ImportMap.scopes =
+      [
+        "https://ga.jspm.io/",
+        [
+          "preact",
+          "https://ga.jspm.io/npm:preact@10.26.9/dist/preact.module.js"
+          "preact/hooks",
+          "https://ga.jspm.io/npm:preact@10.26.9/hooks/dist/hooks.module.js"
+        ]
+        |> Map.ofList
+      ]
+      |> Map.ofList
+    Perla.PkgManager.ImportMap.integrity = Map.empty
+  }
 
-  // Create an adaptive value from the map
-  let pathsAVal = FSharp.Data.Adaptive.cval pathsMap
-
-  // Call the function under test
-  let result = ImportMaps.getExternalsFromPaths pathsAVal
-
-  // Assert that only external paths (not local/relative) are extracted
-  Assert.Equal(3, result.Length)
-  Assert.Contains(UMX.tag<Units.BareImport> "react", result)
-  Assert.Contains(UMX.tag<Units.BareImport> "lodash", result)
-  Assert.Contains(UMX.tag<Units.BareImport> "rooted-path", result)
-  Assert.DoesNotContain(UMX.tag<Units.BareImport> "local-lib", result)
-  Assert.DoesNotContain(UMX.tag<Units.BareImport> "local-lib2", result)
-
-[<Fact>]
-let ``getExternalsFromPaths: should handle empty map``() =
-  // Setup an empty map
-  let emptyMap =
-    Map.empty<string<Units.BareImport>, string<Units.ResolutionUrl>>
-
-  // Create an adaptive value from the empty map
-  let emptyAVal = FSharp.Data.Adaptive.cval emptyMap
-
-  // Call the function under test
-  let result = ImportMaps.getExternalsFromPaths emptyAVal
-
-  // Assert that the result is an empty list
-  Assert.Empty(result)
-
-[<Fact>]
-let ``getExternalsFromPaths: should handle map with only local imports``() =
-  // Setup a map with only local paths
-  let localPathsMap =
-    [
-      (UMX.tag<Units.BareImport> "ui-components",
-       UMX.tag<Units.ResolutionUrl> "./components/ui.js")
-      (UMX.tag<Units.BareImport> "local-utils",
-       UMX.tag<Units.ResolutionUrl> "./utils/index.js")
-    ]
-    |> Map.ofList
-
-  // Create an adaptive value from the map
-  let localPathsAVal = FSharp.Data.Adaptive.cval localPathsMap
-
-  // Call the function under test
-  let result = ImportMaps.getExternalsFromPaths localPathsAVal
-
-  // Assert that no paths are extracted since all paths are local/relative
-  Assert.Empty(result)
+  let result = ImportMaps.getExternals importMap
+  Assert.Equal(4, result.Length)
+  Assert.Contains("@preact/signals", result)
+  Assert.Contains("@preact/signals-core", result)
+  Assert.Contains("preact", result)
+  Assert.Contains("preact/hooks", result)
 
 [<Fact>]
 let ``replaceImports: import('/components/dyn.js')``() =
