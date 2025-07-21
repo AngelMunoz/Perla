@@ -595,15 +595,16 @@ module Handlers =
     let document =
       (browserCtx.GetService<IHtmlParser>() |> nonNull).ParseDocument index
 
-    let map =
-      container.FsManager.ResolveImportMap
-      |> ImportMaps.withPathsA config
-      |> AVal.map2 ImportMaps.cleanupLocalPaths (config |> AVal.map _.paths)
-      |> AVal.force
+    let importMapA =
+      container.FsManager.ResolveImportMap |> ImportMaps.withPathsA config
 
-    let externals = ImportMaps.getExternals map
+    let resolutionA = ImportMaps.resolveForBuildA config importMapA
 
-    container.Logger.LogInformation("Externals {externals}", externals)
+    let {
+          importMap = map
+          externals = externals
+        } =
+      resolutionA |> AVal.force
 
     let cssPaths, jsBundleEntrypoints, jsStandalonePaths =
       Build.EntryPoints document

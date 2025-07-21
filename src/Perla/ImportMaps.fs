@@ -3,12 +3,20 @@ namespace Perla
 open System.Text.RegularExpressions
 open FSharp.UMX
 open FSharp.Data.Adaptive
+open Perla
 open Perla.Types
 open Perla.Units
 open Perla.PkgManager
 open Perla.Plugins.Plugin
 
+/// Result type for resolved import map and externals
+type ImportMapResolution = {
+  importMap: ImportMap
+  externals: string list
+}
+
 module ImportMaps =
+  open System
   // Checks if a path is a relative path (starts with ./ or ../ or similar patterns)
   let isRelativePath(path: string) =
     // Normalize separators to forward slashes for consistency
@@ -44,22 +52,35 @@ module ImportMaps =
       config
       map
 
+  // Private helper: determines if a value is local (covered by a mount)
+  let private isLocalImport
+    (mounts: Map<string<ServerUrl>, string<UserPath>>)
+    (v: string)
+    =
+    if v.StartsWith("http://") || v.StartsWith("https://") then
+      false
+    elif v.StartsWith("/") then
+      mounts
+      |> Map.keys
+      |> Seq.exists(fun mount -> v.StartsWith(UMX.untag mount))
+    elif v.StartsWith("./") then
+      let normalized = "/" + v.Substring(2)
+
+      mounts
+      |> Map.keys
+      |> Seq.exists(fun mount -> normalized.StartsWith(UMX.untag mount))
+    else
+      false
+
   let cleanupLocalPaths
-    (paths: Map<string<BareImport>, string<ResolutionUrl>>)
+    (mounts: Map<string<ServerUrl>, string<UserPath>>)
     (importMap: ImportMap)
     : ImportMap =
     {
       importMap with
           imports =
-            paths
-            |> Map.fold
-              (fun acc k v ->
-                if isRelativePath(UMX.untag v) then
-                  acc
-                else
-
-                Map.add (UMX.untag k) (UMX.untag v) acc)
-              importMap.imports
+            importMap.imports
+            |> Map.filter(fun _k v -> not(isLocalImport mounts v))
     }
 
   /// Replaces module names in import statements using the provided paths map.
@@ -203,3 +224,70 @@ module ImportMaps =
       importMap.scopes |> Map.values |> Seq.collect(Map.toSeq >> Seq.map fst)
 
     Seq.append importKeys scopeKeys |> Seq.distinct |> Seq.toList
+
+  /// Adaptive function to resolve the import map and externals for the build process
+  /// - configA: PerlaConfig aval
+  /// - importMapA: ImportMap aval
+  /// - esbuildPresentA: aval<bool>
+  /// Returns: aval<ImportMapResolution>
+  let resolveForBuildA
+    (configA: PerlaConfig aval)
+    (importMapA: ImportMap aval)
+    : aval<ImportMapResolution> =
+    adaptive {
+      let! config = configA
+      let! importMap = importMapA
+
+      let esbuildPresent =
+        config.plugins
+        |> List.exists(fun p ->
+          p.Equals(
+            Constants.PerlaEsbuildPluginName,
+            StringComparison.InvariantCultureIgnoreCase
+          ))
+
+      // Helper: is a value an external URL
+      let isExternal(v: string) =
+        v.StartsWith("http://") || v.StartsWith("https://")
+
+      // Clean up local paths from the import map (convert to relative if needed)
+      let cleanedImportMap = cleanupLocalPaths config.mountDirectories importMap
+
+      // Get all externals (bare specifiers) from the cleaned import map
+      let allExternals = getExternals cleanedImportMap
+
+      // Determine which externals to keep based on config and esbuild presence
+      let externals =
+        if not esbuildPresent then
+          []
+        elif config.useLocalPkgs then
+          allExternals
+          |> List.filter(fun spec ->
+            cleanedImportMap.imports
+            |> Map.tryFind spec
+            |> Option.exists(fun v ->
+              not(isLocalImport config.mountDirectories v)))
+        else
+          allExternals
+          |> List.filter(fun spec ->
+            cleanedImportMap.imports
+            |> Map.tryFind spec
+            |> Option.exists isExternal)
+
+      // The import map should always have local paths cleaned up
+      // (already done above)
+      // If there are no imports left, also clear scopes
+      let finalImportMap =
+        if Map.isEmpty cleanedImportMap.imports then
+          {
+            cleanedImportMap with
+                scopes = Map.empty
+          }
+        else
+          cleanedImportMap
+
+      return {
+        importMap = finalImportMap
+        externals = externals
+      }
+    }
