@@ -600,72 +600,100 @@ module Handlers =
 
     let resolutionA = ImportMaps.resolveForBuildA config importMapA
 
+    let missing =
+      adaptive {
+        let! config = config
+        let! map = importMapA
+        return Build.getMissingLocalDependencies config map
+      }
+      |> AVal.force
+
     let {
           importMap = map
           externals = externals
         } =
       resolutionA |> AVal.force
 
-    let cssPaths, jsBundleEntrypoints, jsStandalonePaths =
-      Build.EntryPoints document
+    // Pre-build check for missing local dependencies
+    if (config |> AVal.force).useLocalPkgs && missing.Length > 0 then
+      container.Logger.LogError(
+        "We've found undeclared dependencies: {pkgs}.",
+        String.concat ", " missing
+      )
 
-    // Step 9: Run esbuild or move/copy output
-    let! esbuildOutput =
-      container.BuildService.RunEsbuild(
+      container.Logger.LogError
+        "Your project is currently implicitly using these undeclared dependencies, to proceed with the build add them to your dependencies."
+
+      container.Logger.LogError(
+        "{cmd}",
+        "perla add " + String.concat " " missing
+      )
+
+      return 1
+    else
+      let cssPaths, jsBundleEntrypoints, jsStandalonePaths =
+        Build.EntryPoints document
+
+      // Step 9: Run esbuild or move/copy output
+      let! esbuildOutput =
+        container.BuildService.RunEsbuild(
+          config,
+          tempDir,
+          cssPaths,
+          jsBundleEntrypoints,
+          externals |> Seq.map UMX.untag |> Seq.toList
+        )
+
+      container.BuildService.MoveOrCopyOutput(
         config,
         tempDir,
-        cssPaths,
-        jsBundleEntrypoints,
-        externals |> Seq.map UMX.untag |> Seq.toList
+        esbuildOutput.outputDir
       )
 
-    container.BuildService.MoveOrCopyOutput(
-      config,
-      tempDir,
-      esbuildOutput.outputDir
-    )
+      // Step 10: Write index.html
+      let jsPaths = seq {
+        yield! jsStandalonePaths
+        yield! jsBundleEntrypoints
+      }
 
-    // Step 10: Write index.html
-    let jsPaths = seq {
-      yield! jsStandalonePaths
-      yield! jsBundleEntrypoints
-    }
+      do!
+        container.BuildService.WriteIndex(
+          config,
+          document,
+          map,
+          jsPaths,
+          cssPaths,
+          esbuildOutput.cssFiles
+        )
 
-    do!
-      container.BuildService.WriteIndex(
-        config,
-        document,
-        map,
-        jsPaths,
-        cssPaths,
-        esbuildOutput.cssFiles
-      )
+      // // cleanup temporary directory
+      try
+        Directory.Delete(UMX.untag ".tmp/perla", true) |> ignore
+      with ex ->
+        container.Logger.LogWarning(
+          "Failed to delete temporary directory {dir}: {error}",
+          UMX.untag ".tmp/perla",
+          ex.Message
+        )
 
-    // // cleanup temporary directory
-    try
-      Directory.Delete(UMX.untag ".tmp/perla", true) |> ignore
-    with ex ->
-      container.Logger.LogWarning(
-        "Failed to delete temporary directory {dir}: {error}",
-        UMX.untag ".tmp/perla",
-        ex.Message
-      )
+      // Step 11: Start preview server if requested
+      if options.enablePreview then
+        container.Logger.LogInformation
+          "Starting a preview server for the build"
 
-    // Step 11: Start preview server if requested
-    if options.enablePreview then
-      container.Logger.LogInformation "Starting a preview server for the build"
+        SuaveServer.startStaticServer
+          {
+            Logger = container.Logger
+            VirtualFileSystem = container.VirtualFileSystem
+            Config = config
+            FsManager = container.FsManager
+            FileChangedEvents = container.VirtualFileSystem.FileChanges
+          }
+          token
 
-      SuaveServer.startStaticServer
-        {
-          Logger = container.Logger
-          VirtualFileSystem = container.VirtualFileSystem
-          Config = config
-          FsManager = container.FsManager
-          FileChangedEvents = container.VirtualFileSystem.FileChanges
-        }
-        token
-
-    return 0
+        return 0
+      else
+        return 0
   }
 
   let runServe (container: AppContainer) (options: ServeOptions) = cancellableTask {
@@ -1031,7 +1059,10 @@ module Handlers =
         "Generating Import Map...",
         pkgManager.Install(
           installSet,
-          [ DefaultProvider provider ],
+          [
+            DefaultProvider provider
+            Env(set [ ExportCondition.Browser; ExportCondition.Module ])
+          ],
           cancellationToken = token
         )
       )
@@ -1064,7 +1095,7 @@ module Handlers =
           "Downloading Sources...",
           pkgManager.GoOffline(
             installResponse.map,
-            [ Provider config.provider ],
+            [ Provider config.provider; Exclude(set [ Unused ]) ],
             token
           )
         )
@@ -1165,7 +1196,10 @@ module Handlers =
           "Regenerating import map with remaining packages...",
           container.PkgManager.Install(
             remainingPackages,
-            [ DefaultProvider provider ],
+            [
+              DefaultProvider provider
+              Env(set [ ExportCondition.Browser; ExportCondition.Module ])
+            ],
             token
           )
         )
@@ -1184,7 +1218,7 @@ module Handlers =
             "Consolidating local packages...",
             container.PkgManager.GoOffline(
               newMapResponse.map,
-              [ Provider config.provider ],
+              [ Provider config.provider; Exclude(set [ Unused ]) ],
               token
             )
           )

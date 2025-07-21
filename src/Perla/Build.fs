@@ -228,6 +228,85 @@ module Build =
 
     cssFiles, jsFiles
 
+  /// Checks for missing local dependencies referenced in the import map (from both imports and scopes).
+  /// Returns a list of missing package@version strings.
+  let getMissingLocalDependencies
+    (config: PerlaConfig)
+    (importMap: Perla.PkgManager.ImportMap)
+    : string list =
+    if not config.useLocalPkgs then
+      []
+    else
+      let tryExtractPkgVer(path: string) =
+        let marker = "/node_modules/.perla/"
+        let idx = path.IndexOf(marker)
+
+        if idx >= 0 then
+          let rest = path.Substring(idx + marker.Length)
+
+          let parts =
+            rest.Split([| '/' |], System.StringSplitOptions.RemoveEmptyEntries)
+
+          if parts.Length = 0 then
+            None
+          elif parts.[0].StartsWith("@") && parts.Length >= 2 then
+            // Scoped package: join first two segments
+            Some(parts.[0] + "/" + parts.[1])
+          else
+            // Unscoped package: just the first segment
+            Some(parts.[0])
+        else
+          None
+
+      let allPkgVers =
+        importMap.imports.Values
+        |> Seq.append(
+          importMap.scopes |> Seq.collect(fun kv -> kv.Value.Values)
+        )
+        |> Seq.choose tryExtractPkgVer
+        |> Seq.distinct
+        |> Seq.toList
+
+      let cwd = System.IO.Directory.GetCurrentDirectory()
+
+      let getTopLevelNodeModulesPath (cwd: string) (pkgVer: string) =
+        if pkgVer.StartsWith("@") then
+          // Scoped: @scope/name@version
+          let atIdx = pkgVer.IndexOf("@", 1) // skip first char
+
+          if atIdx > 0 then
+            let scope = pkgVer.Substring(0, atIdx)
+            let nameAndVersion = pkgVer.Substring(atIdx + 1)
+            let nameEndIdx = nameAndVersion.IndexOf("@")
+
+            if nameEndIdx > 0 then
+              let name = nameAndVersion.Substring(0, nameEndIdx)
+              System.IO.Path.Combine(cwd, "node_modules", scope, name)
+            else
+              System.IO.Path.Combine(cwd, "node_modules", scope)
+          else
+            System.IO.Path.Combine(cwd, "node_modules", pkgVer)
+        else
+          // Unscoped: name@version
+          let nameEndIdx = pkgVer.IndexOf("@")
+
+          let name =
+            if nameEndIdx > 0 then
+              pkgVer.Substring(0, nameEndIdx)
+            else
+              pkgVer
+
+          System.IO.Path.Combine(cwd, "node_modules", name)
+
+      allPkgVers
+      |> List.filter(fun pkgVer ->
+        let topLevelPath = getTopLevelNodeModulesPath cwd pkgVer
+
+        not(
+          System.IO.Directory.Exists(topLevelPath)
+          || System.IO.File.Exists(topLevelPath)
+        ))
+
 module BuildService =
   let Create(args: BuildServiceArgs) : BuildService =
     { new BuildService with

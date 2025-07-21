@@ -16,6 +16,11 @@ type BuildOptions = { enablePreview: bool }
 
 [<RequireQualifiedAccess>]
 module Build =
+  /// Checks for missing local dependencies referenced in the import map (from both imports and scopes).
+  /// Returns a list of missing package@version strings.
+  val getMissingLocalDependencies:
+    config: PerlaConfig -> importMap: Perla.PkgManager.ImportMap -> string list
+
   val EnsureBody: IHtmlDocument -> AngleSharp.Dom.IElement
   val EnsureHead: IHtmlDocument -> AngleSharp.Dom.IElement
 
