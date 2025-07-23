@@ -4,7 +4,9 @@ import { App } from "./App.js";
 
 import { setBasePath } from "@shoelace-style/shoelace/dist/utilities/base-path.js";
 
-setBasePath("https://ga.jspm.io/npm:@shoelace-style/shoelace@2.20.1/dist/");
+setBasePath(
+  "https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/"
+);
 
 async function main() {
   await Promise.allSettled([import("@shoelace-style/shoelace")]).then((args) =>

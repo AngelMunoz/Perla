@@ -19,6 +19,7 @@
   "dependencies": {
     "@preact/signals": "2.2.1",
     "@preact/signals-core": "1.11.0",
+    "@preact/signals/utils": "2.2.1",
     "@shoelace-style/shoelace": "2.20.1",
     "@shoelace-style/shoelace/dist/utilities/base-path.js": "2.20.1",
     "composed-offset-position": "0.0.6",

@@ -2,8 +2,11 @@ import Navigo from "navigo";
 
 import { signal } from "@preact/signals";
 
-export const Page: import("@preact/signals").Signal<Page> =
-  signal<Page>("Home");
+export const Page: import("@preact/signals").Signal<
+  [Page, `v${number}`, string | undefined, string | undefined]
+> = signal<
+  [Page, `v${number}` | undefined, string | undefined, string | undefined]
+>(["Home"]);
 
 export const Router =
   //@ts-expect-error
@@ -29,7 +32,7 @@ Router.on("", () => (Page.value = ["Home"]))
     Page.value = ["Content", data.version ?? "v1", data.section, data.filename];
   })
   .on(
-    ":version/docs/:section/:filename",
+    "/:version/docs/:section/:filename",
     ({ data }: { data?: MarkdownContentProps }) => {
       if (!data?.filename) return;
       Page.value = ["Docs", data?.version ?? "v1", data.section, data.filename];
@@ -43,7 +46,7 @@ Router.on("", () => (Page.value = ["Home"]))
     Page.value = ["Blogs"];
   })
   .notFound(() => {
-    Page.value = ["Blogs", "v1", undefined, "not-found"];
+    Page.value = ["Blogs", , , "not-found"];
   });
 
 Router.resolve();

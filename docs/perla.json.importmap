@@ -2,6 +2,7 @@
   "imports": {
     "@preact/signals": "/node_modules/@preact/signals/dist/signals.module.js",
     "@preact/signals-core": "/node_modules/@preact/signals-core/dist/signals-core.module.js",
+    "@preact/signals/utils": "/node_modules/@preact/signals/utils/dist/utils.module.js",
     "@shoelace-style/shoelace": "/node_modules/@shoelace-style/shoelace/dist/shoelace.js",
     "@shoelace-style/shoelace/dist/utilities/base-path.js": "/node_modules/@shoelace-style/shoelace/dist/utilities/base-path.js",
     "composed-offset-position": "/node_modules/composed-offset-position/dist/composed-offset-position.browser.min.mjs",

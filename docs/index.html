@@ -8,34 +8,25 @@
     <link
       rel="stylesheet"
       media="(prefers-color-scheme:light)"
-      href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.0.0-beta.85/dist/themes/light.css"
+      href="https://ga.jspm.io/npm:@shoelace-style/shoelace@2.20.1/dist/themes/light.css"
     />
     <link
       rel="stylesheet"
       media="(prefers-color-scheme:dark)"
-      href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.0.0-beta.85/dist/themes/dark.css"
+      href="https://ga.jspm.io/npm:@shoelace-style/shoelace@2.20.1/dist/themes/dark.css"
       onload="document.documentElement.classList.add('sl-theme-dark');"
     />
     <link
       rel="stylesheet"
-      media="(prefers-color-scheme:light)"
-      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/styles/atom-one-light.min.css"
-      integrity="sha512-o5v54Kh5PH0dgnf9ei0L+vMRsbm5fvIvnR/XkrZZjN4mqdaeH7PW66tumBoQVIaKNVrLCZiBEfHzRY4JJSMK/Q=="
-      crossorigin="anonymous"
-      referrerpolicy="no-referrer"
-    />
-    <link
-      rel="stylesheet"
       media="(prefers-color-scheme:dark)"
-      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/styles/atom-one-dark.min.css"
-      integrity="sha512-Jk4AqjWsdSzSWCSuQTfYRIF84Rq/eV0G2+tu07byYwHcbTGfdmLrHjUSwvzp5HvbiqK4ibmNwdcG49Y5RGYPTg=="
+      href="https://ga.jspm.io/npm:highlight.js@11.11.1/styles/atom-one-dark.min.css"
       crossorigin="anonymous"
       referrerpolicy="no-referrer"
     />
 
     <script
       async
-      src="https://ga.jspm.io/npm:es-module-shims@1.6.2/dist/es-module-shims.js"
+      src="https://ga.jspm.io/npm:es-module-shims@2.6.1/dist/es-module-shims.js"
       crossorigin="anonymous"
     ></script>
   </head>
@@ -46,7 +37,7 @@
         // Use the window load event to keep the page load performant
         window.addEventListener("load", () => {
           navigator.serviceWorker
-            .register("/sw.js")
+            .register("/sw.js", { type: "module" })
             .catch(console.warn)
             .then(console.log);
         });

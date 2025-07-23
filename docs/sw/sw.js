@@ -1,9 +1,8 @@
-importScripts(
-  "https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js"
-);
+import { registerRoute } from "https://esm.sh/workbox-routing@7.3.0";
+import { StaleWhileRevalidate, CacheFirst } from "https://esm.sh/workbox-strategies@7.3.0";
+import { setCacheNameDetails } from "https://esm.sh/workbox-core@7.3.0";
 
-workbox.setConfig({ debug: true });
-const { strategies, routing } = workbox;
+// Helper functions
 const pathEndsWith = (url, ext) => url?.pathname?.endsWith(ext);
 const hostContains = (url, ext) => url?.host?.includes(ext);
 const isGet = (request) => request.method === "GET";
@@ -12,16 +11,34 @@ const isIndex = (url) =>
   url?.pathname === "" ||
   url?.pathname.endsWith("index.html");
 
-routing.registerRoute(({ event, request, url }) => {
-  return isGet(request) && request.destination === "image";
-}, new strategies.CacheFirst({ cacheName: "images" }));
+// Set cache name details (optional)
+setCacheNameDetails({
+  prefix: "perla",
+  suffix: "v1",
+  precache: "precache",
+  runtime: "runtime",
+});
 
-routing.registerRoute(({ event, request, url }) => {
-  return isGet(request) ** !isIndex(url) && pathEndsWith(url, ".html");
-}, new strategies.StaleWhileRevalidate({ cacheName: "markdown" }));
+// Cache images with CacheFirst strategy
+registerRoute(
+  ({ request, url }) => isGet(request) && request.destination === "image",
+  new CacheFirst({
+    cacheName: "images",
+  })
+);
 
-routing.registerRoute(
-  ({ event, request, url }) =>
+// Cache HTML files with StaleWhileRevalidate strategy
+registerRoute(
+  ({ request, url }) =>
+    isGet(request) && !isIndex(url) && pathEndsWith(url, ".html"),
+  new StaleWhileRevalidate({
+    cacheName: "markdown",
+  })
+);
+
+// Cache local scripts with StaleWhileRevalidate strategy
+registerRoute(
+  ({ request, url }) =>
     isGet(request) &&
     request.destination === "script" &&
     !url?.pathname.includes("~perla~") &&
@@ -30,22 +47,29 @@ routing.registerRoute(
       hostContains(url, "cdn.jsdelivr.net") ||
       hostContains(url, "ga.jspm.io")
     ),
-  new strategies.StaleWhileRevalidate({ cacheName: "scripts" })
+  new StaleWhileRevalidate({
+    cacheName: "scripts",
+  })
 );
 
-routing.registerRoute(
-  ({ event, request, url }) =>
+// Cache CDN scripts with CacheFirst strategy
+registerRoute(
+  ({ request, url }) =>
     isGet(request) &&
     request.destination === "script" &&
     !url?.pathname.includes("~perla~") &&
     (hostContains(url, "cdn.skypack.dev") ||
       hostContains(url, "cdn.jsdelivr.net") ||
       hostContains(url, "ga.jspm.io")),
-  new strategies.CacheFirst({ cacheName: "cdn-cache" })
+  new CacheFirst({
+    cacheName: "cdn-cache",
+  })
 );
 
-routing.registerRoute(
-  ({ event, request, url }) =>
-    isGet(request) && request.destination === "style",
-  new strategies.StaleWhileRevalidate({ cacheName: "styles" })
+// Cache styles with StaleWhileRevalidate strategy
+registerRoute(
+  ({ request }) => isGet(request) && request.destination === "style",
+  new StaleWhileRevalidate({
+    cacheName: "styles",
+  })
 );
