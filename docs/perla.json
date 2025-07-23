@@ -17,9 +17,16 @@
     "jsxImportSource": "preact"
   },
   "dependencies": {
+    "@ctrl/tinycolor": "4.1.0",
+    "@floating-ui/core": "1.7.2",
+    "@floating-ui/dom": "1.7.2",
+    "@floating-ui/utils": "0.2.10",
+    "@lit/reactive-element": "2.1.1",
     "@preact/signals": "2.2.1",
     "@preact/signals-core": "1.11.0",
     "@preact/signals/utils": "2.2.1",
+    "@shoelace-style/animations": "1.2.0",
+    "@shoelace-style/localize": "3.2.1",
     "@shoelace-style/shoelace": "2.20.1",
     "@shoelace-style/shoelace/dist/utilities/base-path.js": "2.20.1",
     "composed-offset-position": "0.0.6",

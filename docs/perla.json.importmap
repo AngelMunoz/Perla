@@ -1,8 +1,15 @@
 {
   "imports": {
+    "@ctrl/tinycolor": "/node_modules/@ctrl/tinycolor/dist/module/public_api.js",
+    "@floating-ui/core": "/node_modules/@floating-ui/core/dist/floating-ui.core.mjs",
+    "@floating-ui/dom": "/node_modules/@floating-ui/dom/dist/floating-ui.dom.mjs",
+    "@floating-ui/utils": "/node_modules/@floating-ui/utils/dist/floating-ui.utils.mjs",
+    "@lit/reactive-element": "/node_modules/@lit/reactive-element/reactive-element.js",
     "@preact/signals": "/node_modules/@preact/signals/dist/signals.module.js",
     "@preact/signals-core": "/node_modules/@preact/signals-core/dist/signals-core.module.js",
     "@preact/signals/utils": "/node_modules/@preact/signals/utils/dist/utils.module.js",
+    "@shoelace-style/animations": "/node_modules/@shoelace-style/animations/dist/index.js",
+    "@shoelace-style/localize": "/node_modules/@shoelace-style/localize/dist/index.js",
     "@shoelace-style/shoelace": "/node_modules/@shoelace-style/shoelace/dist/shoelace.js",
     "@shoelace-style/shoelace/dist/utilities/base-path.js": "/node_modules/@shoelace-style/shoelace/dist/utilities/base-path.js",
     "composed-offset-position": "/node_modules/composed-offset-position/dist/composed-offset-position.browser.min.mjs",
@@ -26,15 +33,8 @@
   },
   "scopes": {
     "/node_modules/": {
-      "@ctrl/tinycolor": "/node_modules/.perla/@ctrl/tinycolor@4.1.0/dist/module/public_api.js",
-      "@floating-ui/core": "/node_modules/.perla/@floating-ui/core@1.7.2/dist/floating-ui.core.mjs",
-      "@floating-ui/dom": "/node_modules/.perla/@floating-ui/dom@1.7.2/dist/floating-ui.dom.mjs",
-      "@floating-ui/utils": "/node_modules/.perla/@floating-ui/utils@0.2.10/dist/floating-ui.utils.mjs",
       "@floating-ui/utils/dom": "/node_modules/.perla/@floating-ui/utils@0.2.10/dist/floating-ui.utils.dom.mjs",
-      "@lit/reactive-element": "/node_modules/.perla/@lit/reactive-element@2.1.1/reactive-element.js",
       "@lit/reactive-element/decorators/": "/node_modules/.perla/@lit/reactive-element@2.1.1/decorators/",
-      "@shoelace-style/animations": "/node_modules/.perla/@shoelace-style/animations@1.2.0/dist/index.js",
-      "@shoelace-style/localize": "/node_modules/.perla/@shoelace-style/localize@3.2.1/dist/index.js",
       "lit-element/lit-element.js": "/node_modules/.perla/lit-element@4.2.1/lit-element.js",
       "lit-html/": "/node_modules/.perla/lit-html@3.3.1/",
       "lit/": "/node_modules/.perla/lit@3.3.1/"
