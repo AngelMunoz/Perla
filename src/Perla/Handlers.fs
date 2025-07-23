@@ -1090,15 +1090,33 @@ module Handlers =
     configUpdates.Add packageUpdates
 
     if config.useLocalPkgs then
-      let! result =
-        logger.Spinner(
-          "Downloading Sources...",
-          pkgManager.GoOffline(
-            installResponse.map,
-            [ Provider config.provider; Exclude(set [ Unused ]) ],
-            token
+      let! result = cancellableTask {
+        try
+          return!
+            logger.Spinner(
+              "Downloading Sources...",
+              pkgManager.GoOffline(
+                installResponse.map,
+                [ Provider config.provider; Exclude(set [ Unused ]) ],
+                token
+              )
+            )
+        with ex ->
+          logger.LogWarning(
+            "Failed to download sources: {error}, retrying...",
+            ex.Message
           )
-        )
+
+          return!
+            logger.Spinner(
+              "Downloading Sources...",
+              pkgManager.GoOffline(
+                installResponse.map,
+                [ Provider config.provider ],
+                token
+              )
+            )
+      }
 
       do! container.FsManager.SaveImportMap result
     else
@@ -1213,15 +1231,33 @@ module Handlers =
           "Successfully regenerated import map, calling goOffline"
         )
         // Call goOffline to download local packages
-        let! result =
-          logger.Spinner(
-            "Consolidating local packages...",
-            container.PkgManager.GoOffline(
-              newMapResponse.map,
-              [ Provider config.provider; Exclude(set [ Unused ]) ],
-              token
+        let! result = cancellableTask {
+          try
+            return!
+              logger.Spinner(
+                "Consolidating local packages...",
+                container.PkgManager.GoOffline(
+                  newMapResponse.map,
+                  [ Provider config.provider; Exclude(set [ Unused ]) ],
+                  token
+                )
+              )
+          with ex ->
+            logger.LogWarning(
+              "Failed to download sources: {error}, retrying...",
+              ex.Message
             )
-          )
+
+            return!
+              logger.Spinner(
+                "Consolidating local packages...",
+                container.PkgManager.GoOffline(
+                  newMapResponse.map,
+                  [ Provider config.provider ],
+                  token
+                )
+              )
+        }
 
         logger.LogDebug("goOffline completed successfully")
 

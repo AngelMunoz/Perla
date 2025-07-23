@@ -247,7 +247,7 @@ module PkgManager =
           do! createFlatSymlink logger localCacheDir perlaDir package
         })
 
-      do! Async.Parallel(perPackageTasks, 5) |> Async.Ignore
+      do! Async.Parallel(perPackageTasks, 10) |> Async.Ignore
       return ()
     }
 
@@ -385,16 +385,30 @@ module PkgManager =
       // Scoped: valid if no '/' after '@scope/pkg' or '@scope/pkg@version'
       // e.g. '@babel/core', '@babel/core@1.2.3' are valid
       // '@babel/core/deep', '@babel/core@1.2.3/deep' are not
+      // Exception: allow deep imports that end with .js (e.g. '@babel/core/lib/index.js')
       let parts = key.Split('/')
 
       if parts.Length = 2 then
         // '@scope/pkg' or '@scope/pkg@version'
         true
+      elif parts.Length > 2 && key.EndsWith(".js") then
+        // Deep import that ends with .js - treat as valid specifier
+        true
       else
         false
-    else
-      // Unscoped: valid if no '/' at all
+    else if
+      // Unscoped: For non-scoped packages, allow deep imports that end with .js
+      // This handles cases like 'lit-element/lit-element.js', 'highlight.js/lib/core.js'
       not(key.Contains "/")
+    then
+      // Simple package name
+      true
+    elif key.EndsWith(".js") then
+      // Deep import that ends with .js - treat as valid specifier
+      true
+    else
+      // Deep import that doesn't end with .js - filter out
+      false
 
   // Clean up directories for packages that are no longer in the import map
   let private cleanupRemovedPackages
@@ -581,7 +595,7 @@ module PkgManager =
           pkgNameFromKey = pkgName || importUrl.Contains(k))
 
       // Helper function to convert URL to the local cache path
-      let convertToLocalPath importUrl matchingKey isScoped =
+      let convertToLocalPath (pkgName: string) importUrl matchingKey isScoped =
         match matchingKey with
         | None -> importUrl
         | Some key ->
@@ -604,7 +618,14 @@ module PkgManager =
 
                   Path.Combine(localPrefix, packageName)
 
-              Path.Combine(basePath, filePath).Replace('\\', '/')
+              let path = Path.Combine(basePath, filePath).Replace('\\', '/')
+
+              // If the package name (key in the import map) ends with a slash,
+              // ensure the path also ends with a slash to maintain import map validity
+              if pkgName.EndsWith("/") && not (path.EndsWith("/")) then
+                path + "/"
+              else
+                path
           | false, _ -> importUrl
 
       // Helper function to update a scope map
@@ -619,7 +640,7 @@ module PkgManager =
             importUrl
           )
 
-          let converted = convertToLocalPath importUrl matchingKey true
+          let converted = convertToLocalPath pkgName importUrl matchingKey true
 
           logger.LogDebug(
             "Converted import URL to local path: '{converted}'",
@@ -633,7 +654,7 @@ module PkgManager =
         map.imports
         |> Map.map(fun pkgName importUrl ->
           let matchingKey = findMatchingKey pkgName importUrl
-          convertToLocalPath importUrl matchingKey false)
+          convertToLocalPath pkgName importUrl matchingKey false)
 
       let updatedScopes =
         map.scopes
