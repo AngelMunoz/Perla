@@ -1,26 +1,25 @@
-//@ts-ignore
 import hljs from "highlight.js/lib/core";
-//@ts-ignore
 import javascript from "highlight.js/lib/languages/javascript";
-//@ts-ignore
 import text from "highlight.js/lib/languages/plaintext";
-//@ts-ignore
 import fsharp from "highlight.js/lib/languages/fsharp";
-//@ts-ignore
 import bash from "highlight.js/lib/languages/bash";
-//@ts-ignore
 import json from "highlight.js/lib/languages/json";
-//@ts-ignore
 import xml from "highlight.js/lib/languages/xml";
-//@ts-ignore
 import diff from "highlight.js/lib/languages/diff";
 
+//@ts-ignore
 hljs.registerLanguage("", text);
+//@ts-ignore
 hljs.registerLanguage("javascript", javascript);
+//@ts-ignore
 hljs.registerLanguage("fsharp", fsharp);
+//@ts-ignore
 hljs.registerLanguage("bash", bash);
+//@ts-ignore
 hljs.registerLanguage("json", json);
+//@ts-ignore
 hljs.registerLanguage("html", xml);
+//@ts-ignore
 hljs.registerLanguage("diff", diff);
 
 const parser = new DOMParser();
@@ -34,6 +33,7 @@ export async function fetchDocs(url: string) {
   const elements = parser.parseFromString(response, "text/html");
   elements?.querySelectorAll?.("pre code")?.forEach?.((element) => {
     if (!element) return;
+    //@ts-ignore
     hljs.highlightElement(element);
   });
   return elements.body.innerHTML;

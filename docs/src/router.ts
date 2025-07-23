@@ -1,18 +1,16 @@
-//@ts-ignore
 import Navigo from "navigo";
 
-//@ts-ignore
-import { BehaviorSubject } from "rxjs";
+import { signal } from "@preact/signals";
 
-export const Router = new Navigo("/", {
-  hash: true,
-  linksSelector: "a",
-});
+export const Page: import("@preact/signals").Signal<Page> =
+  signal<Page>("Home");
 
-export const Page: {
-  next(page: Page): void;
-  subscribe(onNext: (page: Page) => void): () => void;
-} = new BehaviorSubject<Page>("Home");
+export const Router =
+  //@ts-expect-error
+  new Navigo("/", {
+    hash: true,
+    linksSelector: "a",
+  });
 
 const setHeaderPosition = ({ params }: Match) => {
   const id = params?.id;
@@ -25,27 +23,27 @@ Router.hooks({
   already: setHeaderPosition,
 });
 
-Router.on("", () => Page.next(["Home"]))
+Router.on("", () => (Page.value = ["Home"]))
   .on("/content/:filename", ({ data }: { data?: MarkdownContentProps }) => {
     if (!data?.filename) return;
-    Page.next(["Content", data.version ?? "v1", data.section, data.filename]);
+    Page.value = ["Content", data.version ?? "v1", data.section, data.filename];
   })
   .on(
     ":version/docs/:section/:filename",
     ({ data }: { data?: MarkdownContentProps }) => {
       if (!data?.filename) return;
-      Page.next(["Docs", data?.version ?? "v1", data.section, data.filename]);
+      Page.value = ["Docs", data?.version ?? "v1", data.section, data.filename];
     }
   )
   .on("blogs/:filename", ({ data }: { data?: MarkdownContentProps }) => {
     if (!data?.filename) return;
-    Page.next(["Blogs", data.version ?? "v1", data.section, data.filename]);
+    Page.value = ["Blogs", data.version ?? "v1", data.section, data.filename];
   })
   .on("blogs", () => {
-    Page.next(["Blogs"]);
+    Page.value = ["Blogs"];
   })
   .notFound(() => {
-    Page.next(["Blogs", "v1", undefined, "not-found"]);
+    Page.value = ["Blogs", "v1", undefined, "not-found"];
   });
 
 Router.resolve();

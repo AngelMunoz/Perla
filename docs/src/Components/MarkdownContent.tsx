@@ -1,7 +1,5 @@
 import "./MarkdownContent.css?js";
-//@ts-ignore
 import { useEffect } from "preact/hooks";
-//@ts-ignore
 import { useSignal } from "@preact/signals";
 import { fetchDocs } from "../highlight.js";
 import { buildUrl } from "../utils.js";
@@ -57,22 +55,21 @@ export function MarkdownContent({
     pageContent = (
       //@ts-ignore
       <article
-        className="markdown-content"
+        class="markdown-content"
         dangerouslySetInnerHTML={{ __html: content.value }}
       ></article>
     );
   } else {
     pageContent = (
-      <article className="markdown-content markdown-error">
+      <article class="markdown-content markdown-error">
         {error.value ? errorContent(error.value) : null}
       </article>
     );
   }
 
   return (
-    //@ts-ignore
-    <section className="markdown-page">
-      <header className="markdown-content__header">
+    <section class="markdown-page">
+      <header class="markdown-content__header">
         <sl-button
           type="text"
           target="_blank"

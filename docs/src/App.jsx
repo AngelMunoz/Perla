@@ -1,6 +1,5 @@
 import "./App.css?js";
-//@ts-ignore
-import { useSignal, signal } from "@preact/signals";
+import { useSignal, signal, computed } from "@preact/signals";
 import { Page } from "./router.js";
 import { Index } from "./Components/Index.js";
 import { Sidenav } from "./Components/Sidenav.js";
@@ -42,14 +41,13 @@ const sidenav = (
  */
 function OffCanvas({ isOpen, onClose }) {
   return (
-    //@ts-ignore
     <sl-drawer
       label="Table of Contents"
       open={isOpen}
       placement="start"
       onsl-after-hide={() => (console.log("dude"), onClose?.())}
     >
-      <div className="off-canvas-sidenav">{sidenav}</div>
+      <div class="off-canvas-sidenav">{sidenav}</div>
       {onClose ? (
         <sl-button slot="footer" variant="primary" onClick={() => onClose()}>
           Close
@@ -67,10 +65,10 @@ function OffCanvas({ isOpen, onClose }) {
 function Navbar({ requestMenu }) {
   return (
     <>
-      <nav className="perla-nav with-box-shadow">
+      <nav class="perla-nav with-box-shadow">
         <section>
           <sl-button
-            className="menu-btn"
+            class="menu-btn"
             variant="text"
             size="large"
             onClick={() => requestMenu?.()}
@@ -81,8 +79,8 @@ function Navbar({ requestMenu }) {
             Perla
           </sl-button>
         </section>
-        <section className="nav-links">
-          <ul className="link-list">
+        <section class="nav-links">
+          <ul class="link-list">
             <li>
               <sl-button href={"/#/content/index"} variant="text">
                 Docs
@@ -118,32 +116,24 @@ function Navbar({ requestMenu }) {
  * @type {{ value: DocsVersion }}
  */
 const version = signal("v1");
-const content = signal(<Index />);
-
-Page.subscribe(
-  /**
-   *
-   * @param {Page} page
-   */
-  ([page, ver, section, pageName]) => {
-    route.value = page;
-    if (page === "Home") {
-      content.value = <Index />;
-    } else if (page === "Blogs") {
-      content.value = <BlogList blogs={Blogs} />;
-    } else {
-      version.value = ver;
-      content.value = (
-        <MarkdownContent
-          version={ver}
-          filename={pageName}
-          section={section}
-          contentKind={page}
-        />
-      );
-    }
+const content = computed(() => {
+  const [page, ver, section, pageName] = Page.value;
+  if (page === "Home") {
+    return <Index />;
+  } else if (page === "Blogs") {
+    return <BlogList blogs={Blogs} />;
+  } else {
+    version.value = ver;
+    return (
+      <MarkdownContent
+        version={ver}
+        filename={pageName}
+        section={section}
+        contentKind={page}
+      />
+    );
   }
-);
+});
 
 function NoticesBanner() {
   return (
@@ -180,9 +170,9 @@ export function App() {
         }}
       />
       <NoticesBanner />
-      <main className={`${route.value}`}>
+      <main class={`${route.value}`}>
         {sidenav}
-        {content.value}
+        {content}
       </main>
       <footer></footer>
     </>

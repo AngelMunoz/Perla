@@ -1,6 +1,6 @@
 function FeatureListItem({ header, content }: FeatureListItemProps) {
   return (
-    <li className="features__feature-list-item card with-box-shadow">
+    <li class="features__feature-list-item card with-box-shadow">
       <h3>{header}</h3>
       <p>{content}</p>
     </li>
@@ -9,8 +9,7 @@ function FeatureListItem({ header, content }: FeatureListItemProps) {
 
 function FeatureList({ features }: FeatureListProps) {
   return (
-    //@ts-ignore
-    <ul className="features__feature-list">
+    <ul class="features__feature-list">
       {features.map((feature) => (
         <FeatureListItem header={feature.header} content={feature.content} />
       ))}
@@ -49,7 +48,7 @@ const rows = [
         <>
           Forget about webpack, npm, and other complex tooling, Perla uses CDNs
           like:
-          <ul className="link-list">
+          <ul class="link-list">
             <li>
               <sl-button
                 type="text"
@@ -97,9 +96,8 @@ const rows = [
 
 export function Index() {
   return (
-    //@ts-ignore
-    <article className="page index-page">
-      <header className="index-header">
+    <article class="page index-page">
+      <header class="index-header">
         <h1>Welcome to Perla!</h1>
         <p>Perla is a take on modern tooling for front-end development.</p>
         <p>
@@ -108,7 +106,7 @@ export function Index() {
         </p>
       </header>
 
-      <section className="action-buttons">
+      <section class="action-buttons">
         <sl-button
           size="large"
           variant="primary"
@@ -127,8 +125,8 @@ export function Index() {
         </sl-button>
       </section>
 
-      <section className="features">
-        <header className="index-header">
+      <section class="features">
+        <header class="index-header">
           <h3>Features</h3>
         </header>
         {rows.map((row) => (

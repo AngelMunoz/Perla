@@ -1,11 +1,12 @@
 {
   "$schema": "../perla.schema.json",
-  "runConfiguration": "development",
+  "schema-version": "2025-07",
   "provider": "jspm",
   "plugins": [
     "perla-esbuild-plugin",
     "markdown-plugin"
   ],
+  "useLocalPkgs": true,
   "mountDirectories": {
     "/": "./sw",
     "/assets": "./assets",
@@ -15,50 +16,28 @@
     "jsxAutomatic": true,
     "jsxImportSource": "preact"
   },
-  "build": {
-    "includes": [
-      "vfs:**/assets/**/*.html"
-    ]
-  },
-  "dependencies": [
-    {
-      "name": "@preact/signals",
-      "version": "1.1.3"
-    },
-    {
-      "name": "@shoelace-style/shoelace",
-      "version": "2.4.0"
-    },
-    {
-      "name": "highlight.js",
-      "version": "11.7.0"
-    },
-    {
-      "name": "navigo",
-      "version": "8.11.1"
-    },
-    {
-      "name": "preact",
-      "version": "10.13.2"
-    },
-    {
-      "name": "rxjs",
-      "version": "7.8.0"
-    }
-  ],
-  "devDependencies": [],
-  "paths": {
-    "highlight.js/lib/core": "https://ga.jspm.io/npm:highlight.js@11.7.0/es/core.js",
-    "highlight.js/lib/languages/bash": "https://ga.jspm.io/npm:highlight.js@11.7.0/es/languages/bash.js",
-    "highlight.js/lib/languages/diff": "https://ga.jspm.io/npm:highlight.js@11.7.0/es/languages/diff.js",
-    "highlight.js/lib/languages/fsharp": "https://ga.jspm.io/npm:highlight.js@11.7.0/es/languages/fsharp.js",
-    "highlight.js/lib/languages/javascript": "https://ga.jspm.io/npm:highlight.js@11.7.0/es/languages/javascript.js",
-    "highlight.js/lib/languages/json": "https://ga.jspm.io/npm:highlight.js@11.7.0/es/languages/json.js",
-    "highlight.js/lib/languages/plaintext": "https://ga.jspm.io/npm:highlight.js@11.7.0/es/languages/plaintext.js",
-    "highlight.js/lib/languages/xml": "https://ga.jspm.io/npm:highlight.js@11.7.0/es/languages/xml.js",
-    "preact/hooks": "https://ga.jspm.io/npm:preact@10.13.2/hooks/dist/hooks.module.js",
-    "preact/jsx-runtime": "https://ga.jspm.io/npm:preact@10.13.2/jsx-runtime/dist/jsxRuntime.module.js",
-    "@shoelace-style/shoelace": "https://ga.jspm.io/npm:@shoelace-style/shoelace@2.4.0/dist/shoelace.js",
-    "@shoelace-style/shoelace/dist/utilities/base-path.js": "https://ga.jspm.io/npm:@shoelace-style/shoelace@2.4.0/dist/utilities/base-path.js"
+  "dependencies": {
+    "@preact/signals": "2.2.1",
+    "@preact/signals-core": "1.11.0",
+    "@shoelace-style/shoelace": "2.20.1",
+    "@shoelace-style/shoelace/dist/utilities/base-path.js": "2.20.1",
+    "composed-offset-position": "0.0.6",
+    "highlight.js": "11.11.1",
+    "highlight.js/lib/core": "11.11.1",
+    "highlight.js/lib/languages/bash": "11.11.1",
+    "highlight.js/lib/languages/diff": "11.11.1",
+    "highlight.js/lib/languages/fsharp": "11.11.1",
+    "highlight.js/lib/languages/javascript": "11.11.1",
+    "highlight.js/lib/languages/json": "11.11.1",
+    "highlight.js/lib/languages/plaintext": "11.11.1",
+    "highlight.js/lib/languages/xml": "11.11.1",
+    "lit": "3.3.1",
+    "lit-element": "4.2.1",
+    "lit-html": "3.3.1",
+    "navigo": "8.11.1",
+    "preact": "10.26.9",
+    "preact/hooks": "10.26.9",
+    "preact/jsx-runtime": "10.26.9",
+    "qr-creator": "1.0.0"
   }
 }
