@@ -3,7 +3,9 @@
     "Serve App": {
       "commandName": "Project",
       "commandLineArgs": "serve",
-      "workingDirectory": "$(ProjectDir)/../../sample",
+      "workingDirectory": "$(SolutionDir)/sample",
+      "launchBrowser": true,
+      "applicationUrl": "http://localhost:7331",
       "environmentVariables": {
         "PERLA_envValue": "this is my value",
         "PERLA_SOME_TOKEN": "much secret, so wow :3"
@@ -12,87 +14,38 @@
     "Build App": {
       "commandName": "Project",
       "commandLineArgs": "build",
-      "workingDirectory": "$(ProjectDir)/../../sample",
+      "workingDirectory": "$(SolutionDir)/sample",
       "environmentVariables": {
         "PERLA_envValue": "this is my value",
         "PERLA_SOME_TOKEN": "much secret, so wow :3"
       }
     },
-    "Test App Watch": {
-      "commandName": "Project",
-      "commandLineArgs": "test --watch",
-      "workingDirectory": "$(ProjectDir)/../../sample",
-      "environmentVariables": {
-        "PERLA_envValue": "this is my value",
-        "PERLA_SOME_TOKEN": "much secret, so wow :3"
-      }
-    },
-    "Test App Headless": {
-      "commandName": "Project",
-      "commandLineArgs": "test --headless",
-      "workingDirectory": "$(ProjectDir)/../../sample",
-      "environmentVariables": {
-        "PERLA_envValue": "this is my value",
-        "PERLA_SOME_TOKEN": "much secret, so wow :3"
-      }
-    },
-    "Test App Headless Watch": {
-      "commandName": "Project",
-      "commandLineArgs": "test --headless --watch",
-      "workingDirectory": "$(ProjectDir)/../../sample",
-      "environmentVariables": {
-        "PERLA_envValue": "this is my value",
-        "PERLA_SOME_TOKEN": "much secret, so wow :3"
-      }
-    },
-    "Test App": {
-      "commandName": "Project",
-      "commandLineArgs": "test",
-      "workingDirectory": "$(ProjectDir)/../../sample",
-      "environmentVariables": {
-        "PERLA_envValue": "this is my value",
-        "PERLA_SOME_TOKEN": "much secret, so wow :3"
-      }
-    },
+
     "Serve Docs": {
       "commandName": "Project",
       "commandLineArgs": "serve",
-      "workingDirectory": "$(ProjectDir)/../../docs"
+      "launchBrowser": true,
+      "applicationUrl": "http://localhost:7331",
+      "workingDirectory": "$(SolutionDir)/docs",
+      "environmentVariables": {
+        "PERLA_envValue": "this is my value",
+        "PERLA_SOME_TOKEN": "much secret, so wow :3"
+      }
     },
     "Build Docs": {
       "commandName": "Project",
       "commandLineArgs": "build",
-      "workingDirectory": "$(ProjectDir)/../../docs"
+      "workingDirectory": "$(SolutionDir)/docs"
     },
     "New Project": {
       "commandName": "Project",
       "commandLineArgs": "new samplixor",
-      "workingDirectory": "$(ProjectDir)/../../../"
-    },
-    "Add Template": {
-      "commandName": "Project",
-      "commandLineArgs": "add-template -n AngelMunoz/perla-templates -b clam-poc",
-      "workingDirectory": "$(ProjectDir)/../../App"
-    },
-    "Create Project": {
-      "commandName": "Project",
-      "commandLineArgs": "new -t perla-templates/lit-js -n clam-poc",
-      "workingDirectory": "$(ProjectDir)/../../App"
+      "workingDirectory": "$(SolutionDir)/../"
     },
     "Add Package ": {
       "commandName": "Project",
-      "commandLineArgs": "add rxjs",
-      "workingDirectory": "$(ProjectDir)/../../sample"
-    },
-    "Add Dev Package ": {
-      "commandName": "Project",
-      "commandLineArgs": "add @esm-bundle/chai -d",
-      "workingDirectory": "$(ProjectDir)/../../sample"
-    },
-    "Show templates in table": {
-      "commandName": "Project",
-      "commandLineArgs": "t foo -ls table",
-      "workingDirectory": "$(ProjectDir)/../../sample"
+      "commandLineArgs": "add preact",
+      "workingDirectory": "$(SolutionDir)/sample"
     }
   }
 }

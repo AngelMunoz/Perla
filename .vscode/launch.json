@@ -16,7 +16,7 @@
       "preLaunchTask": "build",
       "program": "${workspaceFolder}/src/Perla/bin/Debug/net9.0/Perla.dll",
       "args": ["serve"],
-      "cwd": "${workspaceFolder}/sample",
+      "cwd": "${workspaceFolder}/docs",
       "stopAtEntry": false,
       "console": "integratedTerminal"
     },
@@ -38,7 +38,7 @@
       "preLaunchTask": "build",
       "program": "${workspaceFolder}/src/Perla/bin/Debug/net9.0/Perla.dll",
       "args": ["build"],
-      "cwd": "${workspaceFolder}/sample",
+      "cwd": "${workspaceFolder}/docs",
       "stopAtEntry": false,
       "console": "integratedTerminal"
     },
@@ -50,28 +50,6 @@
       "program": "${workspaceFolder}/src/Perla/bin/Debug/net9.0/Perla.dll",
       "args": ["new", "samplixor"],
       "cwd": "${workspaceFolder}/../",
-      "stopAtEntry": false,
-      "console": "integratedTerminal"
-    },
-    {
-      "name": "Perla add nested",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/src/Perla/bin/Debug/net9.0/Perla.dll",
-      "args": ["add", "lodash/fp/object", "-s", "unpkg"],
-      "cwd": "${workspaceFolder}/sample",
-      "stopAtEntry": false,
-      "console": "integratedTerminal"
-    },
-    {
-      "name": "Perla test watch",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/src/Perla/bin/Debug/net9.0/Perla.dll",
-      "args": ["test", "-w"],
-      "cwd": "${workspaceFolder}/sample",
       "stopAtEntry": false,
       "console": "integratedTerminal"
     },
@@ -98,39 +76,6 @@
       "console": "integratedTerminal"
     },
     {
-      "name": "Perla templates:add default repo",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/src/Perla/bin/Debug/net9.0/Perla.dll",
-      "args": ["templates:add", "AngelMunoz/perla-templates", "dev"],
-      "cwd": "${workspaceFolder}",
-      "stopAtEntry": false,
-      "console": "integratedTerminal"
-    },
-    {
-      "name": "Perla templates:update default repo",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/src/Perla/bin/Debug/net9.0/Perla.dll",
-      "args": ["templates:update", "AngelMunoz/perla-templates", "dev"],
-      "cwd": "${workspaceFolder}",
-      "stopAtEntry": false,
-      "console": "integratedTerminal"
-    },
-    {
-      "name": "Perla init full",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/src/Perla/bin/Debug/net9.0/Perla.dll",
-      "args": ["init", "-y"],
-      "cwd": "${workspaceFolder}",
-      "stopAtEntry": false,
-      "console": "integratedTerminal"
-    },
-    {
       "name": "Perla serve docs",
       "type": "coreclr",
       "request": "launch",
@@ -142,29 +87,7 @@
       "console": "integratedTerminal"
     },
     {
-      "name": "Perla add package",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/src/Perla/bin/Debug/net9.0/Perla.dll",
-      "args": ["add", "lit"],
-      "cwd": "${workspaceFolder}/sample",
-      "stopAtEntry": false,
-      "console": "integratedTerminal"
-    },
-    {
-      "name": "Perla add preact",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/src/Perla/bin/Debug/net9.0/Perla.dll",
-      "args": ["add", "preact"],
-      "cwd": "${workspaceFolder}/sample",
-      "stopAtEntry": false,
-      "console": "integratedTerminal"
-    },
-    {
-      "name": "Perla add @shoelace-style/shoelace/dist/utilities/base-path.js",
+      "name": "Perla add @shoelace-style/shoelace",
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
