@@ -113,6 +113,7 @@ module VirtualFs =
       | ".jsx"
       | ".ts"
       | ".tsx" -> MimeTypeNames.DefaultJavaScript
+      | ".md" -> MimeTypeNames.Plain
       | others -> MimeTypeNames.FromExtension others
 
   let shouldIgnoreFile(path: string) =

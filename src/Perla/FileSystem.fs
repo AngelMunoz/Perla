@@ -269,9 +269,28 @@ module FileSystem =
             args.PerlaDirectories.CurrentWorkingDirectory
             |/ ".perla" / "plugins"
 
+          args.Logger.LogDebug(
+            "Resolving plugin paths from {Path}",
+            UMX.untag path
+          )
+
           !! $"{path}/**/*.fsx"
+          |> Seq.map(fun path -> path, File.ReadAllText path)
           |> Seq.toArray
-          |> Array.Parallel.map(fun path -> path, File.ReadAllText path)
+          |> fun arr ->
+              if Array.isEmpty arr then
+                args.Logger.LogWarning(
+                  "No plugins found in {Path}",
+                  UMX.untag path
+                )
+              else
+                args.Logger.LogInformation(
+                  "Found {Count} plugins in {Path}",
+                  arr.Length,
+                  UMX.untag path
+                )
+
+              arr
 
         member this.ResolveEsbuildPath() =
           resolveEsbuildPath
