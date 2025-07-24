@@ -4,27 +4,27 @@
     "sections": [
       {
         "title": "Overview",
-        "url": "#/content/index"
+        "url": "#content/index"
       },
       {
         "title": "Install",
-        "url": "#/content/install"
+        "url": "#content/install"
       },
       {
         "title": "Project Structure",
-        "url": "#/content/project-structure"
+        "url": "#content/project-structure"
       },
       {
         "title": "Import Maps",
-        "url": "#/content/import-maps"
+        "url": "#content/import-maps"
       },
       {
         "title": "Alternatives",
-        "url": "#/content/alternatives"
+        "url": "#content/alternatives"
       },
       {
         "title": "Migration Guides",
-        "url": "#/content/migrate"
+        "url": "#content/migrate"
       }
     ]
   },
@@ -34,39 +34,39 @@
       "sections": [
         {
           "title": "CLI",
-          "url": "#/v0/docs/features/cli"
+          "url": "#v0/docs/features/cli"
         },
         {
           "title": "Scaffolding",
-          "url": "#/v0/docs/features/scaffolding"
+          "url": "#v0/docs/features/scaffolding"
         },
         {
           "title": "Dev Server",
-          "url": "#/v0/docs/features/development"
+          "url": "#v0/docs/features/development"
         },
         {
           "title": "Package Manager",
-          "url": "#/v0/docs/features/package-manager"
+          "url": "#v0/docs/features/package-manager"
         },
         {
           "title": "Fable",
-          "url": "#/v0/docs/features/fable"
+          "url": "#v0/docs/features/fable"
         },
         {
           "title": "Transpilation",
-          "url": "#/v0/docs/features/transpilation"
+          "url": "#v0/docs/features/transpilation"
         },
         {
           "title": "JSX/TSX",
-          "url": "#/v0/docs/features/jsx-tsx"
+          "url": "#v0/docs/features/jsx-tsx"
         },
         {
           "title": "CSS/JSON",
-          "url": "#/v0/docs/features/css-json"
+          "url": "#v0/docs/features/css-json"
         },
         {
           "title": "Dev Proxy",
-          "url": "#/v0/docs/features/dev-proxy"
+          "url": "#v0/docs/features/dev-proxy"
         }
       ]
     },
@@ -75,7 +75,7 @@
       "sections": [
         {
           "title": "Production Builds",
-          "url": "#/v0/docs/build/production-builds"
+          "url": "#v0/docs/build/production-builds"
         }
       ]
     },
@@ -84,11 +84,11 @@
       "sections": [
         {
           "title": "CLI",
-          "url": "#/v0/docs/reference/cli"
+          "url": "#v0/docs/reference/cli"
         },
         {
           "title": "perla.json",
-          "url": "#/v0/docs/reference/perla"
+          "url": "#v0/docs/reference/perla"
         }
       ]
     }
@@ -99,47 +99,47 @@
       "sections": [
         {
           "title": "CLI",
-          "url": "#/v1/docs/features/cli"
+          "url": "#v1/docs/features/cli"
         },
         {
           "title": "Package Manager",
-          "url": "#/v1/docs/features/package-manager"
+          "url": "#v1/docs/features/package-manager"
         },
         {
           "title": "Dev Server",
-          "url": "#/v1/docs/features/development"
+          "url": "#v1/docs/features/development"
         },
         {
           "title": "Fable",
-          "url": "#/v1/docs/features/fable"
+          "url": "#v1/docs/features/fable"
         },
         {
           "title": "Plugins",
-          "url": "#/v1/docs/features/plugins"
+          "url": "#v1/docs/features/plugins"
         },
         {
           "title": "Testing",
-          "url": "#/v1/docs/features/testing"
+          "url": "#v1/docs/features/testing"
         },
         {
           "title": "Scaffolding",
-          "url": "#/v1/docs/features/scaffolding"
+          "url": "#v1/docs/features/scaffolding"
         },
         {
           "title": "Transpilation",
-          "url": "#/v1/docs/features/transpilation"
+          "url": "#v1/docs/features/transpilation"
         },
         {
           "title": "JSX/TSX",
-          "url": "#/v1/docs/features/jsx-tsx"
+          "url": "#v1/docs/features/jsx-tsx"
         },
         {
           "title": "CSS/JSON",
-          "url": "#/v1/docs/features/css-json"
+          "url": "#v1/docs/features/css-json"
         },
         {
           "title": "Dev Proxy",
-          "url": "#/v1/docs/features/dev-proxy"
+          "url": "#v1/docs/features/dev-proxy"
         }
       ]
     },
@@ -148,7 +148,7 @@
       "sections": [
         {
           "title": "Production Builds",
-          "url": "#/v1/docs/build/production-builds"
+          "url": "#v1/docs/build/production-builds"
         }
       ]
     },
@@ -157,11 +157,11 @@
       "sections": [
         {
           "title": "CLI",
-          "url": "#/v1/docs/reference/cli"
+          "url": "#v1/docs/reference/cli"
         },
         {
           "title": "perla.json",
-          "url": "#/v1/docs/reference/perla"
+          "url": "#v1/docs/reference/perla"
         }
       ]
     }

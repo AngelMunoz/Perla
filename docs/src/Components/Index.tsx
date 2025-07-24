@@ -111,7 +111,7 @@ export function Index() {
           size="large"
           variant="primary"
           outline
-          href={`#/content/install`}
+          href="#content/install"
         >
           Get Started
         </sl-button>
@@ -119,7 +119,7 @@ export function Index() {
           size="large"
           variant="primary"
           outline
-          href={`#/content/index`}
+          href="#content/index"
         >
           Learn More
         </sl-button>

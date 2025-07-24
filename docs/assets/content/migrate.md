@@ -1,10 +1,10 @@
 [jspm generator api]: https://generator.jspm.io/
-[plugins]: #/v1/docs/features/plugins
-[testing]: #/v1/docs/features/testing
-[transpilation]: #/v1/docs/features/transpilation
-[package manager]: #/v1/docs/features/package-manager
-[dev server]: #/v1/docs/features/dev-server
-[dev proxy]: #/v1/docs/features/dev-proxy
+[plugins]: #v1/docs/features/plugins
+[testing]: #v1/docs/features/testing
+[transpilation]: #v1/docs/features/transpilation
+[package manager]: #v1/docs/features/package-manager
+[dev server]: #v1/docs/features/dev-server
+[dev proxy]: #v1/docs/features/dev-proxy
 [fake globs]: https://fake.build/reference/fake-io-globbing-operators.html
 [fsharp.systemcommandline]: https://github.com/JordanMarr/FSharp.SystemCommandLine
 

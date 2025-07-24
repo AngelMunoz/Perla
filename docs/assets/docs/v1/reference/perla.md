@@ -1,4 +1,4 @@
-[import map]: #/content/import-maps
+[import map]: #content/import-maps
 [json schema]: https://github.com/AngelMunoz/Perla/blob/main/perla.schema.json
 [json schemas]: https://json-schema.org/
 

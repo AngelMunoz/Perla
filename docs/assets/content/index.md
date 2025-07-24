@@ -2,14 +2,14 @@
 [skypack]: https://www.skypack.dev/
 [jspm]: https://jspm.org/docs/cdn
 [unpkg]: https://unpkg.com/
-[install]: #/content/install
-[run]: #/v1/docs/features/development
-[build]: #/v1/docs/features/cli
-[jsx]: #/v1/docs/build/jsx-tsx
-[tsx]: #/v1/docs/build/jsx-tsx
-[import maps]: #/content/import-maps
+[install]: #content/install
+[run]: #v1/docs/features/development
+[build]: #v1/docs/features/cli
+[jsx]: #v1/docs/build/jsx-tsx
+[tsx]: #v1/docs/build/jsx-tsx
+[import maps]: #content/import-maps
 [real world fable]: https://github.com/AngelMunoz/real-world-fable
-[scaffolding]: #/v1/docs/features/scaffolding
+[scaffolding]: #v1/docs/features/scaffolding
 
 # Perla Dev Server
 

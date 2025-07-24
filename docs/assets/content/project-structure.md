@@ -2,7 +2,7 @@
 
 # Project Structure
 
-Once you have Perla [up and running](#/content/install), you can pick a template from the [Perla Samples] and simply type `perla serve` for your dev server to start working.
+Once you have Perla [up and running](#content/install), you can pick a template from the [Perla Samples] and simply type `perla serve` for your dev server to start working.
 
 Perla has a set of defaults which allow you to keep a very basic structure, in reality you just need an `index.html` and an empty `perla.json` file but the most ideal structure would be something like this
 
