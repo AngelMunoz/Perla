@@ -36,7 +36,7 @@ With that, Perla will know what should be served and where
 
 > **_NOTE_**: The Json Schema version should always point to the closest released version you're currenly using to ensure you get the correct intellisense by your editor. In the case of previews you can point to the latest pre-release tag like:
 >
-> - `AngelMunoz/Perla/v1.0.0-beta-030/perla.schema.json`
+> - `AngelMunoz/Perla/v1.0.0-beta-031/perla.schema.json`
 >
 > or to the dev branch:
 >

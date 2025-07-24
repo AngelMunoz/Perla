@@ -79,6 +79,7 @@ plugin "plugin-name" {
 ```
 
 The builder supports these operations:
+
 - `should_process_file`: Defines a predicate to determine if a file should be processed
 - `with_transform`: Defines the transformation to apply to matching files
 
@@ -92,7 +93,7 @@ Example plugin (`.perla/plugins/markdown.fsx`):
 
 ```fsharp
 #r "nuget: Markdig, 0.41.3"
-#r "nuget: Perla.Plugins, 1.0.0-beta-030"
+#r "nuget: Perla.Plugins, 1.0.0-beta-031"
 
 open Perla.Plugins
 open Markdig
