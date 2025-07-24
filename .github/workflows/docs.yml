@@ -4,7 +4,11 @@ name: Docs
 on:
   push:
     branches:
+      - main
       - dev
+    paths:
+      - ".github/workflows/docs.yml"
+      - "docs/**"
 
 # We need some permissions to publish to Github Pages
 permissions:
@@ -41,9 +45,9 @@ jobs:
       - name: Build code
         run: dotnet build src/Perla -c Release
       - name: Install Dependencies
-        run: cd docs && dotnet run --project ../src/Perla -c Release -f net9.0 --no-build --no-restore -- install
+        run: cd docs && dotnet run --project ../src/Perla -c Release -f net9.0 --no-restore -- install
       - name: Generate the documentation
-        run: cd docs && dotnet run --project ../src/Perla -c Release -f net9.0 --no-build --no-restore -- build
+        run: cd docs && dotnet run --project ../src/Perla -c Release -f net9.0 --no-restore -- build
       - name: Upload documentation
         uses: actions/upload-pages-artifact@v3
         with:

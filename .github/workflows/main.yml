@@ -3,12 +3,36 @@ name: Build main
 on:
   push:
     branches: [main, dev]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "tools.fsx"
+      - "esbuild-ci.fsx"
+      - ".github/workflows/main.yml"
+      - "*.sln"
+      - "*.fsproj"
+      - "Directory.Build.props"
+      - "Directory.Packages.props"
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "tools.fsx"
+      - "esbuild-ci.fsx"
+      - ".github/workflows/main.yml"
+      - "*.sln"
+      - "*.fsproj"
+      - "Directory.Build.props"
+      - "Directory.Packages.props"
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+concurrency:
+  group: build
+  cancel-in-progress: true
 
 jobs:
   build:
