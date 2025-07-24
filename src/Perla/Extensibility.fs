@@ -29,17 +29,14 @@ module ExtensibilityService =
   // LogTextWriter function that returns a TextWriter object expression
   let logWriter(logger: ILogger, logLevel: LogLevel) =
     let buffer = StringBuilder()
-
     { new TextWriter() with
         override _.Encoding = Encoding.UTF8
 
         override _.Write(value: char) =
           if value = '\n' then
             let line = buffer.ToString()
+            logger.Log(logLevel, line)
             buffer.Clear() |> ignore
-
-            if not(String.IsNullOrWhiteSpace(line)) then
-              logger.Log(logLevel, line)
           else
             buffer.Append(value) |> ignore
 
@@ -47,27 +44,26 @@ module ExtensibilityService =
           if String.IsNullOrEmpty value then
             ()
           else
-            for char in value do
-              base.Write(char)
+            for c in value do
+              if c = '\n' then
+                let line = buffer.ToString()
+                logger.Log(logLevel, line)
+                buffer.Clear() |> ignore
+              else
+                buffer.Append(c) |> ignore
 
-        override _.WriteLine(value: string) =
-          if String.IsNullOrEmpty value then
-            logger.Log(logLevel, String.Empty)
-          else
-            logger.Log(logLevel, value)
+        override _.WriteLine(value: string) = logger.Log(logLevel, value)
 
         override _.WriteLine() =
           let line = buffer.ToString()
-          buffer.Clear() |> ignore
           logger.Log(logLevel, line)
+          buffer.Clear() |> ignore
 
         override _.Flush() =
           if buffer.Length > 0 then
             let line = buffer.ToString()
+            logger.Log(logLevel, line)
             buffer.Clear() |> ignore
-
-            if not(String.IsNullOrWhiteSpace(line)) then
-              logger.Log(logLevel, line)
     }
 
   let Create(logger: ILogger) =
@@ -88,6 +84,14 @@ module ExtensibilityService =
           do!
             pluginFiles
             |> Array.traverseResultM(fun (path, content) ->
+              logger.LogTrace(
+                "Loading plugin from {path} with content {content}",
+                path,
+                content
+              )
+
+              logger.LogDebug("Loading plugin from {path}", path)
+
               pluginManager.LoadFromText(path, content))
             |> Result.teeError(fun (error: PluginLoadError) ->
               logger.LogError("Failure to load a plugin: {error}", error))

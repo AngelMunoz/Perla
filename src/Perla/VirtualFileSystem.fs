@@ -109,9 +109,11 @@ module VirtualFs =
     |> defaultIfNull ""
     |> function
       | ".json" -> MimeTypeNames.ApplicationJson
+      | ".mjs"
       | ".jsx"
       | ".ts"
       | ".tsx" -> MimeTypeNames.DefaultJavaScript
+      | ".md" -> MimeTypeNames.Plain
       | others -> MimeTypeNames.FromExtension others
 
   let shouldIgnoreFile(path: string) =

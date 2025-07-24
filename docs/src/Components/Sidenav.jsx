@@ -5,7 +5,6 @@
 function TocSection({ label, sections, open }) {
   const elements =
     sections?.map?.(({ title, url }) => (
-      //@ts-ignore
       <sl-tree-item>
         <sl-button variant="text" href={url}>
           {title}
@@ -50,8 +49,7 @@ export function Sidenav({ gettingStarted, versions, hidden }) {
   const elements = versions?.map?.(VersionedSection) ?? [];
 
   return (
-    //@ts-ignore
-    <aside className="perla-sidenav">
+    <aside class="perla-sidenav">
       <sl-tree>
         <TocSection
           label={gettingStarted.label}

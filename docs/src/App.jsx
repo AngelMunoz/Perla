@@ -1,6 +1,6 @@
 import "./App.css?js";
-//@ts-ignore
-import { useSignal, signal } from "@preact/signals";
+import { useSignal, signal, computed } from "@preact/signals";
+import { useLiveSignal, Show } from "@preact/signals/utils";
 import { Page } from "./router.js";
 import { Index } from "./Components/Index.js";
 import { Sidenav } from "./Components/Sidenav.js";
@@ -9,7 +9,34 @@ import { BlogList } from "./Components/BlogList.js";
 import Blogs from "./blogs.json?js";
 import Toc from "./toc.json?js";
 
-const route = signal("Home");
+/**
+ * @type {{ value: DocsVersion }}
+ */
+const version = computed(() => {
+  const [_, ver] = Page.value;
+  return ver;
+});
+const route = computed(() => {
+  const [page] = Page.value;
+  return page;
+});
+const content = computed(() => {
+  const [page, ver, section, pageName] = Page.value;
+  if (page === "Home") {
+    return <Index />;
+  } else if (page === "Blogs") {
+    return <BlogList blogs={Blogs} />;
+  } else {
+    return (
+      <MarkdownContent
+        version={ver}
+        filename={pageName}
+        section={section}
+        contentKind={page}
+      />
+    );
+  }
+});
 
 const gettingStarted = Toc["GettingStarted"];
 
@@ -42,14 +69,13 @@ const sidenav = (
  */
 function OffCanvas({ isOpen, onClose }) {
   return (
-    //@ts-ignore
     <sl-drawer
       label="Table of Contents"
       open={isOpen}
       placement="start"
       onsl-after-hide={() => (console.log("dude"), onClose?.())}
     >
-      <div className="off-canvas-sidenav">{sidenav}</div>
+      <div class="off-canvas-sidenav">{sidenav}</div>
       {onClose ? (
         <sl-button slot="footer" variant="primary" onClick={() => onClose()}>
           Close
@@ -66,86 +92,67 @@ function OffCanvas({ isOpen, onClose }) {
  */
 function Navbar({ requestMenu }) {
   return (
-    <>
-      <nav className="perla-nav with-box-shadow">
-        <section>
-          <sl-button
-            className="menu-btn"
-            variant="text"
-            size="large"
-            onClick={() => requestMenu?.()}
-          >
-            Menu
-          </sl-button>
-          <sl-button href={`/#/`} variant="text" size="large">
-            Perla
-          </sl-button>
-        </section>
-        <section className="nav-links">
-          <ul className="link-list">
-            <li>
-              <sl-button href={"/#/content/index"} variant="text">
-                Docs
-              </sl-button>
-            </li>
-            <li>
-              <sl-button href="/#/v0/docs/features/development" variant="text">
-                V0 Docs
-              </sl-button>
-            </li>
-            <li>
-              <sl-button href="/#/blogs" variant="text">
-                Blog
-              </sl-button>
-            </li>
-            <li>
-              <sl-button
-                target="_blank"
-                href="https://github.com/AngelMunoz/Perla"
-                variant="text"
-              >
-                Github
-              </sl-button>
-            </li>
-          </ul>
-        </section>
-      </nav>
-    </>
+    <nav class="perla-nav with-box-shadow">
+      <section>
+        <sl-button
+          class="menu-btn"
+          variant="text"
+          size="large"
+          onClick={() => requestMenu?.()}
+        >
+          Menu
+        </sl-button>
+        <sl-button href={`/#/`} variant="text" size="large">
+          Perla
+        </sl-button>
+      </section>
+      <section class="nav-links">
+        <ul class="link-list">
+          <li>
+            <sl-button href={"/#/content/index"} variant="text">
+              Docs
+            </sl-button>
+          </li>
+          <li>
+            <sl-button href="/#/v0/docs/features/development" variant="text">
+              V0 Docs
+            </sl-button>
+          </li>
+          <li>
+            <sl-button href="/#/blogs" variant="text">
+              Blog
+            </sl-button>
+          </li>
+          <li>
+            <sl-button
+              target="_blank"
+              href="https://github.com/AngelMunoz/Perla"
+              variant="text"
+            >
+              Github
+            </sl-button>
+          </li>
+        </ul>
+      </section>
+    </nav>
   );
 }
 
-/**
- * @type {{ value: DocsVersion }}
- */
-const version = signal("v1");
-const content = signal(<Index />);
+function DeprecationNotice() {
+  return (
+    <sl-alert variant="warning" open closable>
+      <sl-icon slot="icon" name="exclamation-triangle"></sl-icon>
+      <strong>V0 Content Deprecation Notice</strong>
+      <p>
+        This section contains V0 documentation which is deprecated and will be
+        removed soon. Please refer to the V1 documentation for the latest
+        information.
+      </p>
+    </sl-alert>
+  );
+}
 
-Page.subscribe(
-  /**
-   *
-   * @param {Page} page
-   */
-  ([page, ver, section, pageName]) => {
-    route.value = page;
-    if (page === "Home") {
-      content.value = <Index />;
-    } else if (page === "Blogs") {
-      content.value = <BlogList blogs={Blogs} />;
-    } else {
-      version.value = ver;
-      content.value = (
-        <MarkdownContent
-          version={ver}
-          filename={pageName}
-          section={section}
-          contentKind={page}
-        />
-      );
-    }
-  }
-);
-
-function NoticesBanner() {
+function BetaNotice() {
   return (
     <sl-alert variant="primary" open closable>
       <sl-icon slot="icon" name="info-circle"></sl-icon>
@@ -160,6 +167,18 @@ function NoticesBanner() {
         <strong>dotnet tool install --global Perla --prerelease</strong>
       </p>
     </sl-alert>
+  );
+}
+
+function NoticesBanner() {
+  const isV0 = computed(() => version.value === "v0");
+  return (
+    <>
+      <BetaNotice />
+      <Show when={isV0} fallback={null}>
+        <DeprecationNotice />
+      </Show>
+    </>
   );
 }
 
@@ -180,9 +199,9 @@ export function App() {
         }}
       />
       <NoticesBanner />
-      <main className={`${route.value}`}>
+      <main class={`${route.value}`}>
         {sidenav}
-        {content.value}
+        {content}
       </main>
       <footer></footer>
     </>

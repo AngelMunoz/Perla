@@ -482,7 +482,7 @@ module BuildService =
             )
 
           // globs are always copied
-          args.FsManager.CopyGlobs config.build
+          args.FsManager.CopyGlobs(config.build, tempDir)
 
         member _.WriteIndex
           (config, document, map, jsPaths, cssPaths, esbuildCssFiles)
