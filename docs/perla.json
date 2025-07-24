@@ -2,10 +2,7 @@
   "$schema": "../perla.schema.json",
   "schema-version": "2025-07",
   "provider": "jspm",
-  "plugins": [
-    "perla-esbuild-plugin",
-    "markdown-plugin"
-  ],
+  "plugins": ["perla-esbuild-plugin", "markdown-plugin"],
   "useLocalPkgs": true,
   "mountDirectories": {
     "/": "./sw",
@@ -17,9 +14,7 @@
     "jsxImportSource": "preact"
   },
   "build": {
-    "includes": [
-      "vfs:**/assets/**/*.html"
-    ]
+    "includes": ["lfs:**/src/*.ico", "vfs:**/assets/**/*.html"]
   },
   "dependencies": {
     "@ctrl/tinycolor": "4.1.0",

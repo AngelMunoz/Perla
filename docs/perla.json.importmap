@@ -1,6 +1,6 @@
 {
   "imports": {
-    "@ctrl/tinycolor": "/node_modules/@ctrl/tinycolor/dist/module/public_api.js",
+    "@ctrl/tinycolor": "/node_modules/@ctrl/tinycolor/dist/public_api.js",
     "@floating-ui/core": "/node_modules/@floating-ui/core/dist/floating-ui.core.mjs",
     "@floating-ui/dom": "/node_modules/@floating-ui/dom/dist/floating-ui.dom.mjs",
     "@floating-ui/utils": "/node_modules/@floating-ui/utils/dist/floating-ui.utils.mjs",

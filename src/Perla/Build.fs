@@ -494,15 +494,21 @@ module BuildService =
             // Helper function to normalize paths for comparison
             let normalizePath(path: string<ServerUrl>) =
               let pathStr = UMX.untag path
-              // Remove leading ./ and normalize to start with /
-              if pathStr.StartsWith("./") then "/" + pathStr.Substring(2)
-              elif pathStr.StartsWith("/") then pathStr
-              else "/" + pathStr
+              // Remove leading ./ for comparison, but do not force leading /
+              if pathStr.StartsWith("./") then pathStr.Substring(2)
+              elif pathStr.StartsWith("/") then pathStr.Substring(1)
+              else pathStr
 
             // Log the paths for debugging
             args.Logger.LogDebug("Original CSS paths: {Paths}", cssPaths)
 
             args.Logger.LogDebug("Esbuild CSS files: {Paths}", esbuildCssFiles)
+
+            // Build a map from normalized esbuild CSS path to original path
+            let esbuildCssMap =
+              esbuildCssFiles
+              |> Seq.map(fun path -> normalizePath path, path)
+              |> Map.ofSeq
 
             // Combine original CSS paths with esbuild-generated CSS files, avoiding duplicates
             let uniqueCssPaths =
@@ -527,15 +533,18 @@ module BuildService =
 
               args.Logger.LogDebug("New CSS files to add: {Paths}", newCssFiles)
 
-              // Convert new files back to original format and append to original paths
+              // Use the original esbuild path for new files
               let newCssUrls =
                 newCssFiles
-                |> Set.map(fun normalizedPath ->
-                  // Find the original esbuild path that normalizes to this path
-                  esbuildCssFiles
-                  |> Seq.find(fun path -> normalizePath path = normalizedPath))
+                |> Seq.choose(fun normalizedPath ->
+                  Map.tryFind normalizedPath esbuildCssMap)
 
               Seq.append cssPaths newCssUrls
+              |> Seq.map(fun path ->
+                let path = UMX.untag path
+
+                if path.StartsWith("/") then $"./{path[1..]}" else path
+                |> UMX.tag)
 
             let indexContent =
               Build.Index(document, map, jsPaths, uniqueCssPaths)
