@@ -9,7 +9,7 @@ export const Page: import("@preact/signals").Signal<
 >(["Home"]);
 
 const rootUrl =
-  window.location.hostname === "angelmunoz.github.io" ? "/Perla" : "/";
+  window.location.hostname === "angelmunoz.github.io" ? "/Perla/" : "/";
 export const Router =
   //@ts-expect-error
   new Navigo(rootUrl, {
@@ -52,13 +52,20 @@ Router.on("", () => (Page.value = ["Home"]))
     Page.value = ["Blogs", , , "not-found"];
   });
 
-Router.resolve();
+console.log("Resolving at: " + window.location.href);
 
 effect(() => {
   const [page, version, section, filename] = Page.value;
   console.log(
     `Navigated to ${page} with version ${version}, section ${section}, and filename ${filename}`
   );
+});
+
+addEventListener("DOMContentLoaded", () => {
+  Router.resolve();
+  const location: Match = Router.getCurrentLocation();
+  setHeaderPosition(location);
+  Router.updatePageLinks();
 });
 
 setTimeout(() => {
