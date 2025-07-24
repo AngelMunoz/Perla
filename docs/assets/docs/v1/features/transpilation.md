@@ -1,5 +1,5 @@
 [esbuild]: https://esbuild.github.io/
-[esbuild has some caveats]: https://esbuild.github.io/content-types/#typescript-caveats
+[esbuild has some caveats]: https://esbuild.github.io/content-types#typescript-caveats
 
 # Transpilation
 

@@ -1,4 +1,4 @@
-[typescript]: /#/v1/docs/features/transpilation
+[typescript]: #/v1/docs/features/transpilation
 [perla samples]: https://github.com/AngelMunoz/perla-templates
 [react]: https://reactjs.org/
 
@@ -27,6 +27,7 @@ In the `esbuild` section of your `perla.json`, you can enable automatic JSX runt
 ```
 
 With these options:
+
 - `jsxAutomatic`: When set to `true`, esbuild will automatically inject the necessary JSX runtime imports
 - `jsxImportSource`: Specifies the package from which to import JSX runtime functions
 
@@ -106,9 +107,7 @@ Then in your `perla.json` file, add the file to the `injects` array in the `esbu
   "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/main/perla.schema.json",
   "index": "./index.html",
   "esbuild": {
-    "injects": [
-      "./react-shim.js"
-    ]
+    "injects": ["./react-shim.js"]
   }
 }
 ```

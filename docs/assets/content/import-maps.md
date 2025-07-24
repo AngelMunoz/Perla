@@ -1,4 +1,4 @@
-[package manager]: /#/v1/docs/features/package-manager
+[package manager]: #/v1/docs/features/package-manager
 [jspm]: https://jspm.io/
 [jspm generator]: https://generator.jspm.io/
 [jspm generator api]: https://jspm.org/docs/cdn#jspm-generator

@@ -1,5 +1,5 @@
-[target]: https://esbuild.github.io/api/#target
-[development]: /#/v0/docs/features/development?id=environment-variable-support
+[target]: https://esbuild.github.io/api#target
+[development]: #/v0/docs/features/development?id=environment-variable-support
 
 ## Production Builds
 

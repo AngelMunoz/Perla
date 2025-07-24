@@ -1,4 +1,4 @@
-[import map]: /#/content/import-maps
+[import map]: #/content/import-maps
 [skypack]: https://www.skypack.dev/
 [jspm]: https://jspm.org/docs/cdn
 [unpkg]: https://unpkg.com/

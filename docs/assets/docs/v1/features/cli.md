@@ -1,11 +1,11 @@
-[dev server]: /#/v1/docs/features/development
-[build tool]: /#/v1/docs/build/javascript
-[package manager]: /#/v1/docs/features/package-manager
-[pacakge search]: /#/v1/docs/features/package-manager
-[fable]: /#/v1/docs/features/fable
+[dev server]: #/v1/docs/features/development
+[build tool]: #/v1/docs/build/javascript
+[package manager]: #/v1/docs/features/package-manager
+[pacakge search]: #/v1/docs/features/package-manager
+[fable]: #/v1/docs/features/fable
 [esbuild]: https://esbuild.github.io/
-[perla.json]: /#/v1/docs/reference/perla
-[scaffolding]: /#/v1/docs/features/scaffolding
+[perla.json]: #/v1/docs/reference/perla
+[scaffolding]: #/v1/docs/features/scaffolding
 
 > **_NOTE_**: This documentation is still being updated to reflect changes for V1, the contents may be outdated while this notice is still present
 

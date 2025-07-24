@@ -119,7 +119,7 @@ export function Index() {
           size="large"
           variant="primary"
           outline
-          href={`/#/content/index`}
+          href={`#/content/index`}
         >
           Learn More
         </sl-button>
