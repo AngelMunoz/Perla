@@ -16,6 +16,11 @@
     "jsxAutomatic": true,
     "jsxImportSource": "preact"
   },
+  "build": {
+    "includes": [
+      "vfs:**/assets/**/*.html"
+    ]
+  },
   "dependencies": {
     "@ctrl/tinycolor": "4.1.0",
     "@floating-ui/core": "1.7.2",

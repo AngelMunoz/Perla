@@ -79,7 +79,7 @@ type PerlaFsManager =
     user: string * repository: string<Repository> * branch: string<Branch> ->
       CancellableTask<(string<SystemPath> * DecodedTemplateConfiguration) option>
 
-  abstract CopyGlobs: buildConfig: BuildConfig -> unit
+  abstract CopyGlobs: buildConfig: BuildConfig * tempDir: string<SystemPath> -> unit
 
   abstract EmitEnvFile:
     config: PerlaConfig * ?tmpPath: string<SystemPath> -> unit
@@ -534,30 +534,63 @@ module FileSystem =
             return None
         }
 
-        member _.CopyGlobs(buildConfig: BuildConfig) =
+        member _.CopyGlobs(buildConfig: BuildConfig, tempDir: string<SystemPath>) =
           let outDir = UMX.untag buildConfig.outDir |> Path.GetFullPath
           let cwd = args.PerlaDirectories.CurrentWorkingDirectory |> UMX.untag
 
-          let includes = buildConfig.includes |> Seq.toList
-          let excludes = buildConfig.excludes |> Seq.toList
+          let chooseGlobs
+            (startsWith: string)
+            (contains: string)
+            (glob: string)
+            =
+            if glob.StartsWith startsWith then
+              Some(glob.Substring startsWith.Length)
+            elif not(glob.Contains contains) then
+              Some(glob)
+            else
+              None
 
-          let pattern = {
-            BaseDirectory = cwd
-            Includes = includes
-            Excludes = excludes
-          }
+          // Process the Local File System globs
+          let lfsGlob =
+            let localIncludes =
+              buildConfig.includes
+              |> Seq.choose(chooseGlobs "lfs:" "vfs:")
+              |> Seq.toList
 
-          let filesToCopy = pattern |> Seq.toArray
+            let localExcludes =
+              buildConfig.excludes
+              |> Seq.choose(chooseGlobs "lfs:" "vfs:")
+              |> Seq.toList
 
-          args.Logger.LogTrace(
-            "Copying files from {Cwd} to {OutDir} with pattern: {Includes} excluding {Excludes}",
-            cwd,
-            outDir,
-            includes,
-            excludes
-          )
+            {
+              BaseDirectory = cwd
+              Includes = localIncludes
+              Excludes = localExcludes
+            }
 
-          let copyAndIncrement (tsk: ProgressTask) (file: string) =
+          // Process the Virtual File System globs
+          let vfsGlob =
+            let virtualIncludes =
+              buildConfig.includes
+              |> Seq.choose(chooseGlobs "vfs:" "lfs:")
+              |> Seq.toList
+
+            let virtualExcludes =
+              buildConfig.excludes
+              |> Seq.choose(chooseGlobs "vfs:" "lfs:")
+              |> Seq.toList
+
+            {
+              BaseDirectory = UMX.untag tempDir
+              Includes = virtualIncludes
+              Excludes = virtualExcludes
+            }
+
+          let copyAndIncrement
+            (cwd: string)
+            (tsk: ProgressTask)
+            (file: string)
+            =
             tsk.Increment 1
             let targetPath = file.Replace(cwd, outDir)
 
@@ -580,14 +613,28 @@ module FileSystem =
           AnsiConsole
             .Progress()
             .Start(fun ctx ->
-              let task =
+              let lfsTask =
                 ctx.AddTask(
-                  "Copy Files to Output",
+                  "Copy Local Files to Output",
                   true,
-                  filesToCopy.Length |> float
+                  lfsGlob |> Seq.length |> float
                 )
 
-              filesToCopy |> Array.Parallel.iter(copyAndIncrement task))
+              let vfsTask =
+                ctx.AddTask(
+                  "Copy virtual files to Output",
+                  true,
+                  vfsGlob |> Seq.length |> float
+                )
+
+              let copyLocal =
+                copyAndIncrement cwd lfsTask
+
+              let copyVirtual = copyAndIncrement (UMX.untag tempDir) vfsTask
+
+              vfsGlob |> Seq.toArray |> Array.Parallel.iter copyVirtual
+
+              lfsGlob |> Seq.toArray |> Array.Parallel.iter copyLocal)
 
         member this.EmitEnvFile
           (config: PerlaConfig, ?tmpPath: string<SystemPath>)
