@@ -1,6 +1,6 @@
 name: Docs
 
-# Trigger this Action when new code is pushed to the main branch
+# Trigger this Action when content in the docs directory is modified
 on:
   push:
     branches:
@@ -25,10 +25,21 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 9.0.x
+      - name: Cache Perla packages
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.config/perla/packages
+          key: ${{ runner.os }}-perla-packages-${{ hashFiles('docs/**') }}
+          restore-keys: |
+            ${{ runner.os }}-perla-packages-
+      - name: Set base href for GitHub Pages
+        run: |
+          sed -i '0,/<head>/s//<head>\n<base href="\/Perla\/">/' docs/index.html
+        shell: bash
       - name: Restore tools
         run: dotnet tool restore
       - name: Build code
-        run: dotnet build -c Release
+        run: dotnet build src/Perla -c Release
       - name: Install Dependencies
         run: cd docs && dotnet run --project ../src/Perla -c Release -f net9.0 --no-build --no-restore -- install
       - name: Generate the documentation
