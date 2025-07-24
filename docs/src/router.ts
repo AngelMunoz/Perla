@@ -9,7 +9,7 @@ export const Page: import("@preact/signals").Signal<
 >(["Home"]);
 
 const rootUrl =
-  window.location.hostname === "angelmunoz.github.io" ? "/Perla/" : "/";
+  window.location.hostname === "angelmunoz.github.io" ? "/Perla" : "/";
 export const Router =
   //@ts-expect-error
   new Navigo(rootUrl, {
@@ -29,6 +29,7 @@ Router.hooks({
 });
 
 Router.on("", () => (Page.value = ["Home"]))
+  .on("/", () => (Page.value = ["Home"]))
   .on("/content/:filename", ({ data }: { data?: MarkdownContentProps }) => {
     if (!data?.filename) return;
     Page.value = ["Content", data.version ?? "v1", data.section, data.filename];
@@ -40,11 +41,11 @@ Router.on("", () => (Page.value = ["Home"]))
       Page.value = ["Docs", data?.version ?? "v1", data.section, data.filename];
     }
   )
-  .on("blogs/:filename", ({ data }: { data?: MarkdownContentProps }) => {
+  .on("/blogs/:filename", ({ data }: { data?: MarkdownContentProps }) => {
     if (!data?.filename) return;
     Page.value = ["Blogs", data.version ?? "v1", data.section, data.filename];
   })
-  .on("blogs", () => {
+  .on("/blogs", () => {
     Page.value = ["Blogs"];
   })
   .notFound(() => {
