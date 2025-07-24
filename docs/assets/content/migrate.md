@@ -99,17 +99,6 @@ Here's the list of breaking changes for the `perla.json` file
 
 ## Config Additions
 
-- runConfiguration ->
-
-  New: perla now supports running/testing apps in production/development mode, the default is production as it will only pick up dependencies required by the application at runtime, development mode is chosen by the test command to pick up libraries that are only relevant for testing, you can also use development mode to add uility libraries that should only run at dev time like rxjs-spy (to debug rxjs observables)
-
-  ```diff
-  + "runConfiguration": "production"
-
-  # or
-  + "runConfiguration": "development"
-  ```
-
 - provider ->
 
   New: In v0 we had a couple of providers but we had custom mechanisms to fetch dependencies and update the import map, for v1 we will leverage completely the [jspm generator api] so we use the same providers to accomplish the same effect, pease refer to the [package manager] documentation for more information
@@ -126,7 +115,7 @@ Here's the list of breaking changes for the `perla.json` file
 
 - plugins ->
 
-  **_NEW_**: At last! Plugins are here to stay, and while they are not as powerful as the ones existing in other tools like vite, snowpack, rollup, webpack, But given what we've got, it is a start for future versions
+  **_NEW_**: At last! Plugins are here to stay. While they are not as powerful as the ones existing in other tools like vite, snowpack, rollup, webpack, But given what we've got, it is a start for future versions
   please refer to the [plugins] documentation for more information
 
 - testing ->
@@ -192,9 +181,9 @@ Here's the list of breaking changes for the `perla.json` file
     +   "includes: [ "assets/images/*", "documents/*/*.html" ]
     +  }
 
-    # Experimental: copy files that live within the virtual file system to the output directory
+    # Copy files that live within the virtual file system to the output directory
     + "build": {
-    +   "includes: [ "vfs:src/*/*.html" ]
+    +   "includes: [ "vfs:**/*.html" ]
     +  }
     ```
 
@@ -258,7 +247,7 @@ Here's the list of breaking changes for the `perla.json` file
 
 ### Deprecated Configuration Options
 
-The following configuration options are still present in the schema for backward compatibility, but are **deprecated** and should not be used in new `perla.json` files. If you are migrating, you should remove or replace these options as described below:
+The following configuration options are still present in the schema, but are **deprecated** and should not be used in new `perla.json` files. If you are migrating, you should remove or replace these options as described below:
 
 #### Top-level deprecated options
 

@@ -626,7 +626,7 @@ let ``CopyGlobs should copy files matching local file system patterns``() =
   }
 
   // Execute CopyGlobs
-  fsManager.CopyGlobs(buildConfig)
+  fsManager.CopyGlobs(buildConfig, outputTempDir.Path)
 
   // Verify files were copied
   let expectedTestFile = Path.Combine(UMX.untag outputTempDir.Path, "test.txt")
