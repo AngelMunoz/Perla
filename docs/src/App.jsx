@@ -102,14 +102,14 @@ function Navbar({ requestMenu }) {
         >
           Menu
         </sl-button>
-        <sl-button href={`#/`} variant="text" size="large">
+        <sl-button href="#/" variant="text" size="large">
           Perla
         </sl-button>
       </section>
       <section class="nav-links">
         <ul class="link-list">
           <li>
-            <sl-button href={"#/content/index"} variant="text">
+            <sl-button href="#/content/index" variant="text">
               Docs
             </sl-button>
           </li>

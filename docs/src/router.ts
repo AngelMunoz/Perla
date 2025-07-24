@@ -1,6 +1,6 @@
 import Navigo from "navigo";
 
-import { signal } from "@preact/signals";
+import { effect, signal } from "@preact/signals";
 
 export const Page: import("@preact/signals").Signal<
   [Page, `v${number}`, string | undefined, string | undefined]
@@ -29,7 +29,6 @@ Router.hooks({
 });
 
 Router.on("", () => (Page.value = ["Home"]))
-  .on("/", () => (Page.value = ["Home"]))
   .on("/content/:filename", ({ data }: { data?: MarkdownContentProps }) => {
     if (!data?.filename) return;
     Page.value = ["Content", data.version ?? "v1", data.section, data.filename];
@@ -49,12 +48,21 @@ Router.on("", () => (Page.value = ["Home"]))
     Page.value = ["Blogs"];
   })
   .notFound(() => {
+    console.warn("Page not found");
     Page.value = ["Blogs", , , "not-found"];
   });
 
 Router.resolve();
 
+effect(() => {
+  const [page, version, section, filename] = Page.value;
+  console.log(
+    `Navigated to ${page} with version ${version}, section ${section}, and filename ${filename}`
+  );
+});
+
 setTimeout(() => {
   const location: Match = Router.getCurrentLocation();
   setHeaderPosition(location);
+  Router.updatePageLinks();
 }, 1000);
