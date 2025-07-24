@@ -640,7 +640,7 @@ module Handlers =
           config,
           tempDir,
           cssPaths,
-          jsBundleEntrypoints,
+          [ yield! jsBundleEntrypoints; yield! jsStandalonePaths ],
           externals |> Seq.map UMX.untag |> Seq.toList
         )
 
