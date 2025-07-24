@@ -16,12 +16,10 @@ function getUrlForPage(
   section?: string
 ) {
   const contentKind = kind ?? "Docs";
-  let url = `https://github.com/AngelMunoz/Perla/edit/dev/src/${contentKind.toLowerCase()}/assets`;
+  let url = `https://github.com/AngelMunoz/Perla/edit/dev/docs/assets/${contentKind.toLowerCase()}`;
   if (version) {
     url += `/${version}`;
   }
-
-  url += "/docs";
 
   if (section) {
     url += `/${section}`;

@@ -8,9 +8,11 @@ export const Page: import("@preact/signals").Signal<
   [Page, `v${number}` | undefined, string | undefined, string | undefined]
 >(["Home"]);
 
+const rootUrl =
+  window.location.hostname === "angelmunoz.github.io" ? "/Perla/" : "/";
 export const Router =
   //@ts-expect-error
-  new Navigo("/", {
+  new Navigo(rootUrl, {
     hash: true,
     linksSelector: "a",
   });
