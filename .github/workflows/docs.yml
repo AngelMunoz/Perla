@@ -29,6 +29,8 @@ jobs:
         run: dotnet tool restore
       - name: Build code
         run: dotnet build -c Release
+      - name: Install Dependencies
+        run: cd docs && dotnet run --project ../src/Perla -c Release -f net9.0 --no-build --no-restore -- install
       - name: Generate the documentation
         run: cd docs && dotnet run --project ../src/Perla -c Release -f net9.0 --no-build --no-restore -- build
       - name: Upload documentation
