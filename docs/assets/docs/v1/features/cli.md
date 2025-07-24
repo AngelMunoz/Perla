@@ -17,7 +17,6 @@ The Perla CLI is (hopefully) very straight forward it provides the following fun
 - [Build Tool]
 - [Package Manager]
 - [Pacakge Search]
-- Interactive Mode
 - [Scaffolding]
 
 ## Dev Server

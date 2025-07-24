@@ -2,87 +2,113 @@
 [perla samples]: https://github.com/AngelMunoz/perla-templates
 [react]: https://reactjs.org/
 
-> **_NOTE_**: This documentation is still being updated to reflect changes for V1, the contents may be outdated while this notice is still present
-
 # JSX/TSX
 
-JSX is an XML like dialect of javascript created by [React] as with [typescript] we use esbuild to transpile these files on the fly there's nothing in particular needed to support JSX/TSX besides two things:
+JSX is an XML like dialect of javascript created by [React]. As with [typescript], we use esbuild to transpile these files on the fly. Perla provides two main ways to configure JSX/TSX support:
 
-- jsx-factory
-- jsx-fragment
+1. Manual JSX imports via `injects` (described below)
+2. Automatic JSX runtime imports via the `jsxAutomatic` and `jsxImportSource` options
 
-These functions are used to set te correct names of the compiled functions which will be called at the runtime.
+## JSX Configuration Options
 
-At the moment we offer no out-of the box support for react/preact or similar cases we instead offer a way for you to inject a particular script where you an define these.
+Perla provides two primary ways to configure JSX support:
 
-> If there is enough demand for it we can bake in this behavior, so feel free to let us know.
+### 1. Automatic JSX Runtime (Recommended)
+
+In the `esbuild` section of your `perla.json`, you can enable automatic JSX runtime imports:
+
+```json
+{
+  "esbuild": {
+    "jsxAutomatic": true,
+    "jsxImportSource": "preact" // or "react", etc.
+  }
+}
+```
+
+With these options:
+- `jsxAutomatic`: When set to `true`, esbuild will automatically inject the necessary JSX runtime imports
+- `jsxImportSource`: Specifies the package from which to import JSX runtime functions
+
+This approach eliminates the need for manual JSX runtime imports in each file.
+
+### 2. Manual Imports via Injects
+
+Alternatively, you can manually specify JSX runtime imports using the `injects` array in the `esbuild` configuration:
 
 ## React
 
-In your JSX/TSX React projects you should create a `react-shim.js` file next to your `perla.json` with the following content:
+### Using Automatic JSX Runtime (Recommended)
+
+For React projects, you can use the automatic JSX runtime configuration:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/main/perla.schema.json",
+  "esbuild": {
+    "jsxAutomatic": true
+    // No jsxImportSource needed for React as it's the default
+  }
+}
+```
+
+## TypeScript Configuration with tsconfig.json/jsconfig.json
+
+Perla also supports TypeScript's JSX configuration through a `tsconfig.json` or `jsconfig.json` file at the root of your project. This provides additional TypeScript-specific JSX options that complement Perla's esbuild configuration.
+
+A typical `tsconfig.json` for a React project might look like this:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "strict": true
+  },
+  "include": ["src/**/*"]
+}
+```
+
+For Preact:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "strict": true
+  },
+  "include": ["src/**/*"]
+}
+```
+
+When both the `tsconfig.json` and Perla's esbuild configurations specify JSX options, Perla will use the configuration from both sources, with Perla's settings taking precedence when there are conflicts.
+
+### Using Manual Imports
+
+Alternatively, create a `react-shim.js` file next to your `perla.json` with the following content:
 
 ```javascript
 import * as React from "react";
 export { React };
 ```
 
-then inside your `perla.json` file you need to add the `injects` array property to the `build` object:
+Then in your `perla.json` file, add the file to the `injects` array in the `esbuild` object:
 
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/main/perla.schema.json",
   "index": "./index.html",
-  "devServer": {
-    // dev server options
-  },
-  "build": {
-    // other build options
-    // This property
+  "esbuild": {
     "injects": [
-      // you can chose where to put your shim as well
-      // but we recommend it to be next to your perla.json file
       "./react-shim.js"
     ]
-    // other build options
-  },
-  "packages": {
-    // dependency list
-  }
-}
-```
-
-## Preact and others
-
-In the case of JSX/TSX Preact or other similar libraries' projects, you should create a `jsx-shim.js` file next to your `perla.json` with the following content:
-
-```javascript
-import { h, Fragment } from "preact";
-export { h, Fragment };
-```
-
-Of course if you're using something other than `preact` do the correct imports
-
-then inside your `perla.json` file you need to add the `injects` array property to the `build` object:
-
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/AngelMunoz/Perla/main/perla.schema.json",
-  "index": "./index.html",
-  "devServer": {
-    // dev server options
-  },
-  "build": {
-    // other build options
-    // This property
-    "injects": [
-      // you can chose where to put your shim as well
-      // but we recommend it to be next to your perla.json file
-      "./jsx-shim.js"
-    ]
-    // other build options
-  },
-  "packages": {
-    // dependency list
   }
 }
 ```

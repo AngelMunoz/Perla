@@ -29,12 +29,12 @@ Here's the list of breaking changes for the `perla.json` file
 
   - autoStart ->
 
-    Removed: v0 had an `interactive` mode which allowed you to control fable's execution, this is no longer the case as it didn't get much traction and made low sense to even expose this option
+    Removed: This option is no longer supported as it didn't get much traction and made low sense to even expose this option
 
 - devServer
 
   - AutoStart ->
-    Removed: v0 had an `interactive` mode which allowed you to control fable's execution, this is no longer the case as it didn't get much traction and made low sense to even expose this option
+    Removed: This option is no longer supported as it didn't get much traction and made low sense to even expose this option
   - mountDirectories ->
 
     Moved: This has been sourced to the top of the configuration rather than something specific to devServer

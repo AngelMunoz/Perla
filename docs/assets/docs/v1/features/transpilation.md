@@ -1,18 +1,77 @@
 [esbuild]: https://esbuild.github.io/
 [esbuild has some caveats]: https://esbuild.github.io/content-types/#typescript-caveats
 
-> **_NOTE_**: This documentation is still being updated to reflect changes for V1, the contents may be outdated while this notice is still present
-
 # Transpilation
 
-Perla supports Typescript, JSX, TSX, and of course Modern Javascript, Mainly thanks to [esbuild].
+Perla supports TypeScript, JSX, TSX, CSS, and modern JavaScript, primarily through [esbuild].
 
-Perla downloads a local copy of esbuild for your OS and architecture, this esbuild binary will be reused for all perla projects, so you don't have multiple copies around. Since We're not in a node environment, we only support what esbuild supports and sometimes even less, depending on how close are we with their latest versions.
+## How Transpilation Works in Perla
 
-At dev time, we simply find the requested file from the browser and transpile it back as the corresponding JS file.
+### Local esbuild Binary
 
-Yes! we do it on the fly! this is thanks to the speed of **Go** and **.NET** this transpilation is barely (if at all) noticeable, you can feel confident that whatever you're developing you won't get bothered by annoying compilation phases or bundling at all.
+Perla downloads a local copy of esbuild for your OS and architecture. This binary is stored in a central location and reused for all Perla projects, eliminating the need for multiple copies. Since Perla operates outside a Node.js environment, it supports what esbuild supports, with version compatibility determining the exact feature set.
 
-For Typescript, Javascript, TSX, JSX support, You don't need to do anything special they work out of the box.
+### On-the-fly Transpilation
 
-> [Esbuild has some caveats] when it comes to typescript support.
+During development, Perla performs on-the-fly transpilation:
+
+1. When a browser requests a file (e.g., a `.ts`, `.tsx`, or `.jsx` file), Perla's virtual file system locates it
+2. The file is passed through the appropriate loader based on its extension:
+   - `.ts` → TypeScript loader
+   - `.tsx` → TSX loader
+   - `.jsx` → JSX loader
+   - `.css` → CSS loader
+   - `.js` → No loader needed (passed through)
+3. Esbuild transpiles the file to JavaScript
+4. The transpiled content is served back to the browser
+
+This process happens instantaneously thanks to the speed of both **Go** (esbuild) and **.NET** (Perla). You won't experience noticeable compilation delays or bundling phases during development.
+
+### File Transformation Process
+
+The transformation process involves several components:
+
+1. **VirtualFileSystem**: Manages file access and applies transformations through plugins
+2. **EsbuildService**: Provides the interface for processing JS and CSS files
+3. **Handlers**: Coordinates the build process, including running esbuild
+4. **SuaveService**: Handles HTTP requests and serves transformed files
+
+### Special Transformations
+
+Perla also supports special transformations when files are requested with the `?js` query parameter:
+
+- **CSS files**: Transformed into JavaScript that creates a style element and injects the CSS content
+- **JSON files**: Transformed into JavaScript that exports the JSON content as the default export
+
+### Build Process
+
+During the build process, Perla:
+
+1. Collects all source files
+2. Processes them with esbuild
+3. Outputs optimized JavaScript and CSS files
+4. Handles minification based on configuration
+
+## Supported File Types
+
+For TypeScript, JavaScript, TSX, JSX, and CSS support, you don't need any special configuration - they work out of the box.
+
+## TypeScript Support
+
+> [Esbuild has some caveats] when it comes to TypeScript support.
+
+Perla uses esbuild's TypeScript transpilation, which performs type erasure rather than type checking. This means:
+
+- Type errors won't prevent compilation
+- Some TypeScript-specific features may not be fully supported
+- For full type checking, it's recommended to run the TypeScript compiler (`tsc`) separately
+
+## Configuration
+
+Perla respects your project's `tsconfig.json` file for TypeScript configuration. The esbuild configuration can be customized in your `perla.json` file, allowing you to control:
+
+- ECMAScript version target
+- JSX handling (automatic or classic)
+- JSX import source
+- Minification settings
+- File loaders

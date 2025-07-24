@@ -1,16 +1,16 @@
-[asp.net]: https://dotnet.microsoft.com/apps/aspnet
+[suave.io]: https://suave.io
 
 > **_NOTE_**: This documentation is still being updated to reflect changes for V1, the contents may be outdated while this notice is still present
 
 # Development Server
 
-Perla is built using [asp.net] making it a performant, solid and battle tested development server.
+Perla is built using [suave.io], a lightweight F# web server with support for WebSocket, HTTPS, and multiple TCP/IP bindings, making it a performant and flexible development server.
 
 by default Perla uses these options if you don't specify them in the `perla.json` > `devServer` object
 
 - autoStart - true
 
-  This means that the saturn server should start as soon as the `perla serve` command is entered.
+  This means that the Suave server should start as soon as the `perla serve` command is entered.
 
 - port - 7331
 - host - localhost
@@ -19,7 +19,6 @@ by default Perla uses these options if you don't specify them in the `perla.json
   The mount directories object provides a way for Perla to know which directories will be used to provide content and what will be copied into the final dev build
 
   ```json
-  // mount the ./src directory on the /src url path
   {
     "mountDirectories": {
       "/src": "./src",
@@ -45,7 +44,7 @@ PERLA_clientToken=abcdefg1234557
 PERLA_API_KEY=12334566abcdefg
 ```
 
-Perla will use `enableEnv` and `envPath` nodes from the `devServer` options and provide a javascript file with those environment variables, something like
+Perla will use the `enableEnv` and `envPath` configuration settings from the perla.json file and provide a javascript file with those environment variables, something like
 
 ```js
 export const clientToken = "abcdefg1234557";
