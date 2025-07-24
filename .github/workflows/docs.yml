@@ -28,8 +28,8 @@ jobs:
       - name: Cache Perla packages
         uses: actions/cache@v4
         with:
-          path: /home/runner/.config/perla/packages
-          key: ${{ runner.os }}-perla-packages-${{ hashFiles('docs/**') }}
+          path: /home/runner/.config/perla/packages/
+          key: ${{ runner.os }}-perla-packages-${{ hashFiles('docs/perla.json.importmap') }}
           restore-keys: |
             ${{ runner.os }}-perla-packages-
       - name: Set base href for GitHub Pages

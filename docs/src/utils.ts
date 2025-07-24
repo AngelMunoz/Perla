@@ -7,7 +7,7 @@ export function buildUrl(
   const name = filename.endsWith(".html") ? filename : `${filename}.html`;
   const isBlogOrContent = kind === "Blogs" || kind === "Content";
 
-  let url = `/assets/${kind.toLowerCase()}`;
+  let url = `#/assets/${kind.toLowerCase()}`;
 
   if (!isBlogOrContent && version) {
     url += `/${version ?? "v0"}`;
