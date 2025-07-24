@@ -29,22 +29,22 @@ Router.hooks({
 });
 
 Router.on("", () => (Page.value = ["Home"]))
-  .on("/content/:filename", ({ data }: { data?: MarkdownContentProps }) => {
+  .on("content/:filename", ({ data }: { data?: MarkdownContentProps }) => {
     if (!data?.filename) return;
     Page.value = ["Content", data.version ?? "v1", data.section, data.filename];
   })
   .on(
-    "/:version/docs/:section/:filename",
+    ":version/docs/:section/:filename",
     ({ data }: { data?: MarkdownContentProps }) => {
       if (!data?.filename) return;
       Page.value = ["Docs", data?.version ?? "v1", data.section, data.filename];
     }
   )
-  .on("/blogs/:filename", ({ data }: { data?: MarkdownContentProps }) => {
+  .on("blogs/:filename", ({ data }: { data?: MarkdownContentProps }) => {
     if (!data?.filename) return;
     Page.value = ["Blogs", data.version ?? "v1", data.section, data.filename];
   })
-  .on("/blogs", () => {
+  .on("blogs", () => {
     Page.value = ["Blogs"];
   })
   .notFound(() => {
