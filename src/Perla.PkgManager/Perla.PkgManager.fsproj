@@ -19,6 +19,7 @@
     <PackageReference Include="FsHttp" />
     <PackageReference Include="IcedTasks" />
     <PackageReference Include="JDeck" />
+    <PackageReference Include="FsToolkit.ErrorHandling" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
   </ItemGroup>
 </Project>

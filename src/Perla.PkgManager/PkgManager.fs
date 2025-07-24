@@ -6,6 +6,7 @@ open System.Threading
 open Microsoft.Extensions.Logging
 open FsHttp
 open IcedTasks
+open FsToolkit.ErrorHandling
 open System.Threading.Tasks
 
 type PkgManagerConfiguration = { GlobalCachePath: string; cwd: string }
@@ -14,6 +15,17 @@ type PkgManagerServiceArgs = {
   reqHandler: RequestHandler.JspmService
   logger: ILogger
   config: PkgManagerConfiguration
+}
+
+type PackageOperation =
+  | Downloading
+  | CreatingSymlink
+  | CreatingFlatSymlink
+
+type PackageError = {
+  Operation: PackageOperation
+  Package: string
+  Error: exn
 }
 
 type PkgManager =
@@ -81,23 +93,29 @@ module PkgManager =
     asyncEx {
       let globalPkgPath = Path.Combine(cacheDir.FullName, package)
 
-      if not(Directory.Exists(globalPkgPath)) then
+      if Directory.Exists(globalPkgPath) then
         logger.LogDebug(
-          "[Download] Downloading package '{package}'...",
+          "[Download] Package '{package}' already exists, skipping download.",
           package
         )
 
-        logger.LogTrace(
-          "[Download] Downloading to: {globalPkgPath}",
-          globalPkgPath
-        )
+        return ()
 
-        logger.LogDebug(
-          "[Download] Working through {fileCount} files...",
-          content.files.Length
-        )
+      logger.LogDebug("[Download] Downloading package '{package}'...", package)
 
-        for file in content.files do
+      logger.LogTrace(
+        "[Download] Downloading to: {globalPkgPath}",
+        globalPkgPath
+      )
+
+      logger.LogDebug(
+        "[Download] Working through {fileCount} files...",
+        content.files.Length
+      )
+
+      let fileTasks =
+        content.files
+        |> Array.map(fun file -> asyncEx {
           let filePath = Path.Combine(cacheDir.FullName, package, file)
           let downloadUri = Uri(content.pkgUrl, file)
 
@@ -122,11 +140,10 @@ module PkgManager =
           use fileStream = File.OpenWrite filePath
           do! fileContent.CopyToAsync(fileStream)
           logger.LogTrace("[Download] Downloaded file: {filePath}", filePath)
-      else
-        logger.LogDebug(
-          "[Download] Package '{package}' already exists, skipping download.",
-          package
-        )
+        })
+
+      do! Async.Parallel(fileTasks, 10) |> Async.Ignore
+      return ()
     }
 
   // Create the .perla symlink for a package
@@ -236,18 +253,64 @@ module PkgManager =
         cacheDir.FullName
       )
 
+      let perPackageTask(package, content) : Async<Result<unit, PackageError>> = asyncResult {
+        do!
+          downloadPackage logger cacheDir package content
+          |> AsyncResult.ofAsync
+          |> AsyncResult.catch(fun exn -> {
+            Operation = Downloading
+            Package = package
+            Error = exn
+          })
+
+        do!
+          createPerlaSymlink logger cacheDir perlaDir package
+          |> AsyncResult.ofAsync
+          |> AsyncResult.catch(fun exn -> {
+            Operation = CreatingSymlink
+            Package = package
+            Error = exn
+          })
+
+        do!
+          createFlatSymlink logger localCacheDir perlaDir package
+          |> AsyncResult.ofAsync
+          |> AsyncResult.catch(fun exn -> {
+            Operation = CreatingFlatSymlink
+            Package = package
+            Error = exn
+          })
+
+        return ()
+      }
+
       logger.LogTrace("Working with Download Map: {downloadMap}", response)
       // Per-package pipeline: download, then .perla symlink, then flat symlink
-      let perPackageTasks =
-        response
-        |> Map.toArray
-        |> Array.map(fun (package, content) -> asyncEx {
-          do! downloadPackage logger cacheDir package content
-          do! createPerlaSymlink logger cacheDir perlaDir package
-          do! createFlatSymlink logger localCacheDir perlaDir package
-        })
+      let perPackageTasks = response |> Map.toArray |> Array.map perPackageTask
 
-      do! Async.Parallel(perPackageTasks, 10) |> Async.Ignore
+      let! results = Async.Parallel(perPackageTasks, 10)
+
+      let errors =
+        results
+        |> Array.choose (function
+          | Ok _ -> None
+          | Error pkgError -> Some pkgError)
+
+      for err in errors do
+        let opStr =
+          match err.Operation with
+          | Downloading -> "downloading"
+          | CreatingSymlink -> ".perla symlink creation"
+          | CreatingFlatSymlink -> "flat symlink creation"
+
+        logger.LogError(
+          err.Error,
+          "[Error] Failed during {operation} for package: {package}\n{error}",
+          opStr,
+          err.Package,
+          err.Error.Message
+        )
+
       return ()
     }
 
@@ -622,7 +685,7 @@ module PkgManager =
 
               // If the package name (key in the import map) ends with a slash,
               // ensure the path also ends with a slash to maintain import map validity
-              if pkgName.EndsWith("/") && not (path.EndsWith("/")) then
+              if pkgName.EndsWith("/") && not(path.EndsWith("/")) then
                 path + "/"
               else
                 path
