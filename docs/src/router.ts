@@ -15,6 +15,7 @@ export const Router =
   new Navigo(rootUrl, {
     hash: true,
     linksSelector: "a",
+    strategy: "ALL",
   });
 
 const setHeaderPosition = ({ params }: Match) => {
@@ -49,10 +50,12 @@ Router.on("", () => (Page.value = ["Home"]))
   })
   .notFound(() => {
     console.warn("Page not found");
-    Page.value = ["Blogs", , , "not-found"];
+    Page.value = ["Blogs", undefined, undefined, "not-found"];
   });
 
 console.log("Resolving at: " + window.location.href);
+console.log("Router root URL: " + rootUrl);
+console.log("Router strategy: ALL");
 
 effect(() => {
   const [page, version, section, filename] = Page.value;
