@@ -4,34 +4,26 @@
 
 # Development Server
 
-Perla is built using [suave.io], a lightweight F# web server with support for WebSocket, HTTPS, and multiple TCP/IP bindings, making it a performant and flexible development server.
+When you call `perla serve`, Perla will start a development server for your project.
+This server has a few phases which are more-less like the following
 
-by default Perla uses these options if you don't specify them in the `perla.json` > `devServer` object
+- Initialization
+  - If available (`perla.json` has a `fable` section), the Fable compiler will be invoked in watch mode and will wait for the first compilation to be finished.
+  - Load Plugins, the built-in plugins will be loaded if the heuristics allow it, and user provided plutgins will be lodaded as well.
+- Mounting
+  - Given the `mountDirectories` configuration, Perla will start loading resources specified in the `mountDirectories` section of the `perla.json` file.
+  - For each file loaded from the `mountDirectories`, Perla will move it through the compilation pipeline
+  - A list of file watchers will be created based on the `mountDirectories` configuration, so that any changes to the files will trigger a pass through the compilation pipeline.
+  - Store the results of the compilation in a cache, so that subsequent requests for the same file can be served faster.
+- Serving
 
-- autoStart - true
+Building your app has a similar process but streamlined to only build the files that are needed for the final output.
 
-  This means that the Suave server should start as soon as the `perla serve` command is entered.
+## Live Reloading
 
-- port - 7331
-- host - localhost
-- mountDirectories
+Perla supports live reloading out of the box, meaning that any changes you make to your source files will automatically trigger a rebuild and refresh the browser.
 
-  The mount directories object provides a way for Perla to know which directories will be used to provide content and what will be copied into the final dev build
-
-  ```json
-  {
-    "mountDirectories": {
-      "/src": "./src",
-      "/node_modules": "./node_modules"
-    }
-  }
-  ```
-
-  for example: you could provide an "_assets_" directory to mount all of the images or other kinds of files in your project and serve them under "_/assets_" url.
-
-  ```json
-  { "/src": "./src", "/assets": "./assets" }
-  ```
+In the case of CSS, the changes will be applied without a full page reload, allowing for a smoother development experience.
 
 ## Environment Variable Support
 
@@ -44,7 +36,7 @@ PERLA_clientToken=abcdefg1234557
 PERLA_API_KEY=12334566abcdefg
 ```
 
-Perla will use the `enableEnv` and `envPath` configuration settings from the perla.json file and provide a javascript file with those environment variables, something like
+By default, Perla doesn't need any particular configuration, these variables will be available at the server route of `/env.js`
 
 ```js
 export const clientToken = "abcdefg1234557";
@@ -68,6 +60,42 @@ let API_KEY = import "API_KEY" "/env.js"
 let clientToken = importMember "/env.js"
 ```
 
-at build time we don't emit anything for security reasons
+If for some reason you want to change the path of the environment variables file, you can do so by modifying the `perla.json` configuration to include the `enableEnv` and `envPath`
 
-> **NOTE**: If you're using TS/JSX/TSX then you might want to enable `"preserveValueImports": true` in your tsconfig.json if for some reason the import is not working at dev time
+```json
+{
+  "enableEnv": true,
+  "envPath": "/path/to/custom-env.js"
+}
+```
+
+and thepending on the `envPath` you will be able to import the environment variables from that path.
+
+```js
+import { clientToken, API_KEY } from "/path/to/custom-env.js";
+```
+
+### Why not `import.meta.env`?
+
+While the ecosystem has been moving towards `import.meta` these variables are actually controlled by the runtime and not the build tool, so bundlers like Vite or Webpack perform some string replacement at build/serve in order to replace those variables with the actual values. For us this feels more like a hack than a feature, having a file that provides the environment variables feels like a more flexible and explicit option to handle these important (but ultimately public) variables as you have better control in your server who can request those files and how they are served.
+
+## Mounted Directories
+
+Perla has some knowledge about your project structure based on conventions, one of those is "mounted directories".
+by default Perla will mount the `src` directory into your server's `/src`, so your source files will mirror the structure of your project, you can however change this behavior by providing a `mountDirectories` section in your `perla.json` configuration file.
+
+```json
+{
+  "mountDirectories": {
+    "/src": "./src"
+  }
+}
+```
+
+for example: you could provide an "_assets_" directory to mount all of the images or other kinds of files in your project and serve them under "_/assets_" url.
+
+```json
+{ "/src": "./src", "/assets": "./assets" }
+```
+
+This configuration will also affect the way Perla will generate your final build so keep it in mind when you are building your project.

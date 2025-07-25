@@ -1,8 +1,6 @@
 [css module scripts]: https://web.dev/css-module-scripts/
 [lit]: https://lit.dev
 
-> **_NOTE_**: This documentation is still being updated to reflect changes for V1, the contents may be outdated while this notice is still present
-
 ### CSS Modules
 
 CSS Module Scripts are very useful for Web component libraries like [lit] or any other library that produces custom elements with shadow roots, here's an example of the usage:
@@ -34,4 +32,4 @@ import "my-cssfile.css?js";
 import json from "./my-file.json?js";
 ```
 
-> **Note:** Using the `?js` query param is available for compatibility, but using import with is the preferred and more standard approach.
+> **Note:** While this may work without any plugins enabled while serving your app, this will likely break your final build if you don't enable the esbuild plugin as this relies on esbuild features.
