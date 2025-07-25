@@ -38,10 +38,6 @@ jobs:
           key: ${{ runner.os }}-perla-packages-${{ hashFiles('docs/perla.json.importmap') }}
           restore-keys: |
             ${{ runner.os }}-perla-packages-
-      - name: Set base href for GitHub Pages
-        run: |
-          sed -i '0,/<head>/s//<head>\n<base href="\/Perla\/">/' docs/index.html
-        shell: bash
       - name: Restore tools
         run: dotnet tool restore
       - name: Build code
