@@ -29,6 +29,7 @@ Router.hooks({
 });
 
 Router.on("", () => (Page.value = ["Home"]))
+  .on("Perla", () => (Page.value = ["Home"]))
   .on("content/:filename", ({ data }: { data?: MarkdownContentProps }) => {
     if (!data?.filename) return;
     Page.value = ["Content", data.version ?? "v1", data.section, data.filename];
