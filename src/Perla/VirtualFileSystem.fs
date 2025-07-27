@@ -372,7 +372,7 @@ module VirtualFs =
     async {
       let sourcePath = UMX.untag systemPath
 
-      deps.logger.LogDebug(
+      deps.logger.LogTrace(
         "Processing text file {FilePath} (content length: {ContentLength})",
         sourcePath,
         content.Length
@@ -434,7 +434,7 @@ module VirtualFs =
 
         deps.files[finalPath] <- entry
 
-        deps.logger.LogDebug(
+        deps.logger.LogTrace(
           "Stored file content for {FilePath}: length={ContentLength}",
           sourcePath,
           fileContent.content.Length
@@ -468,7 +468,7 @@ module VirtualFs =
       then
         do! processNodeModulesFile deps systemPath targetPath filename extension
       else
-        deps.logger.LogDebug(
+        deps.logger.LogTrace(
           "Processing file {FilePath} -> {TargetPath}",
           sourcePath,
           UMX.untag targetPath
