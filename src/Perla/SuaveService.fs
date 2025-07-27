@@ -305,9 +305,7 @@ module ProxyService =
   open FsToolkit.ErrorHandling
 
   module Proxy =
-    open Suave
     open Suave.Utils
-    open Suave.Utils.Async
     open Suave.Sockets
     open System.Net.Http
 
@@ -406,7 +404,7 @@ module ProxyService =
       }
 
     let proxy(newHost: Uri) : WebPart =
-      fun ctx -> async {
+      fun ctx -> asyncEx {
         let remappedAddress =
           if [ 80; 443 ] |> Seq.contains newHost.Port then
             sprintf
@@ -494,10 +492,10 @@ module ProxyService =
         request.Headers.Add("X-Forwarded-For", ctx.request.host)
 
         if
-          [ HttpMethod.POST; HttpMethod.PUT ] |> Seq.contains ctx.request.method
+          [ HttpMethod.POST; HttpMethod.PUT; HttpMethod.PATCH ]
+          |> Seq.contains ctx.request.method
         then
-          request.Content <-
-            new StreamContent(new MemoryStream(ctx.request.rawForm))
+          request.Content <- new ByteArrayContent(ctx.request.rawForm)
 
         try
           let! response = client.SendAsync request
