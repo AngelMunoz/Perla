@@ -302,13 +302,257 @@ module MimeTypes =
 // ============================================================================
 
 module ProxyService =
+  open FsToolkit.ErrorHandling
 
-  let createProxyWebparts(proxyConfig: Map<string, string>) =
+  module Proxy =
+    open Suave
+    open Suave.Utils
+    open Suave.Utils.Async
+    open Suave.Sockets
+    open System.Net.Http
+
+    let private client =
+      lazy
+        (let handler = new HttpClientHandler()
+         handler.AutomaticDecompression <- DecompressionMethods.All
+         let client = new HttpClient(handler)
+         client.DefaultRequestHeaders.ExpectContinue <- false
+         client)
+
+    let private (?) headers (name: string) =
+      headers
+      |> Seq.tryFind(fun (k, _) ->
+        String.Equals(k, name, StringComparison.InvariantCultureIgnoreCase))
+      |> Option.map snd
+
+    let private httpWebResponseToHttpContext
+      (ctx: HttpContext)
+      (response: HttpResponseMessage)
+      =
+      let status =
+        match HttpCode.tryParse(int response.StatusCode) with
+        | Choice1Of2 x -> x.status
+        | _ -> HTTP_502.status
+
+      let headers =
+        response.Headers
+        |> Seq.map(fun (KeyValue(k, v)) -> k, v |> String.concat ";")
+        |> Seq.toList
+
+      // Check if response is chunked
+      let isChunked =
+        response.Headers.TransferEncodingChunked.HasValue
+        && response.Headers.TransferEncodingChunked.Value
+        || response.Headers.Contains("Transfer-Encoding")
+           && response.Headers.GetValues("Transfer-Encoding")
+              |> Seq.exists(fun v -> v.Contains("chunked"))
+
+      let writeHeaders(conn: Connection) : SocketOp<_> = taskResult {
+        // Write all response headers
+        for (key, value) in headers do
+          // Skip Content-Length for chunked responses
+          if
+            not(
+              isChunked
+              && String.Equals(
+                key,
+                "Content-Length",
+                StringComparison.InvariantCultureIgnoreCase
+              )
+            )
+          then
+            do! conn.asyncWriteLn(sprintf "%s: %s" key value)
+
+        // Write content headers if they exist
+        for KeyValue(key, value) in response.Content.Headers do
+          // Skip Content-Length for chunked responses
+          if
+            not(
+              isChunked
+              && String.Equals(
+                key,
+                "Content-Length",
+                StringComparison.InvariantCultureIgnoreCase
+              )
+            )
+          then
+            do!
+              conn.asyncWriteLn(sprintf "%s: %s" key (String.concat ";" value))
+
+
+        // Write empty line to end headers
+        do! conn.asyncWriteLn ""
+        do! conn.flush()
+      }
+
+      {
+        ctx with
+            response = {
+              ctx.response with
+                  status = status
+                  headers = headers
+                  content =
+                    SocketTask(fun (conn, _) -> taskResult {
+                      do! writeHeaders conn
+                      use! stream = response.Content.ReadAsStreamAsync()
+
+                      if isChunked then
+                        // For chunked responses, transfer the stream directly
+                        do! transferStreamChunked conn stream
+                      else
+                        do! transferStream conn stream
+                    })
+            }
+      }
+
+    let proxy(newHost: Uri) : WebPart =
+      fun ctx -> async {
+        let remappedAddress =
+          if [ 80; 443 ] |> Seq.contains newHost.Port then
+            sprintf
+              "%s://%s%s%s"
+              newHost.Scheme
+              newHost.Host
+              ctx.request.path
+              ctx.request.rawQuery
+          else
+            sprintf
+              "%s://%s:%i%s%s"
+              newHost.Scheme
+              newHost.Host
+              newHost.Port
+              ctx.request.path
+              ctx.request.rawQuery
+
+        // Configure client to not buffer responses for proper chunked handling
+        // Enable automatic decompression while preserving chunked responses
+        let client = client.Value
+        use request = new HttpRequestMessage()
+        request.RequestUri <- Uri remappedAddress
+        request.Method <- new HttpMethod(ctx.request.rawMethod)
+
+        // Check if request is chunked
+        let isChunkedRequest =
+          ctx.request.headers
+          |> List.tryFind(fun (key, _) ->
+            String.Equals(
+              key,
+              "Transfer-Encoding",
+              StringComparison.InvariantCultureIgnoreCase
+            ))
+          |> Option.map snd
+          |> Option.map(fun v -> v.Contains("chunked"))
+          |> Option.defaultValue false
+
+        match ctx.request.headers?("User-Agent") with
+        | Some x -> request.Headers.UserAgent.ParseAdd x
+        | None -> ()
+
+        match ctx.request.headers?("Accept") with
+        | Some x -> request.Headers.Accept.ParseAdd x
+        | None -> ()
+
+        match
+          ctx.request.headers?("Date")
+          |> Option.bind(Parse.dateTime >> Choice.toOption)
+        with
+        | Some x -> request.Headers.Date <- x
+        | None -> ()
+
+        match ctx.request.headers?("Host") with
+        | Some x -> request.Headers.Host <- x
+        | None -> ()
+
+        match ctx.request.headers?("Content-Type") with
+        | Some x -> request.Headers.Add("Content-Type", x)
+        | None -> ()
+
+        // Only add Content-Length if not chunked
+        if not isChunkedRequest then
+          match
+            ctx.request.headers?("Content-Length")
+            |> Option.bind(Parse.int64 >> Choice.toOption)
+          with
+          | Some x -> request.Headers.Add("Content-Length", x.ToString())
+          | None -> ()
+
+        // Forward Transfer-Encoding header if present
+        match ctx.request.headers?("Transfer-Encoding") with
+        | Some x ->
+          request.Headers.TransferEncodingChunked <- x.Contains("chunked")
+        | None -> ()
+
+        // Forward additional headers that might be important for chunked responses
+        match ctx.request.headers?("Connection") with
+        | Some x -> request.Headers.Connection.ParseAdd x
+        | None -> ()
+
+        match ctx.request.headers?("Keep-Alive") with
+        | Some x -> request.Headers.Add("Keep-Alive", x)
+        | None -> ()
+
+        request.Headers.Add("X-Forwarded-For", ctx.request.host)
+
+        if
+          [ HttpMethod.POST; HttpMethod.PUT ] |> Seq.contains ctx.request.method
+        then
+          request.Content <-
+            new StreamContent(new MemoryStream(ctx.request.rawForm))
+
+        try
+          let! response = client.SendAsync request
+
+          return httpWebResponseToHttpContext ctx response |> Some
+        with exn ->
+          return!
+            (OK $"Unable to proxy the request: {exn.Message}"
+             >=> Writers.setStatus HTTP_502)
+              ctx
+      }
+
+  let createProxyWebparts (logger: ILogger) (proxyConfig: Map<string, string>) =
     proxyConfig
     |> Map.toList
     |> List.map(fun (pathPattern, targetUrl) ->
       let targetUri = Uri(targetUrl)
-      pathStarts pathPattern >=> proxy targetUri)
+
+      logger.LogInformation(
+        "Creating proxy for path {PathPattern} to target {TargetUrl}",
+        pathPattern,
+        targetUrl
+      )
+
+      pathStarts pathPattern
+      >=> (fun ctx -> async {
+        logger.LogInformation(
+          "Proxying {Path} to {TargetUrl}",
+          ctx.request.url,
+          targetUrl + ctx.request.url.PathAndQuery
+        )
+
+        let! result = Proxy.proxy targetUri ctx
+
+        match result with
+        | None ->
+          logger.LogWarning("Proxy failed for {Path}", ctx.request.url)
+        | Some response ->
+          // Log if we detect chunked responses for debugging
+          if
+            response.response.headers
+            |> List.exists(fun (key, _) ->
+              String.Equals(
+                key,
+                "Transfer-Encoding",
+                StringComparison.InvariantCultureIgnoreCase
+              ))
+          then
+            logger.LogDebug(
+              "Proxied chunked response for {Path}",
+              ctx.request.url
+            )
+
+        return result
+      }))
     |> function
       | [] -> never
       | [ single ] -> single
@@ -1088,7 +1332,9 @@ module SuaveServer =
 
   let createTestingApp(suaveCtx: SuaveServerContext) =
     let config = AVal.force suaveCtx.Config
-    let proxyWebparts = ProxyService.createProxyWebparts config.devServer.proxy
+
+    let proxyWebparts =
+      ProxyService.createProxyWebparts suaveCtx.Logger config.devServer.proxy
 
     choose [
       // Perla internal endpoints
@@ -1149,7 +1395,9 @@ module SuaveServer =
 
   let createApp(suaveCtx: SuaveServerContext) =
     let config = AVal.force suaveCtx.Config
-    let proxyWebparts = ProxyService.createProxyWebparts config.devServer.proxy
+
+    let proxyWebparts =
+      ProxyService.createProxyWebparts suaveCtx.Logger config.devServer.proxy
 
     choose [
       // Perla internal endpoints
@@ -1190,7 +1438,9 @@ module SuaveServer =
 
   let createStaticServerApp(suaveCtx: SuaveServerContext) =
     let config = AVal.force suaveCtx.Config
-    let proxyWebparts = ProxyService.createProxyWebparts config.devServer.proxy
+
+    let proxyWebparts =
+      ProxyService.createProxyWebparts suaveCtx.Logger config.devServer.proxy
 
     let outDir =
       Path.Combine(".", UMX.untag config.build.outDir) |> Path.GetFullPath

@@ -57,7 +57,8 @@ module PortUtils =
 module ProxyService =
 
   /// Create proxy webparts from configuration map
-  val createProxyWebparts: proxyConfig: Map<string, string> -> WebPart
+  val createProxyWebparts:
+    logger: ILogger -> proxyConfig: Map<string, string> -> WebPart
 
 /// Virtual file system integration
 module VirtualFiles =
