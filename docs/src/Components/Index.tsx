@@ -23,7 +23,7 @@ const rows = [
       header: "Fast",
       content: (
         <p>
-          Perla uses <b>.NET</b> and <b>Go</b> under the hood for a performant
+          Perla uses <b>dotnet</b> and <b>go</b> under the hood for a performant
           development experience!
         </p>
       ),
@@ -33,20 +33,20 @@ const rows = [
       content: "Windows, Linux, MacOS, even on your Raspberry Pi!",
     },
     {
-      header: "Single binary or .NET Tool",
+      header: "Standalone CLI or dotnet tool",
       content:
-        "Download the tool or if you're a .NET user just install the dotnet tool.",
+        "Download the tool or if you're a dotnet user just install the dotnet tool.",
     },
     {
-      header: "Typescript or JSX/TSX?",
+      header: "Web Standards First",
       content:
-        "From modern Javascript to Typescript, develop in your flavor of choice.",
+        "Start with what the browser knows and supports, then add extras (like bundling) if you need it.",
     },
     {
-      header: "No Local dependencies",
+      header: "No Local dependencies (If you want)",
       content: (
         <>
-          Forget about webpack, npm, and other complex tooling, Perla uses CDNs
+          Forget about webpack, npm, and other complex tooling, Perla can use CDNs
           like:
           <ul class="link-list">
             <li>
@@ -64,11 +64,11 @@ const rows = [
               <sl-button
                 type="text"
                 target="_blank"
-                href="https://www.skypack.dev/"
+                href="https://www.jsdelivr.com/?docs=esm"
                 variant="primary"
                 outline
               >
-                Skypack
+                JsDelivr
               </sl-button>
             </li>
             <li>
