@@ -93,7 +93,7 @@ Example plugin (`.perla/plugins/markdown.fsx`):
 
 ```fsharp
 #r "nuget: Markdig, 0.41.3"
-#r "nuget: Perla.Plugins, 1.0.0-beta-032"
+#r "nuget: Perla.Plugins, 1.0.0-beta-033"
 
 open Perla.Plugins
 open Markdig
