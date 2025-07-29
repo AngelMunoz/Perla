@@ -1,7 +1,13 @@
 function BlogEntry({ blog }: { blog: Blog }) {
   return (
     <section class="perla-blogs__entry">
-      <header>{blog.title}</header>
+      <header>
+        <h2>
+          <a href={blog.url}>
+            {blog.title}
+          </a>
+        </h2>
+      </header>
       <time dateTime={blog.date}>Published: {blog.date}</time>
       <p>{blog.summary}</p>
     </section>

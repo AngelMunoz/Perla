@@ -24,7 +24,7 @@ const content = computed(() => {
   const [page, ver, section, pageName] = Page.value;
   if (page === "Home") {
     return <Index />;
-  } else if (page === "Blogs") {
+  } else if (page === "Blogs" && !pageName) {
     return <BlogList blogs={Blogs} />;
   } else {
     return (
