@@ -11,21 +11,12 @@ open Perla.Logger
 
 module Env =
 
-  let SetupAppContainer() =
+  let SetupAppContainer logLevel =
     let lf =
-#if DEBUG
-      let loglevel = LogLevel.Debug
-#else
+      let logLevel = defaultArg logLevel LogLevel.Information
 
-#if TRACE
-      let loglevel = LogLevel.Trace
-#else
-      let loglevel = LogLevel.Information
-#endif
-
-#endif
       LoggerFactory.Create(fun builder ->
-        builder.AddPerlaLogger(logLevel = loglevel).SetMinimumLevel(loglevel)
+        builder.AddPerlaLogger(logLevel = logLevel).SetMinimumLevel(logLevel)
         |> ignore)
 
     let AppLogger = lf.CreateLogger("Perla")
@@ -68,15 +59,27 @@ module Env =
 
 [<EntryPoint>]
 let main argv =
+  let logLevel =
+    argv
+    |> Array.tryPick(fun arg ->
+      match arg with
+      | "[log=debug]" -> Some LogLevel.Debug
+      | "[log=warn]" -> Some LogLevel.Warning
+      | "[log=error]" -> Some LogLevel.Error
+      | "[log=trace]" -> Some LogLevel.Trace
+      | "[log=none]" -> Some LogLevel.None
+      | "[log=crit]" -> Some LogLevel.Critical
+      | _ -> None)
 
-  let appContainer = Env.SetupAppContainer()
+  let appContainer = Env.SetupAppContainer logLevel
 
   rootCommand argv {
     description "The Perla Dev Server!"
 
     configure(fun cfg ->
       // don't replace leading @ strings e.g. @lit-labs/task
-      cfg.ResponseFileTokenReplacer <- null)
+      cfg.ResponseFileTokenReplacer <- null
+      cfg.RootCommand.TreatUnmatchedTokensAsErrors <- false)
 
     inputs Input.context
     helpActionAsync
