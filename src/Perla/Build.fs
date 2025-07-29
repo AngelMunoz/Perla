@@ -20,7 +20,7 @@ open Microsoft.Extensions.Logging
 open AngleSharp.Html.Parser
 
 type BuildServiceArgs = {
-  Logger: Microsoft.Extensions.Logging.ILogger
+  Logger: ILogger
   FsManager: Perla.FileSystem.PerlaFsManager
   EsbuildService: Perla.Esbuild.EsbuildService
   ExtensibilityService: Perla.Extensibility.ExtensibilityService
@@ -70,7 +70,7 @@ type BuildService =
 
   abstract WriteIndex:
     config: PerlaConfig aval *
-    document: AngleSharp.Html.Dom.IHtmlDocument *
+    document: IHtmlDocument *
     map: Perla.PkgManager.ImportMap *
     jsPaths: seq<string<ServerUrl>> *
     cssPaths: seq<string<ServerUrl>> *
@@ -245,7 +245,7 @@ module Build =
           let rest = path.Substring(idx + marker.Length)
 
           let parts =
-            rest.Split([| '/' |], System.StringSplitOptions.RemoveEmptyEntries)
+            rest.Split([| '/' |], StringSplitOptions.RemoveEmptyEntries)
 
           if parts.Length = 0 then
             None
@@ -267,7 +267,7 @@ module Build =
         |> Seq.distinct
         |> Seq.toList
 
-      let cwd = System.IO.Directory.GetCurrentDirectory()
+      let cwd = Directory.GetCurrentDirectory()
 
       let getTopLevelNodeModulesPath (cwd: string) (pkgVer: string) =
         if pkgVer.StartsWith("@") then
@@ -281,11 +281,11 @@ module Build =
 
             if nameEndIdx > 0 then
               let name = nameAndVersion.Substring(0, nameEndIdx)
-              System.IO.Path.Combine(cwd, "node_modules", scope, name)
+              Path.Combine(cwd, "node_modules", scope, name)
             else
-              System.IO.Path.Combine(cwd, "node_modules", scope)
+              Path.Combine(cwd, "node_modules", scope)
           else
-            System.IO.Path.Combine(cwd, "node_modules", pkgVer)
+            Path.Combine(cwd, "node_modules", pkgVer)
         else
           // Unscoped: name@version
           let nameEndIdx = pkgVer.IndexOf("@")
@@ -296,15 +296,15 @@ module Build =
             else
               pkgVer
 
-          System.IO.Path.Combine(cwd, "node_modules", name)
+          Path.Combine(cwd, "node_modules", name)
 
       allPkgVers
       |> List.filter(fun pkgVer ->
         let topLevelPath = getTopLevelNodeModulesPath cwd pkgVer
 
         not(
-          System.IO.Directory.Exists(topLevelPath)
-          || System.IO.File.Exists(topLevelPath)
+          Directory.Exists(topLevelPath)
+          || File.Exists(topLevelPath)
         ))
 
 module BuildService =

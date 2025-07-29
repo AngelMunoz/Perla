@@ -131,7 +131,7 @@ module GlobalOptions =
         "Error",
         "Critical"
       )
-    |> Input.ofOption
+    |> ofOption
 
   let bind parseResult =
     let ci = ci.GetValue parseResult |> Option.defaultValue false
@@ -212,7 +212,7 @@ module PackageInputs =
       Arity = ArgumentArity.OneOrMore,
       Description = "set of packages to add as dependencies"
     )
-    |> Input.ofArgument
+    |> ofArgument
 
 
   let version: ActionInput<string option> =

@@ -15,7 +15,7 @@ open type Testing
 [<AttachMembers>]
 type CustomObservable() =
 
-  let observers = new HashSet<IObserver<_>>()
+  let observers = HashSet<IObserver<_>>()
 
   member _.Broadcast(value) =
     for observer in observers do
@@ -67,8 +67,8 @@ Describe(
     It(
       "T can give default values",
       fun () ->
-        let obs = new CustomObservable()
-        let values = new HashSet<_>()
+        let obs = CustomObservable()
+        let values = HashSet<_>()
 
         let stream = T obs ("lastName", "Vorname")
 

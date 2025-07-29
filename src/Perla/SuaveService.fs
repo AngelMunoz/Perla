@@ -427,7 +427,7 @@ module ProxyService =
         let client = client.Value
         use request = new HttpRequestMessage()
         request.RequestUri <- Uri remappedAddress
-        request.Method <- new HttpMethod(ctx.request.rawMethod)
+        request.Method <- HttpMethod(ctx.request.rawMethod)
 
         // Check if request is chunked
         let isChunkedRequest =
@@ -461,18 +461,27 @@ module ProxyService =
         | Some x -> request.Headers.Host <- x
         | None -> ()
 
-        match ctx.request.headers?("Content-Type") with
-        | Some x -> request.Headers.Add("Content-Type", x)
-        | None -> ()
+        // Prepare content if needed
+        let hasBody =
+          [ HttpMethod.POST; HttpMethod.PUT; HttpMethod.PATCH ]
+          |> Seq.contains ctx.request.method
 
-        // Only add Content-Length if not chunked
+        if hasBody then
+          request.Content <- new ByteArrayContent(ctx.request.rawForm)
+
+        // Set Content-Type on content headers if present
+        match ctx.request.headers?("Content-Type"), request.Content with
+        | Some x, NonNull c -> c.Headers.ContentType <- System.Net.Http.Headers.MediaTypeHeaderValue.Parse(x)
+        | _ -> ()
+
+        // Only add Content-Length if not chunked and content exists
         if not isChunkedRequest then
-          match
-            ctx.request.headers?("Content-Length")
-            |> Option.bind(Parse.int64 >> Choice.toOption)
-          with
-          | Some x -> request.Headers.Add("Content-Length", x.ToString())
-          | None -> ()
+          match ctx.request.headers?("Content-Length"), request.Content with
+          | Some x, NonNull c ->
+            match Parse.int64 x with
+            | Choice1Of2 v -> c.Headers.ContentLength <- Nullable v
+            | _ -> ()
+          | _ -> ()
 
         // Forward Transfer-Encoding header if present
         match ctx.request.headers?("Transfer-Encoding") with
@@ -491,12 +500,6 @@ module ProxyService =
 
         request.Headers.Add("X-Forwarded-For", ctx.request.host)
 
-        if
-          [ HttpMethod.POST; HttpMethod.PUT; HttpMethod.PATCH ]
-          |> Seq.contains ctx.request.method
-        then
-          request.Content <- new ByteArrayContent(ctx.request.rawForm)
-
         try
           let! response = client.SendAsync request
 
@@ -504,7 +507,7 @@ module ProxyService =
         with exn ->
           return!
             (OK $"Unable to proxy the request: {exn.Message}"
-             >=> Writers.setStatus HTTP_502)
+             >=> setStatus HTTP_502)
               ctx
       }
 

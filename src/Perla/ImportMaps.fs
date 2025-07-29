@@ -29,7 +29,7 @@ module ImportMaps =
     not(Regex.IsMatch(path, @"^[a-zA-Z]:[/\\]"))
     &&
     // Basic sanity check that it's not empty or whitespace
-    not(System.String.IsNullOrWhiteSpace(path))
+    not(String.IsNullOrWhiteSpace(path))
 
 
   let withPaths
@@ -94,7 +94,7 @@ module ImportMaps =
     let pattern =
       "import\\s+(?:.+?\\s+from\\s+['\"]([^'\"]+)['\"]|['\"]([^'\"]+)['\"])|import\\s*\\(\\s*(['\"])([^'\"]+)\\3\\s*([,)])"
 
-    let extractModuleName(m: System.Text.RegularExpressions.Match) : string =
+    let extractModuleName(m: Match) : string =
       if m.Groups[1].Success then m.Groups[1].Value
       elif m.Groups[2].Success then m.Groups[2].Value
       elif m.Groups[4].Success then m.Groups[4].Value
@@ -115,7 +115,7 @@ module ImportMaps =
       // Compute absolute paths
       let importingDirAbs =
         let dir =
-          if System.String.IsNullOrWhiteSpace(importingDir) then
+          if String.IsNullOrWhiteSpace(importingDir) then
             UMX.untag sourcesRoot
           elif System.IO.Path.IsPathRooted(importingDir) then
             importingDir
@@ -154,13 +154,13 @@ module ImportMaps =
 
       if
         isRelativePath replacementStr
-        && not(System.String.IsNullOrWhiteSpace importingDir)
+        && not(String.IsNullOrWhiteSpace importingDir)
       then
         computeRelativeImport importingDir replacementStr rest
       else
         replacementStr + rest
 
-    let replaceMatch(m: System.Text.RegularExpressions.Match) : string =
+    let replaceMatch(m: Match) : string =
       let moduleName = extractModuleName m
 
       // Ensure importingFile is absolute, fallback to sourcesRoot if not

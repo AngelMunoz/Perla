@@ -271,7 +271,7 @@ type SpectreSink() =
 
           let prefixText =
             match kvp.Value with
-            | :? Serilog.Events.ScalarValue as scalar ->
+            | :? ScalarValue as scalar ->
               match scalar.Value with
               | :? string as s -> s
               | null -> "null"

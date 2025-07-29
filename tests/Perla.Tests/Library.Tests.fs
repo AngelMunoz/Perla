@@ -155,11 +155,11 @@ let ``Log pattern should categorize console levels correctly``() =
   | _ -> Assert.True(false, "Should match Clear")
 
   match "log" with
-  | Perla.Extensions.Log -> Assert.True(true)
+  | Extensions.Log -> Assert.True(true)
   | _ -> Assert.True(false, "Should match Log")
 
   match "unknown" with
-  | Perla.Extensions.Log -> Assert.True(true)
+  | Extensions.Log -> Assert.True(true)
   | _ -> Assert.True(false, "Should default to Log")
 
 [<Fact>]

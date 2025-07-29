@@ -75,8 +75,8 @@ type BuildService =
   abstract RunEsbuild:
     config: PerlaConfig aval *
     tempDir: string<SystemPath> *
-    cssPaths: seq<string<Perla.Units.ServerUrl>> *
-    jsBundleEntrypoints: seq<string<Perla.Units.ServerUrl>> *
+    cssPaths: seq<string<ServerUrl>> *
+    jsBundleEntrypoints: seq<string<ServerUrl>> *
     externals: string list ->
       CancellableTask<EsbuildOutput>
 
@@ -88,11 +88,11 @@ type BuildService =
 
   abstract WriteIndex:
     config: PerlaConfig aval *
-    document: AngleSharp.Html.Dom.IHtmlDocument *
+    document: IHtmlDocument *
     map: Perla.PkgManager.ImportMap *
-    jsPaths: seq<string<Perla.Units.ServerUrl>> *
-    cssPaths: seq<string<Perla.Units.ServerUrl>> *
-    esbuildCssFiles: seq<string<Perla.Units.ServerUrl>> ->
+    jsPaths: seq<string<ServerUrl>> *
+    cssPaths: seq<string<ServerUrl>> *
+    esbuildCssFiles: seq<string<ServerUrl>> ->
       CancellableTask<unit>
 
 module BuildService =
