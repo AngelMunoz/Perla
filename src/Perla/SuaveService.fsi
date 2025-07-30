@@ -15,7 +15,6 @@ type SuaveContext = {
   VirtualFileSystem: VirtualFileSystem
   Config: PerlaConfig aval
   FsManager: PerlaFsManager
-  FileChangedEvents: IObservable<FileChangedEvent>
 }
 
 type SuaveTestingContext = {
@@ -23,8 +22,7 @@ type SuaveTestingContext = {
   VirtualFileSystem: VirtualFileSystem
   Config: PerlaConfig aval
   FsManager: PerlaFsManager
-  FileChangedEvents: IObservable<FileChangedEvent>
-  TestEvents: ISubject<TestEvent>
+  NotifyTestEvent: Result<TestEvent, JDeck.DecodeError> -> unit
 }
 
 type SuaveServerContext =
@@ -35,8 +33,7 @@ type SuaveServerContext =
   member VirtualFileSystem: VirtualFileSystem
   member Config: PerlaConfig aval
   member FsManager: PerlaFsManager
-  member FileChangedEvents: IObservable<FileChangedEvent>
-  member TestEvents: ISubject<TestEvent> option
+  member NotifyTestEvent: (Result<TestEvent, JDeck.DecodeError> -> unit) option
 
 /// MIME type utilities
 module MimeTypes =
@@ -117,10 +114,7 @@ module LiveReload =
       Async<unit>
 
   /// Create SSE handler for live reload events
-  val sseHandler:
-    vfs: VirtualFileSystem ->
-    fileChangedEvents: IObservable<FileChangedEvent> ->
-      WebPart
+  val sseHandler: vfs: VirtualFileSystem -> WebPart
 
 /// SPA fallback functionality
 module SpaFallback =
@@ -170,7 +164,7 @@ module TestingHandlers =
 
   /// Testing events POST endpoint
   val testingEvents:
-    logger: ILogger * testEvents: ISubject<TestEvent> -> WebPart
+    notifyTestEvent: (Result<TestEvent, JDeck.DecodeError> -> unit) -> WebPart
 
 /// Main Suave server configuration and startup
 module SuaveServer =

@@ -210,7 +210,6 @@ type SuaveContext = {
   VirtualFileSystem: VirtualFileSystem
   Config: PerlaConfig aval
   FsManager: PerlaFsManager
-  FileChangedEvents: IObservable<FileChangedEvent>
 }
 
 type SuaveTestingContext = {
@@ -218,8 +217,7 @@ type SuaveTestingContext = {
   VirtualFileSystem: VirtualFileSystem
   Config: PerlaConfig aval
   FsManager: PerlaFsManager
-  FileChangedEvents: IObservable<FileChangedEvent>
-  TestEvents: ISubject<TestEvent>
+  NotifyTestEvent: Result<TestEvent, JDeck.DecodeError> -> unit
 }
 
 type SuaveServerContext =
@@ -246,15 +244,10 @@ type SuaveServerContext =
     | SuaveContext ctx -> ctx.FsManager
     | SuaveTestingContext ctx -> ctx.FsManager
 
-  member this.FileChangedEvents =
-    match this with
-    | SuaveContext ctx -> ctx.FileChangedEvents
-    | SuaveTestingContext ctx -> ctx.FileChangedEvents
-
-  member this.TestEvents =
+  member this.NotifyTestEvent =
     match this with
     | SuaveContext _ -> None
-    | SuaveTestingContext ctx -> Some ctx.TestEvents
+    | SuaveTestingContext ctx -> Some ctx.NotifyTestEvent
 
 // ============================================================================
 // MIME Type Detection
@@ -471,7 +464,9 @@ module ProxyService =
 
         // Set Content-Type on content headers if present
         match ctx.request.headers?("Content-Type"), request.Content with
-        | Some x, NonNull c -> c.Headers.ContentType <- System.Net.Http.Headers.MediaTypeHeaderValue.Parse(x)
+        | Some x, NonNull c ->
+          c.Headers.ContentType <-
+            System.Net.Http.Headers.MediaTypeHeaderValue.Parse(x)
         | _ -> ()
 
         // Only add Content-Length if not chunked and content exists
@@ -806,16 +801,13 @@ module LiveReload =
           do! send out msg :> Task
     }
 
-  let sseHandler
-    (vfs: VirtualFileSystem)
-    (fileChangedEvents: IObservable<FileChangedEvent>)
-    : WebPart =
+  let sseHandler(vfs: VirtualFileSystem) : WebPart =
 
     fun ctx -> async {
       let! token = Async.CancellationToken
 
       let fileChangedEvents =
-        fileChangedEvents |> Observable.toCancellableAsyncEnumerable token
+        vfs.FileChanges |> Observable.toCancellableAsyncEnumerable token
 
       return!
         handShake
@@ -1089,7 +1081,7 @@ module TestingHandlers =
     }
 
   let testingEvents
-    (logger: ILogger, testEvents: ISubject<TestEvent>)
+    (notifyTestEvent: Result<TestEvent, JDeck.DecodeError> -> unit)
     : WebPart =
     fun ctx -> async {
 
@@ -1097,10 +1089,10 @@ module TestingHandlers =
 
       match Json.TestEventFromJson content with
       | Result.Ok testEvent ->
-        testEvents.OnNext testEvent
+        notifyTestEvent(Ok testEvent)
         return! OK "Event processed" ctx
       | Result.Error err ->
-        logger.LogError("Failed to parse test event: {Error}", err)
+        notifyTestEvent(Result.Error err)
         return! BAD_REQUEST "Invalid test event format" ctx
     }
 
@@ -1127,9 +1119,8 @@ module ClientLog =
 
   let tryExtractModuleResolutionError(msg: string) : string option =
     let pattern =
-      System.Text.RegularExpressions.Regex(
+      System.Text.RegularExpressions.Regex
         @"Failed to resolve module specifier ""([^\""]+)"""
-      )
 
     let m = pattern.Match(msg)
 
@@ -1339,10 +1330,7 @@ module SuaveServer =
 
     choose [
       // Perla internal endpoints
-      path "/~perla~/sse"
-      >=> LiveReload.sseHandler
-        suaveCtx.VirtualFileSystem
-        suaveCtx.FileChangedEvents
+      path "/~perla~/sse" >=> LiveReload.sseHandler suaveCtx.VirtualFileSystem
 
       ClientLog.clientLogHandler suaveCtx.Logger
       PerlaHandlers.liveReloadScript suaveCtx.FsManager
@@ -1371,10 +1359,7 @@ module SuaveServer =
 
         POST
         >=> path "/~perla~/testing/events"
-        >=> TestingHandlers.testingEvents(
-          suaveCtx.Logger,
-          suaveCtx.TestEvents.Value
-        )
+        >=> TestingHandlers.testingEvents suaveCtx.NotifyTestEvent.Value
       ]
 
       // Environment variables endpoint (if enabled)
@@ -1402,10 +1387,7 @@ module SuaveServer =
 
     choose [
       // Perla internal endpoints
-      path "/~perla~/sse"
-      >=> LiveReload.sseHandler
-        suaveCtx.VirtualFileSystem
-        suaveCtx.FileChangedEvents
+      path "/~perla~/sse" >=> LiveReload.sseHandler suaveCtx.VirtualFileSystem
 
       ClientLog.clientLogHandler suaveCtx.Logger
       PerlaHandlers.liveReloadScript suaveCtx.FsManager
