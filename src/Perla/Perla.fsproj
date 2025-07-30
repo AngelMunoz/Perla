@@ -49,9 +49,9 @@
     <Compile Include="Scaffolding.fs" />
     <Compile Include="Library.fsi" />
     <Compile Include="Library.fs" />
-    <Compile Include="Testing.fs" />
     <Compile Include="SuaveService.fsi" />
     <Compile Include="SuaveService.fs" />
+    <Compile Include="Testing.fs" />
     <Compile Include="Configuration.fsi" />
     <Compile Include="Configuration.fs" />
     <Compile Include="Orchestration.fsi" />
