@@ -2,23 +2,25 @@ namespace Perla.Handlers
 
 open System
 open System.IO
+open System.Threading
 open System.Threading.Tasks
+
 
 open Microsoft.Extensions.Logging
 
 open AngleSharp
 open AngleSharp.Html.Parser
-open Perla.Esbuild
 open Spectre.Console
 
 open FSharp.Control
 open FSharp.Data.Adaptive
-
 open IcedTasks
 
 open FSharp.UMX
 open FsToolkit.ErrorHandling
 
+
+open System.Collections.Generic
 open Perla
 open Perla.Units
 open Perla.Types
@@ -30,6 +32,7 @@ open Perla.Logger
 open Perla.PkgManager
 open Perla.PkgManager.PkgManager
 open Perla.SuaveService
+open Perla.Testing
 
 [<Struct; RequireQualifiedAccess>]
 type ListFormat =
@@ -216,6 +219,7 @@ module RunNew =
 
 [<RequireQualifiedAccess>]
 module Handlers =
+  open Microsoft.Playwright
 
   let runNew (container: AppContainer) (options: ProjectOptions) = cancellableTask {
     let! token = CancellableTask.getCancellationToken()
@@ -687,7 +691,6 @@ module Handlers =
             VirtualFileSystem = container.VirtualFileSystem
             Config = config
             FsManager = container.FsManager
-            FileChangedEvents = container.VirtualFileSystem.FileChanges
           }
           token
 
@@ -795,192 +798,200 @@ module Handlers =
           VirtualFileSystem = container.VirtualFileSystem
           Config = configA
           FsManager = container.FsManager
-          FileChangedEvents = container.VirtualFileSystem.FileChanges
         })
         cancellationToken
 
       return 0
   }
 
-  let runTesting (_: AppContainer) (_: TestingOptions) = cancellableTask {
-    // let! cancellationToken = CancellableTask.getCancellationToken()
+  let mountTestingDirectories(config: PerlaConfig aval) = adaptive {
+    let! config = config
 
-    // ConfigurationManager.UpdateFromCliArgs(
-    //   testingOptions = [
-    //     match options.browsers with
-    //     | Some value -> TestingField.Browsers value
-    //     | None -> ()
-    //     match options.files with
-    //     | Some value -> TestingField.Includes value
-    //     | None -> ()
-    //     match options.skip with
-    //     | Some value -> TestingField.Excludes value
-    //     | None -> ()
-    //     match options.watch with
-    //     | Some value -> TestingField.Watch value
-    //     | None -> ()
-    //     match options.headless with
-    //     | Some value -> TestingField.Headless value
-    //     | None -> ()
-    //     match options.browserMode with
-    //     | Some value -> TestingField.BrowserMode value
-    //     | None -> ()
-    //   ]
-    // )
+    let found =
+      config.mountDirectories |> Map.tryFind(UMX.tag<ServerUrl> "/tests")
 
-    // let config = {
-    //   ConfigurationManager.CurrentConfig with
-    //       mountDirectories =
-    //         ConfigurationManager.CurrentConfig.mountDirectories
-    //         |> Map.add
-    //           (UMX.tag<ServerUrl> "/tests")
-    //           (UMX.tag<UserPath> "./tests")
-    // }
+    match found with
+    | Some _ -> return config
+    | None ->
+      let mountedDirs =
+        config.mountDirectories
+        |> Map.add (UMX.tag<ServerUrl> "/tests") (UMX.tag<UserPath> "./tests")
 
-    // let isWatch = config.testing.watch
+      return {
+        config with
+            mountDirectories = mountedDirs
+      }
+  }
 
-    // let fableEvents =
-    //   match config.testing.fable with
-    //   | Some fable -> Fable.Observe(fable, isWatch)
-    //   | None -> Observable.single FableEvent.WaitingForChanges
+  let withTestingAndDefaultMounts = mountTestingDirectories >> withDefaultMounts
 
-    // fableEvents
-    // |> Observable.add(fun events ->
-    //   match events with
-    //   | FableEvent.Log msg -> Logger.log(msg.EscapeMarkup())
-    //   | FableEvent.ErrLog msg ->
-    //     Logger.log $"[bold red]{msg.EscapeMarkup()}[/]"
-    //   | FableEvent.WaitingForChanges -> ())
+  let runTesting (container: AppContainer) (options: TestingOptions) = cancellableTask {
+    let! cancellationToken = CancellableTask.getCancellationToken()
 
-    // do! FsMonitor.FirstCompileDone isWatch fableEvents
+    let configA =
+      container.Configuration.PerlaConfig
+      |> AVal.map(fun config -> {
+        config with
+            testing = {
+              config.testing with
+                  browsers =
+                    defaultArg options.browsers config.testing.browsers
+                  includes = defaultArg options.files config.testing.includes
+                  excludes = defaultArg options.skip config.testing.excludes
+                  watch = defaultArg options.watch config.testing.watch
+                  headless =
+                    defaultArg options.headless config.testing.headless
+                  browserMode =
+                    defaultArg options.browserMode config.testing.browserMode
+            }
+      })
+      |> withTestingAndDefaultMounts
 
-    // match PluginLoader.Load<FileSystem, Esbuild>(config.esbuild) with
-    // | Ok plugins -> Logger.log $"Loaded {plugins.Length} plugins"
-    // | Error err ->
-    //   for err in err do
-    //     match err with
-    //     | NoPluginFound name -> Logger.log($"Plugin {name} not found")
-    //     | EvaluationFailed(ex) ->
-    //       Logger.log($"Failed to evaluate plugin", ex = ex)
-    //     | SessionExists
-    //     | BoundValueMissing -> Logger.log "Failed to load plugins"
-    //     | AlreadyLoaded name -> Logger.log($"Plugin {name} already loaded")
+    let config = configA |> AVal.force
+    let fableConfig = config.fable
 
-    // do! VirtualFileSystem.Mount config
+    let fableFirstRunTcs = TaskCompletionSource()
 
-    // let perlaChanges =
-    //   FileSystem.ObservePerlaFiles(UMX.untag config.index, cancellationToken)
+    match fableConfig with
+    | Some config ->
+      container.Logger.LogInformation
+        "Fable configuration found. Running Fable service."
 
-    // let fileChanges =
-    //   FsMonitor.FileChanges(
-    //     UMX.untag config.index,
-    //     config.mountDirectories,
-    //     perlaChanges,
-    //     config.plugins
-    //   )
-    // // TODO: Grab these from esbuild
-    // let compilerErrors = Observable.empty
+      let work = asyncEx {
+        let! token = Async.CancellationToken
+        let events = container.FableService.Monitor(config, token)
 
-    // let config = {
-    //   config with
-    //       devServer = {
-    //         config.devServer with
-    //             liveReload = isWatch
-    //       }
-    // }
+        for event in events do
+          match event with
+          | FableEvent.Log _ -> ()
+          | FableEvent.ErrLog _ -> ()
+          | FableEvent.WaitingForChanges ->
+            if not fableFirstRunTcs.Task.IsCompleted then
+              fableFirstRunTcs.TrySetResult() |> ignore
+              container.Logger.LogInformation "Fable service is ready."
+            else
+              container.Logger.LogInformation
+                "Fable service is waiting for changes."
+      }
 
-    // let events = Subject<TestEvent>.broadcast
+      Async.Start(work, cancellationToken)
+    | None ->
+      container.Logger.LogWarning
+        "Fable configuration not found. Skipping Fable service."
 
-    // let! dependencies =
-    //   Dependencies.GetMapAndDependencies Seq.empty
-    //   |> TaskResult.map(fun (deps, map) ->
-    //     let map = map.AddResolutions(config.paths).AddEnvResolution config
-    //     deps, map)
-    //   |> TaskResult.defaultValue(
-    //     Seq.empty,
-    //     FileSystem.GetImportMap().AddResolutions(config.paths).AddEnvResolution
-    //       config
-    //   )
+      fableFirstRunTcs.TrySetResult() |> ignore
 
-    // let mutable app =
-    //   Server.GetTestingApp(
-    //     config,
-    //     dependencies,
-    //     events,
-    //     fileChanges,
-    //     compilerErrors,
-    //     config.testing.includes
-    //   )
-    // // Keep this before initializing the server
-    // // otherwise it will always say that the port is occupied
-    // let http, _ =
-    //   Server.GetServerURLs
-    //     config.devServer.host
-    //     config.devServer.port
-    //     config.devServer.useSSL
+    // Wait for either the Fable first run to complete or cancellation
+    do! fableFirstRunTcs.Task
 
-    // do! app.StartAsync(cancellationToken)
+    if cancellationToken.IsCancellationRequested then
+      container.Logger.LogInformation "Fable service cancelled before starting."
 
-    // perlaChanges
-    // |> Observable.choose (function
-    //   | PerlaFileChange.PerlaConfig -> Some()
-    //   | _ -> None)
-    // |> Observable.map(fun _ -> app.StopAsync() |> Async.AwaitTask)
-    // |> Observable.switchAsync
-    // |> Observable.map(fun _ ->
-    //   ConfigurationManager.UpdateFromFile()
-    //   app <- Server.GetServerApp(config, fileChanges, compilerErrors)
-    //   app.StartAsync(cancellationToken) |> Async.AwaitTask)
-    // |> Observable.switchAsync
-    // |> Observable.add ignore
+      return 0
+    else
+      let isWatch = config.testing.watch
+      let plugins = container.FsManager.ResolvePluginPaths()
 
-    // use! pl = Playwright.CreateAsync()
+      let defaultPlugins = seq {
+        if
+          config.plugins
+          |> List.exists(fun p ->
+            p.Equals(
+              Constants.PerlaEsbuildPluginName,
+              StringComparison.InvariantCultureIgnoreCase
+            ))
+        then
+          container.EsbuildService.GetPlugin config.esbuild
+      }
 
-    // let testConfig = config.testing
+      container.ExtensibilityService.LoadPlugins(plugins, defaultPlugins)
+      |> Result.teeError(fun err ->
+        container.Logger.LogError("Failed to load plugins: {error}", err))
+      |> Result.ignore
+      |> Result.ignoreError
 
-    // if not isWatch then
-    //   do!
-    //     Testing.RunOnce(
-    //       pl,
-    //       testConfig.browserMode,
-    //       testConfig.browsers,
-    //       testConfig.headless,
-    //       http
-    //     )
+      let mountedDirectories = config.mountDirectories
 
-    //   events.OnCompleted()
+      do!
+        container.Logger.Spinner(
+          "Mounting Virtual File System",
+          container.VirtualFileSystem.Load mountedDirectories
+        )
 
-    //   events
-    //   |> Observable.toEnumerable
-    //   |> Seq.toList
-    //   |> Testing.BuildReport
-    //   |> Print.Report
+      use! pw = Playwright.CreateAsync()
 
-    //   return 0
-    // else
-    //   let browser = config.testing.browsers |> Seq.head
-    //   let fileChanges = fileChanges |> Observable.map ignore
+      let testingService =
+        TestingService.Create {
+          config = configA
+          Logger = container.Logger
+          VirtualFileSystem = container.VirtualFileSystem
+          FsManager = container.FsManager
+          Playwright = pw
+        }
 
-    //   do!
-    //     Testing.LiveRun(
-    //       pl,
-    //       browser,
-    //       testConfig.headless,
-    //       http,
-    //       fileChanges,
-    //       events,
-    //       cancellationToken
-    //     )
+      let includes =
+        let includes = config.testing.includes |> Seq.toList
 
-    //   events.OnCompleted()
+        if includes |> List.isEmpty then
+          // Default to all test files if no includes are specified
+          [ "**/*.test.js"; "**/*.spec.js" ]
+        else
+          includes
 
-    //   events
-    //   |> Observable.toEnumerable
-    //   |> Seq.toList
-    //   |> Testing.BuildReport
-    //   |> Print.Report
+      let excludes = [
+        "**/bin/**"
+        "**/obj/**"
+        "**/*.fs"
+        "**/*.fsproj"
+        yield! config.testing.excludes
+      ]
 
-    return 0
+      let testingOptions =
+        [
+          for browser in config.testing.browsers do
+            Browser browser
+
+            if config.testing.headless then
+              Headless true
+
+            if not isWatch then
+              BrowserMode config.testing.browserMode
+
+            FileGlobs {
+              // Search in ./tests
+              BaseDirectory =
+                Path.Combine(
+                  UMX.untag container.Directories.CurrentWorkingDirectory,
+                  "tests"
+                )
+              Includes = includes
+              Excludes = excludes
+            }
+
+        ]
+        |> set
+
+      if isWatch then
+        container.Logger.LogInformation "Running tests in watch mode..."
+        AnsiConsole.Record()
+
+        let! results =
+          Testing.LiveReport(
+            testingService.RunWatch(testingOptions, cancellationToken)
+          )
+
+        Print.Stats results |> AnsiConsole.Write
+        container.Logger.LogInformation "Test run completed"
+        return 0
+      else
+        container.Logger.LogInformation "Running tests once..."
+
+        let! stats, suites, errors = testingService.RunOnce(testingOptions)
+
+        Print.Report(stats, suites, errors) |> AnsiConsole.Write
+
+        container.Logger.LogInformation "Test run completed"
+        return 0
   }
 
   let runAddPackage (container: AppContainer) (options: DependencyOptions) = cancellableTask {
