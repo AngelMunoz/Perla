@@ -126,6 +126,12 @@ type CheckRepository =
   abstract AreTemplatesPresent: unit -> bool
   abstract SaveTemplatesPresent: unit -> ObjectId
 
+  abstract IsPlaywrightPresent: unit -> bool
+  abstract SavePlaywrightPresent: unit -> ObjectId
+
+  abstract NextPlaywrightUpdate: unit -> DateTime option
+  abstract SaveNextPlaywrightUpdate: nextUpdate: DateTime -> ObjectId
+
 [<Interface>]
 type TemplateRepository =
   abstract ListRepositories: unit -> PerlaTemplateRepository list
@@ -322,6 +328,61 @@ module Database =
           | None ->
             let check = PerlaCheck(Name = checkName, IsDone = true)
             checks.Insert(check)
+
+        member _.IsPlaywrightPresent() : bool =
+          use db = args.GetConnection()
+          let checks = getCollection<PerlaCheck> db
+          let checkName = "PlaywrightCheck"
+          checks.Exists(fun check -> check.Name = checkName && check.IsDone)
+
+        member _.SavePlaywrightPresent() : ObjectId =
+          use db = args.GetConnection()
+          let checks = getCollection<PerlaCheck> db
+          let checkName = "PlaywrightCheck"
+
+          match
+            checks.FindOne(fun check -> check.Name = checkName && check.IsDone)
+            |> Option.ofNull
+          with
+          | Some found -> found.CheckId
+          | None ->
+            let check = PerlaCheck(Name = checkName, IsDone = true)
+            checks.Insert(check)
+
+        member _.NextPlaywrightUpdate() : DateTime option =
+          use db = args.GetConnection()
+          let checks = getCollection<PerlaCheck> db
+          let checkName = "PlaywrightUpdateCheck"
+
+          match
+            checks.FindOne(fun check -> check.Name = checkName && check.IsDone)
+            |> Option.ofNull
+          with
+          | Some found -> found.UpdatedAt |> Option.ofNullable
+          | None -> None
+
+        member _.SaveNextPlaywrightUpdate(nextUpdate: DateTime) : ObjectId =
+          use db = args.GetConnection()
+          let checks = getCollection<PerlaCheck> db
+          let checkName = "PlaywrightUpdateCheck"
+
+          match
+            checks.FindOne(fun check -> check.Name = checkName && check.IsDone)
+            |> Option.ofNull
+          with
+          | Some found ->
+            found.UpdatedAt <- Nullable nextUpdate
+            checks.Update found |> ignore
+            found.CheckId
+          | None ->
+            let check =
+              PerlaCheck(
+                Name = checkName,
+                IsDone = true,
+                UpdatedAt = Nullable(nextUpdate)
+              )
+
+            checks.Insert check
     }
 
   let getTemplates(args: PerlaDatabaseArgs) =

@@ -74,6 +74,7 @@ type GlobalOptions = {
   previewCommand: bool
   setup: bool
   logLevel: LogLevel
+  updatePlaywright: bool
 }
 
 module GlobalOptions =
@@ -89,6 +90,12 @@ module GlobalOptions =
     optionMaybe<bool> "--ci"
     |> description
       "Run the command in CI mode, which disables interactive prompts"
+    |> defaultValue None
+
+  let updatePlaywright: ActionInput<bool option> =
+    optionMaybe<bool> "--update-playwright"
+    |> description
+      "Update Playwright browsers to the latest version, if available"
     |> defaultValue None
 
   let skipPrompts: ActionInput<bool option> =
@@ -144,12 +151,16 @@ module GlobalOptions =
 
     let setup = setup.GetValue parseResult |> Option.defaultValue true
 
+    let updatePlaywright =
+      updatePlaywright.GetValue parseResult |> Option.defaultValue false
+
     {
       ci = ci
       skipPrompts = skipPrompts
       previewCommand = previewCommand
       setup = setup
       logLevel = logLevel.GetValue parseResult
+      updatePlaywright = updatePlaywright
     }
 
 
@@ -360,6 +371,7 @@ module Commands =
              container.Db,
              container.Configuration.PerlaConfig,
              container.FableService,
+             container.Directories,
              [ Esbuild; Fable ])
             context.CancellationToken
 
@@ -430,6 +442,7 @@ module Commands =
                container.Db,
                container.Configuration.PerlaConfig,
                container.FableService,
+               container.Directories,
                [ Fable; Esbuild ])
               context.CancellationToken
 
@@ -609,6 +622,7 @@ module Commands =
                container.Db,
                container.Configuration.PerlaConfig,
                container.FableService,
+               container.Directories,
                [])
               ctx.CancellationToken
 
@@ -697,6 +711,7 @@ module Commands =
                container.Db,
                container.Configuration.PerlaConfig,
                container.FableService,
+               container.Directories,
                [ Esbuild; Fable ])
               ctx.CancellationToken
 
@@ -753,6 +768,7 @@ module Commands =
 
   let Test(container: AppContainer) =
 
+
     let handleCommand
       (
         ctx: ActionContext,
@@ -763,20 +779,84 @@ module Commands =
         watch: bool option,
         sequential: bool option
       ) =
-      let options = {
-        browsers = if Set.isEmpty browsers then None else Some browsers
-        files = if files |> Array.isEmpty then None else Some files
-        skip = if skips |> Array.isEmpty then None else Some skips
-        headless = headless
-        watch = watch
-        browserMode =
-          sequential
-          |> Option.map(fun sequential ->
-            if sequential then Some BrowserMode.Sequential else None)
-          |> Option.flatten
-      }
+      task {
+        let globalOptions = GlobalOptions.bind ctx.ParseResult
 
-      Handlers.runTesting container options ctx.CancellationToken
+        let proceed() = cancellableTask {
+          let options = {
+            browsers = if Set.isEmpty browsers then None else Some browsers
+            files = if files |> Array.isEmpty then None else Some files
+            skip = if skips |> Array.isEmpty then None else Some skips
+            headless = headless
+            watch = watch
+            browserMode =
+              sequential
+              |> Option.map(fun sequential ->
+                if sequential then Some BrowserMode.Sequential else None)
+              |> Option.flatten
+          }
+
+          return! Handlers.runTesting container options ctx.CancellationToken
+        }
+
+        if globalOptions.updatePlaywright then
+          try
+            do! Testing.Testing.SetupPlaywright container.Logger
+            container.Db.Checks.SavePlaywrightPresent() |> ignore
+
+            container.Db.Checks.SaveNextPlaywrightUpdate(
+              System.DateTime.UtcNow.AddDays 30
+            )
+            |> ignore
+          with ex ->
+            container.Logger.LogError(
+              "Failed to update Playwright browsers: {ex}",
+              ex
+            )
+
+        if globalOptions.setup then
+          let! result =
+            Check.Setup
+              (container.Logger,
+               container.Db,
+               container.Configuration.PerlaConfig,
+               container.FableService,
+               container.Directories,
+               [ Fable; Esbuild; Playwright ])
+              ctx.CancellationToken
+
+          match result with
+          | Continue -> return! proceed () ctx.CancellationToken
+          | Recover value ->
+            let recoverArgs: Recover.RecoverArgs = {
+              config = container.Configuration.PerlaConfig
+              db = container.Db
+              pfsm = container.FsManager
+              logger = container.Logger
+              skipPrompts = globalOptions.skipPrompts
+              ci = globalOptions.ci || System.Console.IsOutputRedirected
+            }
+
+            let! canContinue =
+              Recover.From recoverArgs (Recover value) ctx.CancellationToken
+
+            match canContinue with
+            | Ok() -> return! proceed () ctx.CancellationToken
+            | _ ->
+              container.Logger.LogError(
+                "Perla setup failed, please run `perla setup` to fix the issue."
+              )
+
+              return 1
+          | HardExit ->
+            container.Logger.LogError(
+              "Perla setup failed, please run `perla setup` to fix the issue."
+            )
+
+            return 1
+        else
+          return! proceed () ctx.CancellationToken
+      }
 
     let cmd = command "test" {
       description "Runs client side tests in a headless browser"

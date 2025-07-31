@@ -27,6 +27,7 @@ module Warmup =
     | Esbuild
     | Templates
     | Fable
+    | Playwright
 
   type MiddlewareResult =
     | Continue
@@ -42,6 +43,7 @@ module Warmup =
         db: PerlaDatabase,
         config: PerlaConfig aval,
         fable: FableService,
+        directories: PerlaDirectories,
         requiredAssets: RecoverableAssets seq
       ) =
       cancellableTask {
@@ -78,6 +80,25 @@ module Warmup =
             if not fablePresent then
               missing.Add(Fable)
 
+          if Set.contains Playwright requiredAssetsSet then
+            let playwrightArtifactsRoot =
+              System.IO.DirectoryInfo(
+                UMX.untag directories.PlaywrightArtifactsRoot
+              )
+
+            let playwrightPresent = db.Checks.IsPlaywrightPresent()
+            let nextUpdate = db.Checks.NextPlaywrightUpdate()
+
+            match nextUpdate with
+            | None -> ()
+            | Some nextUpdate ->
+              if System.DateTime.UtcNow >= nextUpdate then
+                logger.LogInformation
+                  "Playwright browsers might be outdated, consider updating playwright."
+
+            if not playwrightPresent || not playwrightArtifactsRoot.Exists then
+              missing.Add Playwright
+
           return missing |> Seq.toList
         }
 
@@ -96,6 +117,7 @@ module Warmup =
       | EsbuildFailed of string
       | TemplatesFailed
       | FableFailed
+      | PlaywrightFailed
       | HardExitRequested
 
     type RecoverArgs = {
@@ -240,6 +262,32 @@ module Warmup =
               | Templates ->
                 return! templatesSetup (args.db, args.pfsm, args.logger) token
               | Fable -> return! fableSetup (args.pfsm, args.logger) token
+              | Playwright ->
+                return! task {
+                  try
+                    do! Testing.Testing.SetupPlaywright args.logger
+                    args.db.Checks.SavePlaywrightPresent() |> ignore
+
+                    args.db.Checks.SaveNextPlaywrightUpdate(
+                      System.DateTime.UtcNow.AddDays 30.0
+                    )
+                    |> ignore
+
+                    args.logger.LogInformation
+                      "Successfully installed Playwright."
+
+                    return Ok()
+                  with ex ->
+                    args.logger.LogError(
+                      "Failed to install Playwright, please try again.",
+                      ex
+                    )
+
+                    args.logger.LogError
+                      "If this keeps happening please report this issue on the Perla GitHub repository."
+
+                    return Error PlaywrightFailed
+                }
             })
 
           return ()

@@ -26,6 +26,7 @@ module Warmup =
     | Esbuild
     | Templates
     | Fable
+    | Playwright
 
   type MiddlewareResult =
     | Continue
@@ -41,6 +42,7 @@ module Warmup =
       db: PerlaDatabase *
       config: PerlaConfig aval *
       fable: FableService *
+      directories: PerlaDirectories *
       requiredAssets: RecoverableAssets seq ->
         CancellableTask<MiddlewareResult>
 
@@ -49,6 +51,7 @@ module Warmup =
       | EsbuildFailed of string
       | TemplatesFailed
       | FableFailed
+      | PlaywrightFailed
       | HardExitRequested
 
     type RecoverArgs = {

@@ -21,7 +21,8 @@ module Env =
 
     let AppLogger = lf.CreateLogger("Perla")
 
-    let directories = PerlaDirectories.Create()
+    let platform = PlatformOps.Create AppLogger
+    let directories = PerlaDirectories.Create platform
 
     try
       System.IO.DirectoryInfo($"{directories.PerlaArtifactsRoot}").Create()
@@ -30,7 +31,6 @@ module Env =
 
     directories.SetCwdToProject()
 
-    let platform = PlatformOps.Create AppLogger
 
     let requestHandler =
       RequestHandler.Create {

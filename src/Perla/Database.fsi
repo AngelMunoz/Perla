@@ -109,6 +109,12 @@ type CheckRepository =
   abstract AreTemplatesPresent: unit -> bool
   abstract SaveTemplatesPresent: unit -> ObjectId
 
+  abstract IsPlaywrightPresent: unit -> bool
+  abstract SavePlaywrightPresent: unit -> ObjectId
+
+  abstract NextPlaywrightUpdate: unit -> DateTime option
+  abstract SaveNextPlaywrightUpdate: nextUpdate: DateTime -> ObjectId
+
 [<Interface>]
 type TemplateRepository =
   abstract ListRepositories: unit -> PerlaTemplateRepository list
