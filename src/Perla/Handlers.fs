@@ -974,11 +974,28 @@ module Handlers =
 
       if isWatch then
         container.Logger.LogInformation "Running tests in watch mode..."
-        AnsiConsole.Record()
 
-        for event in testingService.RunWatch(testingOptions, cancellationToken) do
-          // do something
-          ()
+        let mutable state = Print.LiveDashboard.TestRunState.Empty
+
+        do!
+          AnsiConsole
+            .Live(Print.LiveDashboard.createDashboard state)
+            .Start(fun ctx -> asyncEx {
+              try
+                for event in
+                  testingService.RunWatch(testingOptions, cancellationToken) do
+                  state <- Print.LiveDashboard.updateState state event
+                  ctx.UpdateTarget(Print.LiveDashboard.createDashboard state)
+              with
+              | :? OperationCanceledException ->
+                AnsiConsole.MarkupLine
+                  "[yellow]🛑 Test watch stopped by user[/]"
+              | ex ->
+                AnsiConsole.MarkupLine
+                  $"[red]💥 Error in test watch: {ex.Message.EscapeMarkup()}[/]"
+
+              return ()
+            })
 
         container.Logger.LogInformation "Test run completed"
         return 0
