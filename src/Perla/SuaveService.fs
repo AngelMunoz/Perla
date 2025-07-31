@@ -897,6 +897,7 @@ module PerlaHandlers =
     =
     fun ctx -> async {
       let content = fsManager.ResolveIndex |> AVal.force
+      let browser = ctx.request.queryParamOpt("browser")
 
       use context = BrowsingContext.New(Configuration.Default)
       let parser = context.GetService<IHtmlParser>() |> nonNull
@@ -914,6 +915,18 @@ module PerlaHandlers =
 
       let body = Build.EnsureBody doc
       let head = Build.EnsureHead doc
+
+      match browser with
+      | Some(_, Some browser) ->
+        let meta = doc.CreateElement "meta"
+        meta.SetAttribute("perla-browser", "true")
+        meta.SetAttribute("browser", browser)
+        head.AppendChild meta |> ignore
+      | Some(_, None)
+      | None ->
+        // No browser specified, do nothing
+        ()
+
       let mochaStyles: Dom.IElement = doc.CreateElement "link"
       mochaStyles.SetAttribute("href", "https://unpkg.com/mocha/mocha.css")
       mochaStyles.SetAttribute("rel", "stylesheet")
@@ -1016,6 +1029,25 @@ module SpaFallback =
       else
         // Serve index.html directly (do not redirect)
         return! PerlaHandlers.indexHandler (configA, fsManager) ctx
+    }
+
+  let testSpaFallback
+    (configA: PerlaConfig aval)
+    (fsManager: PerlaFsManager)
+    : WebPart =
+    fun ctx -> async {
+      let path = ctx.request.url.AbsolutePath
+
+      // Skip if it's an API call, Perla internal path, or has file extension
+      if
+        path.StartsWith "/api/"
+        || path.StartsWith "/~perla~/"
+        || Path.HasExtension path
+      then
+        return None
+      else
+        // Serve index.html directly (do not redirect)
+        return! PerlaHandlers.testingIndexHandler (configA, fsManager) ctx
     }
 
 // ============================================================================
@@ -1343,11 +1375,12 @@ module SuaveServer =
 
       // Serve index.html for root
       path "/"
-      >=> PerlaHandlers.indexHandler(suaveCtx.Config, suaveCtx.FsManager)
+      >=> PerlaHandlers.testingIndexHandler(suaveCtx.Config, suaveCtx.FsManager)
 
       // Testing endpoints
       pathStarts "/~perla~/testing/"
       >=> choose [
+        path "/~perla~/ping" >=> OK "pong"
         path "/~perla~/testing/files"
         >=> TestingHandlers.testingFiles(None, config.testing)
 
@@ -1373,7 +1406,7 @@ module SuaveServer =
       proxyWebparts
 
       // SPA fallback for extensionless paths
-      SpaFallback.spaFallback suaveCtx.Config suaveCtx.FsManager
+      SpaFallback.testSpaFallback suaveCtx.Config suaveCtx.FsManager
 
       // Final fallback
       NOT_FOUND "Resource not found"

@@ -111,7 +111,7 @@ module internal Decoders =
   val TestPass: Decoder<TestEvent>
   val TestFailed: Decoder<TestEvent>
   val ImportFailed: Decoder<TestEvent>
-  val SuiteEventArgs: Decoder<Guid * TestStats * Suite>
+  val SuiteEventArgs: Decoder<SuiteEvent>
   val TestEventDecoder: Decoder<TestEvent>
 
   val ClientLogMessageDecoder: Decoder<DecodedClientLogMessage>

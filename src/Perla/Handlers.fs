@@ -926,6 +926,7 @@ module Handlers =
           Logger = container.Logger
           VirtualFileSystem = container.VirtualFileSystem
           FsManager = container.FsManager
+          ReqHandler = container.RequestHandler
           Playwright = pw
         }
 
@@ -951,22 +952,22 @@ module Handlers =
           for browser in config.testing.browsers do
             Browser browser
 
-            if config.testing.headless then
-              Headless true
+          if config.testing.headless then
+            Headless true
 
-            if not isWatch then
-              BrowserMode config.testing.browserMode
+          if not isWatch then
+            BrowserMode config.testing.browserMode
 
-            FileGlobs {
-              // Search in ./tests
-              BaseDirectory =
-                Path.Combine(
-                  UMX.untag container.Directories.CurrentWorkingDirectory,
-                  "tests"
-                )
-              Includes = includes
-              Excludes = excludes
-            }
+          FileGlobs {
+            // Search in ./tests
+            BaseDirectory =
+              Path.Combine(
+                UMX.untag container.Directories.CurrentWorkingDirectory,
+                "tests"
+              )
+            Includes = includes
+            Excludes = excludes
+          }
 
         ]
         |> set
@@ -975,20 +976,28 @@ module Handlers =
         container.Logger.LogInformation "Running tests in watch mode..."
         AnsiConsole.Record()
 
-        let! results =
-          Testing.LiveReport(
-            testingService.RunWatch(testingOptions, cancellationToken)
-          )
+        for event in testingService.RunWatch(testingOptions, cancellationToken) do
+          // do something
+          ()
 
-        Print.Stats results |> AnsiConsole.Write
         container.Logger.LogInformation "Test run completed"
         return 0
       else
         container.Logger.LogInformation "Running tests once..."
 
-        let! stats, suites, errors = testingService.RunOnce(testingOptions)
+        let! reports = testingService.RunOnce testingOptions
 
-        Print.Report(stats, suites, errors) |> AnsiConsole.Write
+        for report in reports do
+          let title =
+            match report.Browser with
+            | Some browser -> $"Test Report for {browser.AsString}"
+            | None -> "Test Report"
+
+          Print.HeaderedPanel(
+            title,
+            Print.Report(report.Stats, report.Suites, report.Errors)
+          )
+          |> AnsiConsole.Write
 
         container.Logger.LogInformation "Test run completed"
         return 0

@@ -34,8 +34,19 @@ type ReportedError = {
   stack: string
 }
 
+type ReportResult = {
+  Stats: TestStats
+  Suites: Suite seq
+  Errors: ReportedError seq
+  Browser: Browser option
+}
 
 module Print =
+  let HeaderedPanel(title: string, content: IRenderable) =
+    Panel(
+      content,
+      Header = PanelHeader $"[bold white]{title.EscapeMarkup()}[/]"
+    )
 
   let Test(test: Test, error: (string * string) option) =
     let stateColor =
@@ -102,7 +113,10 @@ module Print =
 
     Panel(content, Header = PanelHeader("[bold white]Test Results[/]"))
 
-  let Report(stats: TestStats, suites: Suite list, errors: ReportedError list) =
+  let Report(stats: TestStats, suites: Suite seq, errors: ReportedError seq) =
+    let suites = Array.ofSeq suites
+    let errors = Array.ofSeq errors
+
     let getChartItem(color, label, value) =
       { new IBreakdownChartItem with
           member _.Color = color
@@ -175,27 +189,32 @@ module Testing =
         "For more information please visit https://playwright.dev/dotnet/docs/browsers"
   }
 
-  let BuildReport
-    (events: TestEvent list)
-    : TestStats * Suite list * ReportedError list =
+  let BuildReport(events: TestEvent seq) : ReportResult =
+    let browser =
+      events |> Seq.tryHead |> Option.map _.Browser |> Option.flatten
+
     let suiteEnds =
       events
-      |> List.choose(fun event ->
+      |> Seq.choose(fun event ->
         match event with
-        | SuiteEnd(_, _, suite) -> Some suite
+        | SuiteEnd { Suite = suite } -> Some suite
         | _ -> None)
 
     let errors =
       events
-      |> List.choose(fun event ->
+      |> Seq.choose(fun event ->
         match event with
-        | TestFailed(_, _, test, message, stack) ->
+        | TestFailed {
+                       Test = test
+                       Message = message
+                       Stack = stack
+                     } ->
           Some {
             test = Some test
             message = message
             stack = stack
           }
-        | TestImportFailed(_, message, stack) ->
+        | TestImportFailed { Message = message; Stack = stack } ->
           Some {
             test = None
             message = message
@@ -205,9 +224,9 @@ module Testing =
 
     let stats =
       events
-      |> List.tryPick(fun event ->
+      |> Seq.tryPick(fun event ->
         match event with
-        | SessionEnd(_, stats) -> Some stats
+        | SessionEnd { Stats = stats } -> Some stats
         | _ -> None)
       |> Option.defaultWith(fun _ -> {
         suites = 0
@@ -219,60 +238,12 @@ module Testing =
         ``end`` = None
       })
 
-    stats, suiteEnds, errors
-
-  let LiveReport(events: IAsyncEnumerable<TestEvent>) = asyncEx {
-    let suites = ResizeArray()
-    let errors = ResizeArray()
-
-    let mutable overallStats = {
-      suites = 0
-      tests = 0
-      passes = 0
-      pending = 0
-      failures = 0
-      start = DateTime.Now
-      ``end`` = None
+    {
+      Stats = stats
+      Suites = suiteEnds
+      Errors = errors
+      Browser = browser
     }
-
-    Console.Clear()
-    AnsiConsole.Clear()
-
-    for event in events do
-      match event with
-      | SessionStart(_, stats, totalTests) ->
-        overallStats <- {
-          overallStats with
-              tests = totalTests
-              start = DateTime.Now
-        }
-
-        AnsiConsole.Clear()
-        AnsiConsole.Write(Print.Stats(stats))
-      | SessionEnd(_, stats) -> overallStats <- stats
-      | TestPass _ -> ()
-      | TestFailed(_, _, test, message, stack) ->
-        errors.Add {
-          test = Some test
-          message = message
-          stack = stack
-        }
-      | SuiteStart(_, stats, _) -> overallStats <- stats
-      | SuiteEnd(_, stats, suite) ->
-        overallStats <- stats
-        suites.Add suite
-      | TestImportFailed(_, message, stack) ->
-        errors.Add {
-          test = None
-          message = message
-          stack = stack
-        }
-      | TestRunFinished _ ->
-        Console.Clear()
-        AnsiConsole.Clear()
-
-    return overallStats
-  }
 
   let GetBrowser(browser: Browser, headless: bool, pl: IPlaywright) = task {
     let options = BrowserTypeLaunchOptions(Headless = headless)
@@ -305,8 +276,8 @@ module Testing =
 
   let GetExecutorForBrowser
     (logger: ILogger, url: string)
-    : IBrowser -> Async<IPage> =
-    fun (iBrowser: IBrowser) -> asyncEx {
+    : IBrowser -> Tasks.Task<IPage> =
+    fun (iBrowser: IBrowser) -> task {
       let! page =
         iBrowser.NewPageAsync(BrowserNewPageOptions(IgnoreHTTPSErrors = true))
 
@@ -331,14 +302,15 @@ type RunTestOption =
   | Headless of bool
   | FileGlobs of Fake.IO.Globbing.LazyGlobbingPattern
 
-
 [<Interface>]
 type TestingService =
 
   /// Run tests once with specified configuration
   abstract RunOnce:
     options: RunTestOption Set ->
-      CancellableTask<TestStats * Suite list * ReportedError list>
+      // change this type to return a list of "ReportResult" which will have these
+      // fields plus the browser it was run on
+      CancellableTask<ReportResult seq>
 
   /// Run tests in watch mode with file change monitoring
   abstract RunWatch:
@@ -350,16 +322,156 @@ type TestingServiceArgs = {
   Logger: ILogger
   VirtualFileSystem: VirtualFileSystem
   FsManager: FileSystem.PerlaFsManager
+  ReqHandler: RequestHandler.RequestHandler
   Playwright: IPlaywright
 }
 
 module TestingService =
+  open System.Threading.Tasks
+
+  let private gatherOptions(options: RunTestOption Set) =
+    options
+    |> Set.fold
+      (fun (browsers, mode, headless, files) option ->
+        match option with
+        | Browser browser -> browser :: browsers, mode, headless, files
+        | BrowserMode m -> browsers, m, headless, files
+        | Headless h -> browsers, mode, h, files
+        | FileGlobs f ->
+          let files = [
+            for file in f do
+              file
+              yield! files
+          ]
+
+          browsers, mode, headless, files)
+      ([], BrowserMode.Parallel, true, [])
+
+
+  let pingUntilPong(reqHandler: RequestHandler.RequestHandler, baseUrl) = asyncEx {
+    let! cancellationToken = CancellableTask.getCancellationToken()
+    let tcs = TaskCompletionSource<bool>()
+    let mutable retries = 10
+
+    while not cancellationToken.IsCancellationRequested
+          && not tcs.Task.IsCompleted do
+      try
+        let! ready = reqHandler.PingTestServer baseUrl
+
+        if ready then
+          tcs.SetResult true
+      with _ ->
+        if retries <= 0 then
+          tcs.SetResult false
+        else
+          retries <- retries - 1
+          do! Async.Sleep 500
+
+    return! tcs.Task
+  }
+
   let Create(args: TestingServiceArgs) : TestingService =
     // create testing server context
     // start testing server here
     { new TestingService with
-        member _.RunOnce(options) =
-          failwith "RunOnce is not implemented yet"
+        member _.RunOnce(options) = cancellableTask {
+          let! token = CancellableTask.getCancellationToken()
+
+          // gather the testing options
+          let browsers, mode, headless, files = gatherOptions options
+          // prepare the server testing context
+
+          let events = ResizeArray<TestEvent>()
+          use cts = CancellationTokenSource.CreateLinkedTokenSource token
+
+          let inline notifyTestEvent(e: Result<TestEvent, JDeck.DecodeError>) =
+            match e with
+            | Ok e -> events.Add e
+            | Error ex ->
+              args.Logger.LogError(
+                "Error in decoding test event: {message}",
+                ex.message
+              )
+
+          // start the server in a background task
+          let serverTask = async {
+            let! token = Async.CancellationToken
+
+            let context =
+              SuaveTestingContext {
+                Config = args.config
+                FsManager = args.FsManager
+                Logger = args.Logger
+                NotifyTestEvent = notifyTestEvent
+                VirtualFileSystem = args.VirtualFileSystem
+              }
+
+            try
+              SuaveServer.startServer context token
+            with
+            // we've likely stopped the server on our own with the cts
+            | :? OperationCanceledException -> ()
+            | ex ->
+              args.Logger.LogError(
+                "An error occurred at the testing server: {message}",
+                ex.Message
+              )
+          }
+
+          Async.Start(serverTask, cts.Token)
+
+          let port, host =
+            args.config
+            |> AVal.map(fun config ->
+              config.devServer.port, config.devServer.host)
+            |> AVal.force
+
+          let url = $"http://{host}:{port}/"
+          let! ready = pingUntilPong(args.ReqHandler, url)
+
+          if not ready then
+            return failwith "Testing server did not start successfully."
+          else
+            let reports = ResizeArray()
+
+            // Local function to run tests for a single browser and collect the report
+            let runTestsForBrowser browser = cancellableTask {
+              // start the playwright browser
+              let! plBrowser =
+                Testing.GetBrowser(browser, headless, args.Playwright)
+              // create the executor for the browser
+              let executor =
+                Testing.GetExecutorForBrowser(
+                  args.Logger,
+                  $"{url}?browser={browser.AsString}"
+                )
+              // run the tests in the browser
+              let! _page = executor plBrowser
+              return ()
+            }
+
+            match mode with
+            | BrowserMode.Parallel ->
+              // run tests in parallel for all browsers
+              let tasks = browsers |> List.map runTestsForBrowser
+              let! _ = CancellableTask.whenAll tasks
+              ()
+            | BrowserMode.Sequential ->
+              for browser in browsers do
+                let! _ = runTestsForBrowser browser
+                ()
+
+            events
+            |> Seq.groupBy _.RunId
+            |> Seq.iter(fun (_, events) ->
+              let report = Testing.BuildReport events
+
+              reports.Add report)
+
+            // stop the server
+            cts.Cancel()
+            return reports :> IEnumerable<ReportResult>
+        }
 
         member _.RunWatch(options, ?cancellationToken) =
           failwith "RunWatch is not implemented yet"

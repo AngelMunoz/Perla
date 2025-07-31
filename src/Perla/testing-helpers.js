@@ -20,10 +20,18 @@ export const PERLA_TEST_RUN_FINISHED = Symbol("__perla-test-run-finished");
  * @returns {Promise<void>}
  */
 export async function postEvent(event, runId, payload) {
+  const browser = document
+    .querySelector("meta[perla-browser=true]")
+    ?.getAttribute("browser");
   try {
     await fetch("/~perla~/testing/events", {
       method: "POST",
-      body: JSON.stringify({ event: event.description, runId, ...payload }),
+      body: JSON.stringify({
+        event: event.description,
+        runId,
+        browser,
+        ...payload,
+      }),
     }).then((res) => (!res.ok ? Promise.reject(res.status) : undefined));
     console.debug(event.description);
   } catch (err) {
@@ -77,16 +85,20 @@ export async function getPerlaTestEnv() {
   }
 }
 
+/**
+ * @typedef {Window & { __perlaClientLogForwarding?: boolean }} PerlaWindow
+ */
 (function () {
-  if (window.__perlaClientLogForwarding) return;
-  window.__perlaClientLogForwarding = true;
+  var win = window;
+  if (win.__perlaClientLogForwarding) return;
+  win.__perlaClientLogForwarding = true;
 
   function sendLogToServer(payload) {
     try {
       fetch("/~perla~/log-client-error", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify([payload]),
         keepalive: true,
       });
     } catch (e) {
@@ -94,31 +106,21 @@ export async function getPerlaTestEnv() {
     }
   }
 
-  ["log", "info", "warn", "error", "debug"].forEach(function (level) {
-    var orig = console[level];
-    console[level] = function () {
-      orig && orig.apply(console, arguments);
-      try {
-        var args = Array.prototype.slice.call(arguments);
-        sendLogToServer({
-          level: level,
-          message: args
-            .map(function (a) {
-              try {
-                return typeof a === "string" ? a : JSON.stringify(a);
-              } catch {
-                return String(a);
-              }
-            })
-            .join(" "),
-          url: window.location.href,
-          userAgent: navigator.userAgent,
-          timestamp: new Date().toISOString(),
-          stack: level === "error" ? new Error().stack : undefined,
-        });
-      } catch (e) {
-        // fail silently
-      }
-    };
+  window.addEventListener("error", function (event) {
+    if (
+      event &&
+      event.message &&
+      event.message.includes("Failed to resolve module specifier")
+    ) {
+      sendLogToServer({
+        level: "error",
+        message: event.message,
+        url: window.location.href,
+        userAgent: navigator.userAgent,
+        timestamp: new Date().toISOString(),
+        stack: event.error && event.error.stack ? event.error.stack : undefined,
+        extra: {},
+      });
+    }
   });
 })();

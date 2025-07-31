@@ -153,20 +153,60 @@ module Types =
     ``end``: DateTime option
   }
 
+  type SessionStartEvent = {
+    RunId: Guid
+    Browser: Browser option
+    Stats: TestStats
+    TotalTests: int
+  }
+
+  type SessionEndEvent = {
+    RunId: Guid
+    Browser: Browser option
+    Stats: TestStats
+  }
+
+  type SuiteEvent = {
+    RunId: Guid
+    Browser: Browser option
+    Stats: TestStats
+    Suite: Suite
+  }
+
+  type TestPassEvent = {
+    RunId: Guid
+    Browser: Browser option
+    Stats: TestStats
+    Test: Test
+  }
+
+  type TestFailedEvent = {
+    RunId: Guid
+    Browser: Browser option
+    Stats: TestStats
+    Test: Test
+    Message: string
+    Stack: string
+  }
+
+  type TestImportFailedEvent = {
+    RunId: Guid
+    Browser: Browser option
+    Message: string
+    Stack: string
+  }
+
+  type TestRunFinishedEvent = { RunId: Guid; Browser: Browser option }
+
   type TestEvent =
-    | SessionStart of runId: Guid * stats: TestStats * totalTests: int
-    | SessionEnd of runId: Guid * stats: TestStats
-    | SuiteStart of runId: Guid * stats: TestStats * suite: Suite
-    | SuiteEnd of runId: Guid * stats: TestStats * suite: Suite
-    | TestPass of runId: Guid * stats: TestStats * test: Test
-    | TestFailed of
-      runId: Guid *
-      stats: TestStats *
-      test: Test *
-      message: string *
-      stack: string
-    | TestImportFailed of runId: Guid * message: string * stack: string
-    | TestRunFinished of runId: Guid
+    | SessionStart of SessionStartEvent
+    | SessionEnd of SessionEndEvent
+    | SuiteStart of SuiteEvent
+    | SuiteEnd of SuiteEvent
+    | TestPass of TestPassEvent
+    | TestFailed of TestFailedEvent
+    | TestImportFailed of TestImportFailedEvent
+    | TestRunFinished of TestRunFinishedEvent
 
   exception CommandNotParsedException of string
   exception HelpRequestedException
@@ -208,6 +248,29 @@ module Types =
       | "parallel" -> Parallel
       | "sequential" -> Sequential
       | _ -> Parallel
+
+  type TestEvent with
+    member this.RunId =
+      match this with
+      | SessionStart { RunId = runId } -> runId
+      | SessionEnd { RunId = runId } -> runId
+      | SuiteStart { RunId = runId } -> runId
+      | SuiteEnd { RunId = runId } -> runId
+      | TestPass { RunId = runId } -> runId
+      | TestFailed { RunId = runId } -> runId
+      | TestImportFailed { RunId = runId } -> runId
+      | TestRunFinished { RunId = runId } -> runId
+
+    member this.Browser =
+      match this with
+      | SessionStart { Browser = browser } -> browser
+      | SessionEnd { Browser = browser } -> browser
+      | SuiteStart { Browser = browser } -> browser
+      | SuiteEnd { Browser = browser } -> browser
+      | TestPass { Browser = browser } -> browser
+      | TestFailed { Browser = browser } -> browser
+      | TestImportFailed { Browser = browser } -> browser
+      | TestRunFinished { Browser = browser } -> browser
 
 module Defaults =
   open Types
