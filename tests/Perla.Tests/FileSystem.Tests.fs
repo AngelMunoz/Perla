@@ -144,6 +144,8 @@ type FakeRequestHandler
     member _.DownloadEsbuild _ = downloadResult()
     member _.DownloadTemplate(_, _, _) = templateStream()
 
+    member _.PingTestServer _ = cancellableTask { return true }
+
 [<Fact>]
 let ``GetManager should return a valid PerlaFsManager``() =
   use tempDir = TestHelpers.createTempDir()
