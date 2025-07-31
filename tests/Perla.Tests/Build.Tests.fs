@@ -591,8 +591,10 @@ module FileCollectionTests =
       Assert.DoesNotContain(UMX.tag<ServerUrl> "/readme.txt", jsList)
 
     finally
-      if Directory.Exists(testDir) then
+      try
         Directory.Delete(testDir, true)
+      with _ ->
+        ()
 
   [<Fact>]
   let ``collectFilesFromDirectory should throw when directory does not exist``
