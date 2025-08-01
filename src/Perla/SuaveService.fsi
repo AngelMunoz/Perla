@@ -3,6 +3,7 @@ namespace Perla.SuaveService
 open System
 open Microsoft.Extensions.Logging
 open System.Reactive.Subjects
+open Perla
 open Perla.Types
 open Perla.VirtualFs
 open Perla.FileSystem
@@ -22,6 +23,7 @@ type SuaveTestingContext = {
   VirtualFileSystem: VirtualFileSystem
   Config: PerlaConfig aval
   FsManager: PerlaFsManager
+  Directories: PerlaDirectories
   NotifyTestEvent: Result<TestEvent, JDeck.DecodeError> -> unit
 }
 
@@ -33,6 +35,7 @@ type SuaveServerContext =
   member VirtualFileSystem: VirtualFileSystem
   member Config: PerlaConfig aval
   member FsManager: PerlaFsManager
+  member Directories: PerlaDirectories option
   member NotifyTestEvent: (Result<TestEvent, JDeck.DecodeError> -> unit) option
 
 /// MIME type utilities
@@ -154,7 +157,7 @@ module TestingHandlers =
 
   /// Testing files endpoint
   val testingFiles:
-    fileGlobs: string seq option * testConfig: TestConfig -> WebPart
+    directories: PerlaDirectories * testConfig: TestConfig aval -> WebPart
 
   /// Testing environment endpoint
   val testingEnvironment: testConfig: TestConfig -> WebPart

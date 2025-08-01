@@ -217,6 +217,7 @@ type SuaveTestingContext = {
   VirtualFileSystem: VirtualFileSystem
   Config: PerlaConfig aval
   FsManager: PerlaFsManager
+  Directories: PerlaDirectories
   NotifyTestEvent: Result<TestEvent, JDeck.DecodeError> -> unit
 }
 
@@ -243,6 +244,11 @@ type SuaveServerContext =
     match this with
     | SuaveContext ctx -> ctx.FsManager
     | SuaveTestingContext ctx -> ctx.FsManager
+
+  member this.Directories =
+    match this with
+    | SuaveContext _ -> None
+    | SuaveTestingContext ctx -> Some ctx.Directories
 
   member this.NotifyTestEvent =
     match this with
@@ -1058,26 +1064,16 @@ module TestingHandlers =
   open Fake.IO
 
   let testingFiles
-    (fileGlobs: string seq option, testConfig: TestConfig)
+    (directories: PerlaDirectories, testConfig: TestConfig aval)
     : WebPart =
     fun ctx -> async {
+      let testConfig = AVal.force testConfig
+
       let glob: Globbing.LazyGlobbingPattern = {
-        BaseDirectory = "./tests"
-        Excludes = [
-          "**/bin/**"
-          "**/obj/**"
-          "**/*.fs"
-          "**/*.fsproj"
-          yield! testConfig.excludes
-        ]
-        Includes =
-          match fileGlobs with
-          | Some files ->
-            if files |> Seq.isEmpty then
-              [ "**/*.test.js"; "**/*.spec.js" ]
-            else
-              files |> Seq.toList
-          | None -> [ "**/*.test.js"; "**/*.spec.js" ]
+        BaseDirectory =
+          Path.Combine(UMX.untag directories.CurrentWorkingDirectory, "tests")
+        Excludes = testConfig.excludes |> List.ofSeq
+        Includes = testConfig.includes |> List.ofSeq
       }
 
       let files = [|
@@ -1097,7 +1093,8 @@ module TestingHandlers =
       let result = {|
         testConfig with
             browsers =
-              (testConfig.browsers |> Seq.map Encoders.Browser).ToString()
+              (testConfig.browsers
+               |> Seq.map(fun browser -> Encoders.Browser(browser).ToString()))
             browserMode =
               (testConfig.browserMode |> Encoders.BrowserMode).ToString()
             runId = Guid.NewGuid()
@@ -1382,7 +1379,10 @@ module SuaveServer =
       >=> choose [
         path "/~perla~/ping" >=> OK "pong"
         path "/~perla~/testing/files"
-        >=> TestingHandlers.testingFiles(None, config.testing)
+        >=> TestingHandlers.testingFiles(
+          suaveCtx.Directories.Value,
+          suaveCtx.Config |> AVal.map _.testing
+        )
 
         path "/~perla~/testing/environment"
         >=> TestingHandlers.testingEnvironment config.testing

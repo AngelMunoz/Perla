@@ -83,6 +83,9 @@ type PlatformOps =
       CancellableTask<unit>
 
 module PlatformOps =
+  open System
+  open System.Runtime.ExceptionServices
+  open System.Threading.Tasks
 
   let private getDotnetExecutable(isWindows: bool) =
     let ext = if isWindows then ".exe" else ""
@@ -288,29 +291,43 @@ module PlatformOps =
             let command =
               buildFableCommand (this.IsWindows()) project outDir extension true
 
-            for event: CommandEvent in command.ListenAsync(token) do
-              match event with
-              | :? StartedCommandEvent as started ->
-                logger.LogInformation(
-                  "Fable started with pid: [{ProcessId}]",
-                  started.ProcessId
-                )
+            try
+              for event: CommandEvent in command.ListenAsync(token) do
+                match event with
+                | :? StartedCommandEvent as started ->
+                  logger.LogInformation(
+                    "Fable started with pid: [{ProcessId}]",
+                    started.ProcessId
+                  )
 
-                ProcessEvent.Started started.ProcessId
-              | :? StandardOutputCommandEvent as stdout ->
-                logger.LogInformation stdout.Text
-                ProcessEvent.StandardOutput stdout.Text
-              | :? StandardErrorCommandEvent as stderr ->
-                logger.LogError stderr.Text
-                ProcessEvent.StandardError stderr.Text
-              | :? ExitedCommandEvent as exited ->
-                logger.LogInformation(
-                  "Fable exited with code: [{ExitCode}]",
-                  exited.ExitCode
-                )
+                  ProcessEvent.Started started.ProcessId
+                | :? StandardOutputCommandEvent as stdout ->
+                  logger.LogInformation stdout.Text
+                  ProcessEvent.StandardOutput stdout.Text
+                | :? StandardErrorCommandEvent as stderr ->
+                  logger.LogError stderr.Text
+                  ProcessEvent.StandardError stderr.Text
+                | :? ExitedCommandEvent as exited ->
+                  logger.LogInformation(
+                    "Fable exited with code: [{ExitCode}]",
+                    exited.ExitCode
+                  )
 
-                ProcessEvent.Exited exited.ExitCode
-              | _ -> ()
+                  ProcessEvent.Exited exited.ExitCode
+                | _ -> ()
+            with
+            | :? OperationCanceledException ->
+              logger.LogWarning "Fable streaming was cancelled."
+              ()
+            | :? System.AggregateException as ex when
+              ex.InnerExceptions
+              |> Seq.findIndex(fun innerEx ->
+                innerEx.GetType() = typeof<TaskCanceledException>)
+              >= 0
+              ->
+              logger.LogWarning "Fable streaming was cancelled."
+              ()
+            | ex -> ExceptionDispatchInfo.Throw ex
           }
 
         member this.IsFableAvailable() = cancellableTask {

@@ -830,21 +830,40 @@ module Handlers =
 
     let configA =
       container.Configuration.PerlaConfig
-      |> AVal.map(fun config -> {
-        config with
-            testing = {
-              config.testing with
-                  browsers =
-                    defaultArg options.browsers config.testing.browsers
-                  includes = defaultArg options.files config.testing.includes
-                  excludes = defaultArg options.skip config.testing.excludes
-                  watch = defaultArg options.watch config.testing.watch
-                  headless =
-                    defaultArg options.headless config.testing.headless
-                  browserMode =
-                    defaultArg options.browserMode config.testing.browserMode
-            }
-      })
+      |> AVal.map(fun config ->
+        let includes =
+          let includes =
+            defaultArg options.files config.testing.includes |> Seq.toList
+
+          if includes |> List.isEmpty then
+            // Default to all test files if no includes are specified
+            [ "**/*.test.js"; "**/*.spec.js" ]
+          else
+            includes
+
+        let excludes = [
+          "**/bin/**"
+          "**/obj/**"
+          "**/*.fs"
+          "**/*.fsproj"
+          yield! defaultArg options.skip config.testing.excludes
+        ]
+
+        {
+          config with
+              testing = {
+                config.testing with
+                    browsers =
+                      defaultArg options.browsers config.testing.browsers
+                    includes = includes
+                    excludes = excludes
+                    watch = defaultArg options.watch config.testing.watch
+                    headless =
+                      defaultArg options.headless config.testing.headless
+                    browserMode =
+                      defaultArg options.browserMode config.testing.browserMode
+              }
+        })
       |> withTestingAndDefaultMounts
 
     let config = configA |> AVal.force
@@ -927,25 +946,9 @@ module Handlers =
           VirtualFileSystem = container.VirtualFileSystem
           FsManager = container.FsManager
           ReqHandler = container.RequestHandler
+          Directories = container.Directories
           Playwright = pw
         }
-
-      let includes =
-        let includes = config.testing.includes |> Seq.toList
-
-        if includes |> List.isEmpty then
-          // Default to all test files if no includes are specified
-          [ "**/*.test.js"; "**/*.spec.js" ]
-        else
-          includes
-
-      let excludes = [
-        "**/bin/**"
-        "**/obj/**"
-        "**/*.fs"
-        "**/*.fsproj"
-        yield! config.testing.excludes
-      ]
 
       let testingOptions =
         [
@@ -957,18 +960,6 @@ module Handlers =
 
           if not isWatch then
             BrowserMode config.testing.browserMode
-
-          FileGlobs {
-            // Search in ./tests
-            BaseDirectory =
-              Path.Combine(
-                UMX.untag container.Directories.CurrentWorkingDirectory,
-                "tests"
-              )
-            Includes = includes
-            Excludes = excludes
-          }
-
         ]
         |> set
 

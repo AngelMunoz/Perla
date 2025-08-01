@@ -105,8 +105,10 @@ module Warmup =
         if Seq.isEmpty missingAssets then
           return Continue
         else
-          logger.LogWarning
-            "Some required assets are missing: {missingAssets}. Attempting to recover."
+          logger.LogWarning(
+            "Some required assets are missing: {missingAssets}. Attempting to recover.",
+            missingAssets
+          )
 
           return Recover(set missingAssets)
       }
@@ -224,8 +226,10 @@ module Warmup =
         args.logger.LogError "Setup failed, exiting."
         return! Error(HardExitRequested)
       | Recover recoverFrom ->
-        args.logger.LogInformation
-          "Recovering from missing assets: {recoverFrom}."
+        args.logger.LogInformation(
+          "Recovering from missing assets: {recoverFrom}.",
+          recoverFrom
+        )
 
         let! shouldProceed =
           if args.ci || args.skipPrompts then
@@ -247,8 +251,10 @@ module Warmup =
 
           return ()
         else
-          args.logger.LogInformation
-            "Starting setup for missing assets: {recoverFrom}."
+          args.logger.LogInformation(
+            "Starting setup for missing assets: {recoverFrom}.",
+            recoverFrom
+          )
 
           let! _ =
             recoverFrom

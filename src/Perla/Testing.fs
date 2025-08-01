@@ -704,6 +704,7 @@ type TestingServiceArgs = {
   VirtualFileSystem: VirtualFileSystem
   FsManager: FileSystem.PerlaFsManager
   ReqHandler: RequestHandler.RequestHandler
+  Directories: PerlaDirectories
   Playwright: IPlaywright
 }
 
@@ -785,6 +786,7 @@ module TestingService =
                 FsManager = args.FsManager
                 Logger = args.Logger
                 NotifyTestEvent = notifyTestEvent
+                Directories = args.Directories
                 VirtualFileSystem = args.VirtualFileSystem
               }
 
@@ -887,6 +889,7 @@ module TestingService =
                 FsManager = args.FsManager
                 Logger = args.Logger
                 NotifyTestEvent = notifyTestEvent
+                Directories = args.Directories
                 VirtualFileSystem = args.VirtualFileSystem
               }
 
@@ -914,6 +917,12 @@ module TestingService =
             |> AVal.force
 
           let url = $"http://{host}:{port}/"
+
+          args.Logger.LogInformation(
+            "Checking if the server is alive {url}",
+            url
+          )
+
           let! ready = pingUntilPong(args.ReqHandler, url)
 
           if not ready then
@@ -922,11 +931,15 @@ module TestingService =
           let! plBrowser =
             Testing.GetBrowser(browser, headless, args.Playwright)
 
-          let executor =
-            Testing.GetExecutorForBrowser(
-              args.Logger,
-              $"{url}?browser={browser.AsString}"
-            )
+          let url = $"{url}?browser={browser.AsString}"
+
+          args.Logger.LogInformation(
+            "Starting browser session for {browser} at {url}",
+            browser.AsString,
+            url
+          )
+
+          let executor = Testing.GetExecutorForBrowser(args.Logger, url)
 
           // Start the browser session - it will stay connected and handle reloads
           let! _page = executor plBrowser

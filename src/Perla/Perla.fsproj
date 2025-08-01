@@ -6,7 +6,6 @@
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>perla</ToolCommandName>
-    <PlaywrightPlatform>none</PlaywrightPlatform>
     <Description>
         A SPA Dev Server that focuses on removing the node toolchain for frontend developers where possible,
         Perla uses esbuild, import maps, ESModules, and other modern well supported by browser features to enable A
