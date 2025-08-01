@@ -955,9 +955,7 @@ module Handlers =
           for browser in config.testing.browsers do
             Browser browser
 
-          if config.testing.headless then
-            Headless true
-
+          Headless config.testing.headless
           if not isWatch then
             BrowserMode config.testing.browserMode
         ]
@@ -968,25 +966,31 @@ module Handlers =
 
         let mutable state = Print.LiveDashboard.TestRunState.Empty
 
-        do!
+        let display =
           AnsiConsole
             .Live(Print.LiveDashboard.createDashboard state)
-            .Start(fun ctx -> asyncEx {
-              try
-                for event in
-                  testingService.RunWatch(testingOptions, cancellationToken) do
-                  state <- Print.LiveDashboard.updateState state event
-                  ctx.UpdateTarget(Print.LiveDashboard.createDashboard state)
-              with
-              | :? OperationCanceledException ->
-                AnsiConsole.MarkupLine
-                  "[yellow]🛑 Test watch stopped by user[/]"
-              | ex ->
-                AnsiConsole.MarkupLine
-                  $"[red]💥 Error in test watch: {ex.Message.EscapeMarkup()}[/]"
+            .AutoClear(true)
 
-              return ()
-            })
+        let work(ctx: LiveDisplayContext) = asyncEx {
+          try
+            for event in
+              testingService.RunWatch(testingOptions, cancellationToken) do
+              state <- Print.LiveDashboard.updateState state event
+              ctx.UpdateTarget(Print.LiveDashboard.createDashboard state)
+              ctx.Refresh()
+          with
+          | :? OperationCanceledException ->
+            AnsiConsole.MarkupLine "[yellow]🛑 Test watch stopped by user[/]"
+          | ex ->
+            AnsiConsole.MarkupLine
+              $"[red]💥 Error in test watch: {ex.Message.EscapeMarkup()}[/]"
+
+          return ()
+        }
+
+        do!
+          display.StartAsync(fun ctx ->
+            Async.StartAsTask(work ctx, cancellationToken = cancellationToken))
 
         container.Logger.LogInformation "Test run completed"
         return 0
