@@ -867,7 +867,7 @@ module Handlers =
       |> withTestingAndDefaultMounts
 
     let config = configA |> AVal.force
-    let fableConfig = config.fable
+    let fableConfig = config.testing.fable
 
     let fableFirstRunTcs = TaskCompletionSource()
 
