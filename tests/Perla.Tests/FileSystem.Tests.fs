@@ -124,6 +124,12 @@ type FakePerlaDirectories
 
     member _.OriginalCwd = originalCwd
     member _.CurrentWorkingDirectory = tempDir
+
+    member _.PlaywrightArtifactsRoot =
+      UMX.tag<SystemPath>(
+        Path.Combine(UMX.untag tempDir, "playwright-artifacts")
+      )
+
     member _.SetCwdToProject(?_fromPath) = ()
 
 type FakeRequestHandler
