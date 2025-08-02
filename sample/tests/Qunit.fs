@@ -66,75 +66,88 @@ type HookCallback = Hooks -> unit
 type QUnit =
   // Main test methods
   [<Emit("QUnit.test($0, $1)")>]
-  static member test(name: string, callback: TestCallback) : unit = jsNative
+  static member inline test(name: string, callback: TestCallback) : unit =
+    jsNative
 
   [<Emit("QUnit.test($0, $1)")>]
-  static member test(name: string, callback: AsyncTestCallback) : unit =
+  static member inline test(name: string, callback: AsyncTestCallback) : unit =
     jsNative
 
   // Test variants
   [<Emit("QUnit.test.only($0, $1)")>]
-  static member testOnly(name: string, callback: TestCallback) : unit = jsNative
+  static member inline testOnly(name: string, callback: TestCallback) : unit =
+    jsNative
 
   [<Emit("QUnit.test.skip($0, $1)")>]
-  static member testSkip(name: string, ?callback: TestCallback) : unit =
+  static member inline testSkip(name: string, ?callback: TestCallback) : unit =
     jsNative
 
   [<Emit("QUnit.test.todo($0, $1)")>]
-  static member testTodo(name: string, ?callback: TestCallback) : unit =
+  static member inline testTodo(name: string, ?callback: TestCallback) : unit =
     jsNative
 
   [<Emit("QUnit.test.if($0, $1, $2)")>]
-  static member testIf
+  static member inline testIf
     (name: string, condition: bool, callback: TestCallback)
     : unit =
     jsNative
 
   // Main module methods
   [<Emit("QUnit.module($0)")>]
-  static member module'(name: string) : unit = jsNative
+  static member inline module'(name: string) : unit = jsNative
 
   [<Emit("QUnit.module($0, $1)")>]
-  static member module'(name: string, scope: HookCallback) : unit = jsNative
+  static member inline module'(name: string, scope: HookCallback) : unit =
+    jsNative
 
   [<Emit("QUnit.module($0, $1)")>]
-  static member module'(name: string, options: ModuleOptions) : unit = jsNative
+  static member inline module'(name: string, options: ModuleOptions) : unit =
+    jsNative
 
   [<Emit("QUnit.module($0, $1, $2)")>]
-  static member module'
+  static member inline module'
     (name: string, options: ModuleOptions, scope: HookCallback)
     : unit =
     jsNative
 
   // Module variants
   [<Emit("QUnit.module.only($0, $1)")>]
-  static member moduleOnly(name: string, scope: HookCallback) : unit = jsNative
+  static member inline moduleOnly(name: string, scope: HookCallback) : unit =
+    jsNative
 
   [<Emit("QUnit.module.skip($0, $1)")>]
-  static member moduleSkip(name: string, scope: HookCallback) : unit = jsNative
+  static member inline moduleSkip(name: string, scope: HookCallback) : unit =
+    jsNative
 
   [<Emit("QUnit.module.todo($0, $1)")>]
-  static member moduleTodo(name: string, scope: HookCallback) : unit = jsNative
+  static member inline moduleTodo(name: string, scope: HookCallback) : unit =
+    jsNative
 
   [<Emit("QUnit.module.if($0, $1, $2)")>]
-  static member moduleIf
+  static member inline moduleIf
     (name: string, condition: bool, scope: HookCallback)
     : unit =
     jsNative
 
-  // Control
-  [<Emit("QUnit.start()")>]
-  static member start() : unit = jsNative
-
 
 module Expect =
-  let equal (actual: 'T) (expected: 'T) (message: string) (assert': Assert) =
+  let inline equal
+    (actual: 'T)
+    (expected: 'T)
+    (message: string)
+    (assert': Assert)
+    =
     assert'.strictEqual(actual, expected, message)
 
-  let notEqual (actual: 'T) (expected: 'T) (message: string) (assert': Assert) =
+  let inline notEqual
+    (actual: 'T)
+    (expected: 'T)
+    (message: string)
+    (assert': Assert)
+    =
     assert'.notStrictEqual(actual, expected, message)
 
-  let deepEqual
+  let inline deepEqual
     (actual: 'T)
     (expected: 'T)
     (message: string)
@@ -142,7 +155,7 @@ module Expect =
     =
     assert'.deepEqual(actual, expected, message)
 
-  let notDeepEqual
+  let inline notDeepEqual
     (actual: 'T)
     (expected: 'T)
     (message: string)
@@ -150,7 +163,7 @@ module Expect =
     =
     assert'.notDeepEqual(actual, expected, message)
 
-  let looseEqual
+  let inline looseEqual
     (actual: 'T)
     (expected: 'T)
     (message: string)
@@ -158,7 +171,7 @@ module Expect =
     =
     assert'.equal(actual, expected, message)
 
-  let notLooseEqual
+  let inline notLooseEqual
     (actual: 'T)
     (expected: 'T)
     (message: string)
@@ -166,19 +179,19 @@ module Expect =
     =
     assert'.notEqual(actual, expected, message)
 
-  let isTrue (value: bool) (message: string) (assert': Assert) =
+  let inline isTrue (value: bool) (message: string) (assert': Assert) =
     assert'.``true``(value, message)
 
-  let isFalse (value: bool) (message: string) (assert': Assert) =
+  let inline isFalse (value: bool) (message: string) (assert': Assert) =
     assert'.``false``(value, message)
 
-  let isOk (value: 'T) (message: string) (assert': Assert) =
+  let inline isOk (value: 'T) (message: string) (assert': Assert) =
     assert'.ok(value, message)
 
-  let isNotOk (value: 'T) (message: string) (assert': Assert) =
+  let inline isNotOk (value: 'T) (message: string) (assert': Assert) =
     assert'.notOk(value, message)
 
-  let propEqual
+  let inline propEqual
     (actual: 'T)
     (expected: 'T)
     (message: string)
@@ -186,7 +199,7 @@ module Expect =
     =
     assert'.propEqual(actual, expected, message)
 
-  let notPropEqual
+  let inline notPropEqual
     (actual: 'T)
     (expected: 'T)
     (message: string)
@@ -194,7 +207,7 @@ module Expect =
     =
     assert'.notPropEqual(actual, expected, message)
 
-  let propContains
+  let inline propContains
     (actual: 'T)
     (expected: 'T)
     (message: string)
@@ -202,7 +215,7 @@ module Expect =
     =
     assert'.propContains(actual, expected, message)
 
-  let notPropContains
+  let inline notPropContains
     (actual: 'T)
     (expected: 'T)
     (message: string)
@@ -210,7 +223,7 @@ module Expect =
     =
     assert'.notPropContains(actual, expected, message)
 
-  let closeTo
+  let inline closeTo
     (actual: float)
     (expected: float)
     (delta: float)
@@ -219,10 +232,10 @@ module Expect =
     =
     assert'.closeTo(actual, expected, delta, message)
 
-  let throws (f: unit -> unit) (message: string) (assert': Assert) =
+  let inline throws (f: unit -> unit) (message: string) (assert': Assert) =
     assert'.throws(f, message = message)
 
-  let throwsWithMatcher
+  let inline throwsWithMatcher
     (f: unit -> unit)
     (matcher: ExpectedMatcher)
     (message: string)
@@ -230,10 +243,14 @@ module Expect =
     =
     assert'.throws(f, matcher, message)
 
-  let rejects (promise: Promise<'T>) (message: string) (assert': Assert) =
+  let inline rejects
+    (promise: Promise<'T>)
+    (message: string)
+    (assert': Assert)
+    =
     assert'.rejects(promise, message = message)
 
-  let rejectsWithMatcher
+  let inline rejectsWithMatcher
     (promise: Promise<'T>)
     (matcher: ExpectedMatcher)
     (message: string)
@@ -241,18 +258,20 @@ module Expect =
     =
     assert'.rejects(promise, matcher, message)
 
-  let step (value: string) (assert': Assert) = assert'.step(value)
+  let inline step (value: string) (assert': Assert) = assert'.step(value)
 
-  let verifySteps (steps: string[]) (message: string) (assert': Assert) =
+  let inline verifySteps (steps: string[]) (message: string) (assert': Assert) =
     assert'.verifySteps(steps, message)
 
-  let expectCount (count: int) (assert': Assert) = assert'.expect(count)
+  let inline expectCount (count: int) (assert': Assert) = assert'.expect(count)
 
-  let timeout (duration: int) (assert': Assert) = assert'.timeout(duration)
+  let inline timeout (duration: int) (assert': Assert) =
+    assert'.timeout(duration)
 
-  let asyncTimeout (count: int) (assert': Assert) = assert'.async(count = count)
+  let inline asyncTimeout (count: int) (assert': Assert) =
+    assert'.async(count = count)
 
-  let async(assert': Assert) = assert'.async()
+  let inline async(assert': Assert) = assert'.async()
 
 type Test = { name: string; test: Assert -> unit }
 
@@ -265,73 +284,116 @@ type TestConfig = {
   after: (Assert -> unit) option
 }
 
-module Tests =
-  let test (name: string) (f: Assert -> unit) : Test = { name = name; test = f }
+module TestConfig =
+  let inline Empty() = {
+    before = None
+    beforeEach = None
+    afterEach = None
+    after = None
+  }
 
-  let testAsync (name: string) (f: Assert -> Promise<unit>) : Test = {
+module Tests =
+  let inline test (name: string) (f: Assert -> unit) : Test = {
+    name = name
+    test = f
+  }
+
+  let inline testAsync (name: string) (f: Assert -> Promise<unit>) : Test = {
     name = name
     test = fun assert' -> f assert' |> ignore
   }
 
-  let testOnly (name: string) (f: Assert -> unit) : unit =
+  let inline testOnly (name: string) (f: Assert -> unit) : unit =
     QUnit.testOnly(name, f)
 
-  let testSkip (name: string) (f: Assert -> unit) : unit =
+  let inline testSkip (name: string) (f: Assert -> unit) : unit =
     QUnit.testSkip(name, f)
 
-  let testTodo (name: string) (f: Assert -> unit) : unit =
+  let inline testTodo (name: string) (f: Assert -> unit) : unit =
     QUnit.testTodo(name, f)
 
-  let testIf (name: string) (condition: bool) (f: Assert -> unit) : unit =
+  let inline testIf
+    (name: string)
+    (condition: bool)
+    (f: Assert -> unit)
+    : unit =
     QUnit.testIf(name, condition, f)
 
-  let testList (name: string) (tests: TestList) : unit =
-    QUnit.module'(name, fun hooks ->
-      tests |> List.iter(fun t -> QUnit.test(t.name, t.test))
+  let inline testList (name: string) (tests: TestList) : unit =
+    QUnit.module'(
+      name,
+      fun hooks -> tests |> List.iter(fun t -> QUnit.test(t.name, t.test))
     )
 
-  let testListWithConfig (name: string) (config: TestConfig) (tests: TestList) : unit =
-    QUnit.module'(name, fun hooks ->
-      config.before |> Option.iter hooks.before
-      config.beforeEach |> Option.iter hooks.beforeEach
-      config.afterEach |> Option.iter hooks.afterEach
-      config.after |> Option.iter hooks.after
-      tests |> List.iter(fun t -> QUnit.test(t.name, t.test))
+  let inline testListWithConfig
+    (name: string)
+    (config: TestConfig)
+    (tests: TestList)
+    : unit =
+    QUnit.module'(
+      name,
+      fun hooks ->
+        config.before |> Option.iter hooks.before
+        config.beforeEach |> Option.iter hooks.beforeEach
+        config.afterEach |> Option.iter hooks.afterEach
+        config.after |> Option.iter hooks.after
+        tests |> List.iter(fun t -> QUnit.test(t.name, t.test))
     )
 
-  let testSequenced (tests: TestList) : unit =
+  let inline testSequenced(tests: TestList) : unit =
     tests |> List.iter(fun t -> QUnit.test(t.name, t.test))
 
-  let run (tests: TestList) : unit =
+  let inline run(tests: TestList) : unit =
     tests |> List.iter(fun t -> QUnit.test(t.name, t.test))
-
-  let runTests () = QUnit.start()
 
   // Hook helpers
-  let before (f: Assert -> unit) : TestConfig =
-    { before = Some f; beforeEach = None; afterEach = None; after = None }
+  let inline before(f: Assert -> unit) : TestConfig = {
+    before = Some f
+    beforeEach = None
+    afterEach = None
+    after = None
+  }
 
-  let beforeEach (f: Assert -> unit) : TestConfig =
-    { before = None; beforeEach = Some f; afterEach = None; after = None }
+  let inline beforeEach(f: Assert -> unit) : TestConfig = {
+    before = None
+    beforeEach = Some f
+    afterEach = None
+    after = None
+  }
 
-  let afterEach (f: Assert -> unit) : TestConfig =
-    { before = None; beforeEach = None; afterEach = Some f; after = None }
+  let inline afterEach(f: Assert -> unit) : TestConfig = {
+    before = None
+    beforeEach = None
+    afterEach = Some f
+    after = None
+  }
 
-  let after (f: Assert -> unit) : TestConfig =
-    { before = None; beforeEach = None; afterEach = None; after = Some f }
+  let inline after(f: Assert -> unit) : TestConfig = {
+    before = None
+    beforeEach = None
+    afterEach = None
+    after = Some f
+  }
 
   // Config combinators
-  let withBefore (f: Assert -> unit) (config: TestConfig) : TestConfig =
-    { config with before = Some f }
+  let inline withBefore (f: Assert -> unit) (config: TestConfig) : TestConfig = {
+    config with
+        before = Some f
+  }
 
-  let withBeforeEach (f: Assert -> unit) (config: TestConfig) : TestConfig =
+  let inline withBeforeEach
+    (f: Assert -> unit)
+    (config: TestConfig)
+    : TestConfig =
     { config with beforeEach = Some f }
 
-  let withAfterEach (f: Assert -> unit) (config: TestConfig) : TestConfig =
+  let inline withAfterEach
+    (f: Assert -> unit)
+    (config: TestConfig)
+    : TestConfig =
     { config with afterEach = Some f }
 
-  let withAfter (f: Assert -> unit) (config: TestConfig) : TestConfig =
-    { config with after = Some f }
-
-  let emptyConfig : TestConfig =
-    { before = None; beforeEach = None; afterEach = None; after = None }
+  let inline withAfter (f: Assert -> unit) (config: TestConfig) : TestConfig = {
+    config with
+        after = Some f
+  }
