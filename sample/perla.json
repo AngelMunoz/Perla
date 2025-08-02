@@ -12,15 +12,13 @@
     "/assets": "./assets"
   },
   "build": {
-    "includes": [
-      "assets/favicon.ico",
-      "assets/manifest.webmanifest"
-    ]
+    "includes": ["assets/favicon.ico", "assets/manifest.webmanifest"]
   },
   "testing": {
     "fable": {
       "project": "./tests/App.Tests.fsproj"
-    }
+    },
+    "testFramework": "qunit"
   },
   "dependencies": {
     "@esm-bundle/chai": "4.3.4-fix.0",

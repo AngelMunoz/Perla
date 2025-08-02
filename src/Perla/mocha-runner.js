@@ -16,7 +16,7 @@
 await Promise.all([
   import("mocha"),
   import("mocha/mocha.css", { with: { type: "css" } }),
-]).then(([_, MochaCss]) => document.adoptedStyleSheets.push(MochaCss));
+]).then(([_, MochaCss]) => document.adoptedStyleSheets.push(MochaCss.default));
 
 const {
   EVENT_RUN_BEGIN,

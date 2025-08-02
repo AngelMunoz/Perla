@@ -189,7 +189,8 @@ module Print =
               | Some test -> $"{test.fullTitle} -> {error.message}"
               | None -> error.message
 
-            Markup($"[red]:cross_mark:[/] {errorMessage.EscapeMarkup()}") :> IRenderable)
+            Markup($"[red]:cross_mark:[/] {errorMessage.EscapeMarkup()}")
+            :> IRenderable)
           |> Rows
 
         Panel(rows, Header = PanelHeader("[bold red]Errors[/]")) |> Some
@@ -229,7 +230,10 @@ module Print =
           let stats = ReportHelpers.fromSuite suite
 
           let statusIcon =
-            if stats.failed > 0 then "[red]:cross_mark:[/]" else "[green]:check_mark_button:[/]"
+            if stats.failed > 0 then
+              "[red]:cross_mark:[/]"
+            else
+              "[green]:check_mark_button:[/]"
 
           Markup(
             $"{statusIcon} {suite.title.EscapeMarkup()} ([green]{stats.passed}[/]/[red]{stats.failed}[/]/[blue]{stats.pending}[/])"
@@ -913,8 +917,9 @@ module TestingService =
             | Ok e -> events.Add e
             | Error ex ->
               args.Logger.LogError(
-                "Error in decoding test event: {message}",
-                ex.message
+                "Error in decoding test event: {message} -value: {value}",
+                ex.message,
+                ex.rawValue
               )
 
           // start the server in a background task
@@ -1016,8 +1021,9 @@ module TestingService =
                 args.Logger.LogWarning "Failed to write test event to channel"
             | Error ex ->
               args.Logger.LogError(
-                "Error in decoding test event: {message}",
-                ex.message
+                "Error in decoding test event: {message} - value: {value}",
+                ex.message,
+                ex.rawValue
               )
 
           // Start the server once and keep it running
