@@ -317,7 +317,7 @@ module Print =
                 CompletedRuns = state.CompletedRuns.Add finishedEvent.RunId
           }
 
-    let createStatusPanel(state: TestRunState) =
+    let createSessionPanel(state: TestRunState) =
       let sessionDuration =
         match state.SessionStartTime with
         | Some start -> DateTime.Now - start
@@ -337,39 +337,30 @@ module Print =
           $"\n[dim]Run ID:[/] {runId.ToString().Substring(0, 8)}..."
         | None -> ""
 
-      let content =
-        $"""[bold cyan]🔍 Test Watch Active[/]{runCountText}
-[dim]Browser:[/] {browserInfo.EscapeMarkup()}
-[dim]Session Duration:[/] {sessionDuration.ToString @"hh\:mm\:ss"}
-[dim]Last Activity:[/] {state.LastActivity.ToString "HH:mm:ss"}{runIdText}"""
-
-      Panel(
-        Markup(content),
-        Header = PanelHeader "[bold white]Session Status[/]",
-        Border = BoxBorder.Rounded
-      )
-
-    let createActivityPanel(state: TestRunState) =
-      let content =
+      // Merge activity information back into session panel
+      let activityText =
         match state.CurrentSuite, state.CurrentTest with
         | Some suite, Some test ->
-          $"""[yellow]📁 Suite:[/] {suite.EscapeMarkup()}
-[blue]🧪 Running:[/] {test.EscapeMarkup()}
-[dim]⏳ Test in progress...[/]"""
+          $"\n[yellow]📁 Suite:[/] {suite.EscapeMarkup()}\n[blue]🧪 Running:[/] {test.EscapeMarkup()}"
         | Some suite, None ->
-          $"""[yellow]📁 Suite:[/] {suite.EscapeMarkup()}
-[dim]Preparing next test...[/]"""
+          $"\n[yellow]📁 Suite:[/] {suite.EscapeMarkup()}\n[dim]Preparing next test...[/]"
         | None, _ ->
           match state.CurrentStats with
           | Some stats when stats.``end``.IsSome ->
-            "[green]✅ Test run completed[/]\n[dim]Waiting for file changes...[/]"
+            "\n[green]✅ Test run completed[/]\n[dim]Waiting for file changes...[/]"
           | Some _ ->
-            "[blue]⚡ Test run in progress...[/]\n[dim]Loading suites...[/]"
-          | None -> "[dim]⏳ Waiting for test run to start...[/]"
+            "\n[blue]⚡ Test run in progress...[/]\n[dim]Loading suites...[/]"
+          | None -> "\n[dim]⏳ Waiting for test run to start...[/]"
+
+      let content =
+        $"""[bold cyan]🔍 Test Watch Active[/]{runCountText}
+[dim]Browser:[/] {browserInfo.EscapeMarkup()}
+[dim]Duration:[/] {sessionDuration.ToString @"hh\:mm\:ss"}
+[dim]Last:[/] {state.LastActivity.ToString "HH:mm:ss"}{runIdText}{activityText}"""
 
       Panel(
         Markup(content),
-        Header = PanelHeader "[bold white]Current Activity[/]",
+        Header = PanelHeader "[bold white]Session & Activity[/]",
         Border = BoxBorder.Rounded
       )
 
@@ -427,7 +418,7 @@ module Print =
       else
         let recentContent =
           state.RecentTests
-          |> List.take(min 10 state.RecentTests.Length)
+          |> List.take(min 6 state.RecentTests.Length)
           |> List.mapi(fun i result ->
             let icon =
               match result.Status with
@@ -457,7 +448,14 @@ module Print =
               else
                 ""
 
-            $"{icon} {result.Test.title.EscapeMarkup()}{duration} [dim]{timeText}[/]{runMarker}")
+            // Truncate long test names for better column layout
+            let testName = 
+              if result.Test.title.Length > 35 then
+                $"{result.Test.title.Substring(0, 32)}..."
+              else
+                result.Test.title
+
+            $"{icon} {testName.EscapeMarkup()}{duration} [dim]{timeText}[/]{runMarker}")
           |> String.concat "\n"
 
         Panel(
@@ -511,39 +509,39 @@ module Print =
         )
 
     let createDashboard(state: TestRunState) =
-      let headerPanel =
-        Columns [
-          createStatusPanel state :> IRenderable
-          createActivityPanel state
-        ]
+      let sessionPanel = createSessionPanel state
+      let statsPanel = createStatsPanel state
+      let recentTestsPanel = createRecentTestsPanel state
+      let errorsPanel = createErrorsPanel state
 
-      let mainLeftPanel = createStatsPanel state
+      // Create the main layout: 2 rows
+      // Top row: 2 columns (Test Results | Session & Activity)  
+      // Bottom row: 2 columns (Recent Tests | Recent Errors)
+      let layout = Layout("Root")
+      layout.SplitRows(
+        Layout("Top"),
+        Layout("Bottom")
+      ) |> ignore
 
-      let mainRightPanel =
-        Panel(
-          Markup(
-            $"""[dim]Watch Mode Features:[/]
-• Auto-refresh on file changes
-• Multi-run session tracking
-• Real-time test progress
-• Error history & analysis
+      // Split top row into 2 columns
+      layout.["Top"].SplitColumns(
+        Layout("TestResults"),
+        Layout("SessionActivity")
+      ) |> ignore
 
-[dim]Legend:[/] [bold blue]●[/] Current run"""
-          ),
-          Header = PanelHeader("[bold white]Info[/]"),
-          Border = BoxBorder.Rounded
-        )
+      // Split bottom row into 2 columns  
+      layout.["Bottom"].SplitColumns(
+        Layout("RecentTests"),
+        Layout("RecentErrors")
+      ) |> ignore
 
-      let bottomLeftPanel = createRecentTestsPanel state
-      let bottomRightPanel = createErrorsPanel state
+      // Update each section
+      layout.["Top"].["TestResults"].Update(statsPanel) |> ignore
+      layout.["Top"].["SessionActivity"].Update(sessionPanel) |> ignore
+      layout.["Bottom"].["RecentTests"].Update(recentTestsPanel) |> ignore
+      layout.["Bottom"].["RecentErrors"].Update(errorsPanel) |> ignore
 
-      let mainSection = Columns [ mainLeftPanel :> IRenderable; mainRightPanel ]
-
-      let bottomSection =
-        Columns [ bottomLeftPanel :> IRenderable; bottomRightPanel ]
-
-      Rows [ headerPanel :> IRenderable; mainSection; bottomSection ]
-
+      layout :> IRenderable
 
 module Testing =
   let SetupPlaywright(logger: ILogger) = asyncEx {
