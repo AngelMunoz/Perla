@@ -42,6 +42,47 @@ type ReportResult = {
 }
 
 module Print =
+  module internal ReportHelpers =
+    type SuiteStats = {
+      passed: int
+      failed: int
+      pending: int
+    }
+
+    let fromSuite(suite: Suite) =
+      let tests = suite.tests
+
+      let passed =
+        tests |> List.filter(fun t -> t.state = Some "passed") |> List.length
+
+      let failed =
+        tests |> List.filter(fun t -> t.state = Some "failed") |> List.length
+
+      let pending = tests |> List.filter(fun t -> t.pending) |> List.length
+
+      {
+        passed = passed
+        failed = failed
+        pending = pending
+      }
+
+    let createSummaryPanel
+      (header: string)
+      (stats: TestStats)
+      (fourthColumn: string)
+      =
+      let grid = Grid().AddColumns(4)
+
+      grid.AddRow(
+        $"[green]:black_large_square: {stats.passes} Passed[/]",
+        $"[red]:black_large_square: {stats.failures} Failed[/]",
+        $"[blue]:black_large_square: {stats.pending} Pending[/]",
+        fourthColumn
+      )
+      |> ignore
+
+      Panel(grid, Header = PanelHeader(header))
+
   let HeaderedPanel(title: string, content: IRenderable) =
     Panel(
       content,
@@ -116,53 +157,150 @@ module Print =
   let Report(stats: TestStats, suites: Suite seq, errors: ReportedError seq) =
     let suites = Array.ofSeq suites
     let errors = Array.ofSeq errors
-
-    let getChartItem(color, label, value) =
-      { new IBreakdownChartItem with
-          member _.Color = color
-          member _.Label = label
-          member _.Value = value
-      }
-
-    let chart =
-      let chart =
-        BreakdownChart(ShowTags = true, ShowTagValues = true).FullSize()
-
-      chart.AddItems(
-        [
-          getChartItem(Color.Green, "Tests Passed", stats.passes)
-          getChartItem(Color.Red, "Tests Failed", stats.failures)
-        ]
-      )
-
     let endTime = stats.``end`` |> Option.defaultWith(fun _ -> DateTime.Now)
     let difference = endTime - stats.start
 
-    let rows: IRenderable seq = [
-      for suite in suites do
-        Suite(suite, true)
-      if errors.Length > 0 then
-        Rule("Test run errors", Style = Style.Parse("bold red"))
+    // Create compact suite summary
+    let suiteSummary =
+      let rows =
+        suites
+        |> Array.map(fun suite ->
+          let suiteStats = ReportHelpers.fromSuite suite
+          let statusColor = if suiteStats.failed > 0 then "red" else "green"
 
-        for error in errors do
-          let errorMessage =
-            match error.test with
-            | Some test -> $"{test.fullTitle} -> {error.message}"
-            | None -> error.message
-
-          ClientTestException(errorMessage, error.stack).GetRenderable()
-
-        Rule("", Style = Style.Parse("bold red"))
-      Panel(
-        chart,
-        Header =
-          PanelHeader(
-            $"[yellow] TestRun of {stats.suites} suites and {stats.tests} tests - Duration:[/] [bold yellow]{difference}[/]"
+          Markup(
+            $"[bold {statusColor}]{suite.title.EscapeMarkup()}[/] - [green]{suiteStats.passed} passed[/] [red]{suiteStats.failed} failed[/] [blue]{suiteStats.pending} pending[/]"
           )
-      )
+          :> IRenderable)
+        |> Rows
+
+      Panel(rows, Header = PanelHeader("[bold white]Test Suites[/]"))
+
+    // Create error summary if any
+    let errorSummary =
+      match errors with
+      | [||] -> None
+      | errors ->
+        let rows =
+          errors
+          |> Array.map(fun error ->
+            let errorMessage =
+              match error.test with
+              | Some test -> $"{test.fullTitle} -> {error.message}"
+              | None -> error.message
+
+            Markup($"[red]:cross_mark:[/] {errorMessage.EscapeMarkup()}") :> IRenderable)
+          |> Rows
+
+        Panel(rows, Header = PanelHeader("[bold red]Errors[/]")) |> Some
+
+    // Create summary stats
+    let summaryStats =
+      let header =
+        $"[bold white]Results - {stats.suites} suites, {stats.tests} tests[/]"
+
+      let fourthCol = $"[yellow]:stopwatch: {difference}[/]"
+      ReportHelpers.createSummaryPanel header stats fourthCol
+
+    [
+      suiteSummary :> IRenderable
+      match errorSummary with
+      | Some e -> e :> IRenderable
+      | None -> Markup("") :> IRenderable
+      summaryStats :> IRenderable
+    ]
+    |> Rows
+
+  let BrowserReport(browserName: string, result: ReportResult) =
+    let endTime =
+      result.Stats.``end`` |> Option.defaultWith(fun _ -> DateTime.Now)
+
+    let difference = endTime - result.Stats.start
+
+    let suites = Array.ofSeq result.Suites
+    let errors = Array.ofSeq result.Errors
+
+    // Compact test results per suite
+    let testResults = [
+      for suite in suites do
+        let tests = suite.tests
+
+        if tests.Length > 0 then
+          let stats = ReportHelpers.fromSuite suite
+
+          let statusIcon =
+            if stats.failed > 0 then "[red]:cross_mark:[/]" else "[green]:check_mark_button:[/]"
+
+          Markup(
+            $"{statusIcon} {suite.title.EscapeMarkup()} ([green]{stats.passed}[/]/[red]{stats.failed}[/]/[blue]{stats.pending}[/])"
+          )
+          :> IRenderable
     ]
 
-    rows |> Rows
+    let content = [
+      if testResults.Length > 0 then
+        Rows(testResults) :> IRenderable
+      if errors.Length > 0 then
+        let errorList = [
+          for error in errors do
+            let msg =
+              match error.test with
+              | Some t -> t.fullTitle
+              | None -> "Import Error"
+
+            Markup($"[red]:cross_mark: {msg.EscapeMarkup()}[/]") :> IRenderable
+        ]
+
+        Rows(errorList) :> IRenderable
+    ]
+
+    let statusColor = if result.Stats.failures > 0 then "red" else "green"
+
+    let header =
+      $"[bold {statusColor}]{browserName}[/] - [green]{result.Stats.passes}[/]/[red]{result.Stats.failures}[/]/[blue]{result.Stats.pending}[/] - [yellow]{difference}[/]"
+
+    Panel(Rows(content), Header = PanelHeader(header))
+
+  let MultiBrowserReport(reports: (string * ReportResult) seq) =
+    let reports = Array.ofSeq reports
+
+    let totalStats =
+      reports
+      |> Array.fold
+        (fun acc (_, result) -> {
+          acc with
+              suites = acc.suites + result.Stats.suites
+              tests = acc.tests + result.Stats.tests
+              passes = acc.passes + result.Stats.passes
+              failures = acc.failures + result.Stats.failures
+              pending = acc.pending + result.Stats.pending
+        })
+        {
+          suites = 0
+          tests = 0
+          passes = 0
+          failures = 0
+          pending = 0
+          start = DateTime.Now
+          ``end`` = None
+        }
+
+    let browserPanels = [
+      for (browserName, result) in reports do
+        BrowserReport(browserName, result) :> IRenderable
+    ]
+
+    let summary =
+      let header = "[bold white]Test Run Summary[/]"
+
+      let fourthCol =
+        $"[yellow]{totalStats.suites} suites, {totalStats.tests} tests[/]"
+
+      ReportHelpers.createSummaryPanel header totalStats fourthCol
+      :> IRenderable
+
+    let allContent = browserPanels @ [ summary ]
+    Rows(allContent)
 
   module LiveDashboard =
     type TestResult = {
@@ -428,7 +566,7 @@ module Print =
 
             let duration =
               result.Duration
-              |> Option.map(fun d -> $" [dim]({d.TotalMilliseconds:F0}ms)[/]")
+              |> Option.map(fun d -> $" [dim]({d.TotalMilliseconds:F0}ms)[/] ")
               |> Option.defaultValue ""
 
             let timeAgo = DateTime.Now - result.Timestamp
@@ -449,7 +587,7 @@ module Print =
                 ""
 
             // Truncate long test names for better column layout
-            let testName = 
+            let testName =
               if result.Test.title.Length > 35 then
                 $"{result.Test.title.Substring(0, 32)}..."
               else
@@ -515,25 +653,30 @@ module Print =
       let errorsPanel = createErrorsPanel state
 
       // Create the main layout: 2 rows
-      // Top row: 2 columns (Test Results | Session & Activity)  
+      // Top row: 2 columns (Test Results | Session & Activity)
       // Bottom row: 2 columns (Recent Tests | Recent Errors)
       let layout = Layout("Root")
-      layout.SplitRows(
-        Layout("Top"),
-        Layout("Bottom")
-      ) |> ignore
+      layout.SplitRows(Layout("Top"), Layout("Bottom")) |> ignore
 
       // Split top row into 2 columns
-      layout.["Top"].SplitColumns(
-        Layout("TestResults"),
-        Layout("SessionActivity")
-      ) |> ignore
+      layout.["Top"]
+        .SplitColumns(Layout("TestResults"), Layout("SessionActivity"))
+      |> ignore
 
-      // Split bottom row into 2 columns  
-      layout.["Bottom"].SplitColumns(
-        Layout("RecentTests"),
-        Layout("RecentErrors")
-      ) |> ignore
+      // Split bottom row into 2 columns
+      layout.["Bottom"]
+        .SplitColumns(Layout("RecentTests"), Layout("RecentErrors"))
+      |> ignore
+
+      // Configure layout sizing for proper proportions
+      layout.["Top"].Ratio(1) |> ignore
+      layout.["Bottom"].Ratio(1) |> ignore
+
+      layout.["Top"].["TestResults"].Ratio(1).MinimumSize(25) |> ignore
+      layout.["Top"].["SessionActivity"].Ratio(1).MinimumSize(25) |> ignore
+
+      layout.["Bottom"].["RecentTests"].Ratio(1).MinimumSize(25) |> ignore
+      layout.["Bottom"].["RecentErrors"].Ratio(1).MinimumSize(25) |> ignore
 
       // Update each section
       layout.["Top"].["TestResults"].Update(statsPanel) |> ignore

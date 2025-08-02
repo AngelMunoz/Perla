@@ -1011,8 +1011,19 @@ module Handlers =
           )
           |> AnsiConsole.Write
 
-        container.Logger.LogInformation "Test run completed"
-        return 0
+        match
+          reports |> Seq.tryFind(fun r -> r.Errors |> Seq.isEmpty |> not)
+        with
+        | Some report ->
+          container.Logger.LogError(
+            "Tests failed with {count} errors.",
+            report.Errors |> Seq.length
+          )
+
+          return 1
+        | None ->
+          container.Logger.LogInformation "All tests passed successfully."
+          return 0
   }
 
   let runAddPackage (container: AppContainer) (options: DependencyOptions) = cancellableTask {
