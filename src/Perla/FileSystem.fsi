@@ -43,6 +43,7 @@ type PerlaFsManager =
   abstract ResolveWorkerScript: unit -> CancellableTask<string>
   abstract ResolveTestingHelpersScript: unit -> CancellableTask<string>
   abstract ResolveMochaRunnerScript: unit -> CancellableTask<string>
+  abstract ResolveQunitRunnerScript: unit -> CancellableTask<string>
 
   abstract SaveImportMap:
     map: Perla.PkgManager.ImportMap -> CancellableTask<unit>

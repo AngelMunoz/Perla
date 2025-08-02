@@ -69,6 +69,8 @@ type DecodedTesting = {
   headless: bool option
   browserMode: BrowserMode option
   fable: DecodedFableConfig option
+  testFramework: TestFramework option
+  frameworkOptions: Map<string, obj> option
 }
 
 type DecodedPerlaConfig = {
@@ -120,6 +122,7 @@ module internal Decoders =
 module internal Encoders =
   val Browser: Encoder<Browser>
   val BrowserMode: Encoder<BrowserMode>
+  val TestFramework: Encoder<TestFramework>
   val DownloadProviderEncoder: Encoder<PkgManager.DownloadProvider>
   val PkgDependencySetEncoder: Encoder<PkgDependency Set>
 

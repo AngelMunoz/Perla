@@ -2,7 +2,7 @@
   postEvent as _postEvent,
   getFileList,
   getPerlaTestEnv,
-  getMochaSettings,
+  getFrameworkOptions as getMochaSettings,
   PERLA_SESSION_START,
   PERLA_SUITE_START,
   PERLA_SUITE_END,
@@ -12,6 +12,11 @@
   PERLA_TEST_IMPORT_FAILED,
   PERLA_TEST_RUN_FINISHED,
 } from "/~perla~/testing/helpers.js";
+
+await Promise.all([
+  import("mocha"),
+  import("mocha/mocha.css", { with: { type: "css" } }),
+]).then(([_, MochaCss]) => document.adoptedStyleSheets.push(MochaCss));
 
 const {
   EVENT_RUN_BEGIN,
@@ -26,7 +31,7 @@ const [perlaTestingEnv, mochaSettings, files] = await Promise.all([
   getPerlaTestEnv(),
   getMochaSettings(),
   getFileList(),
-]);
+]).then(([env, settings, fileList]) => [env, settings ?? {}, fileList]);
 
 function postEvent(event, payload) {
   const id = perlaTestingEnv?.runId;
@@ -101,9 +106,11 @@ function MyReporter(runner, options) {
 
 Mocha.utils.inherits(MyReporter, Mocha.reporters.HTML);
 
+if (!mochaSettings.ui) {
+  mochaSettings.ui = "bdd"; // Default to BDD if no UI is specified
+}
 mocha.setup({
   reporter: MyReporter,
-  ui: "bdd",
   ...mochaSettings,
 });
 
@@ -119,5 +126,5 @@ for (const file of files) {
 }
 
 mocha.run(() => {
-  postEvent(PERLA_TEST_RUN_FINISHED, {});
+  postEvent(PERLA_TEST_RUN_FINISHED, { runId: perlaTestingEnv?.runId });
 });

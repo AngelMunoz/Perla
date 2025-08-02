@@ -57,10 +57,10 @@ export async function getFileList() {
   }
 }
 
-export async function getMochaSettings() {
+export async function getFrameworkOptions() {
   try {
-    const result = await fetch("/~perla~/testing/mocha-settings").then((res) =>
-      res.ok ? res.json() : Promise.reject(res.status)
+    const result = await fetch("/~perla~/testing/framework-options").then(
+      (res) => (res.ok ? res.json() : Promise.reject(res.status))
     );
     return result ?? {};
   } catch (err) {

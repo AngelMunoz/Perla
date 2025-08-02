@@ -83,6 +83,8 @@ type DecodedTesting = {
   headless: bool option
   browserMode: BrowserMode option
   fable: DecodedFableConfig option
+  testFramework: TestFramework option
+  frameworkOptions: Map<string, obj> option
 }
 
 type DecodedPerlaConfig = {
@@ -126,6 +128,17 @@ module internal Decoders =
     fun element -> decode {
       let! str = Required.string element
       return BrowserMode.FromString str
+    }
+
+  let TestFrameworkDecoder: Decoder<TestFramework> =
+    fun element -> decode {
+      let! str = Required.string element
+
+      return
+        match str.ToLowerInvariant() with
+        | "mocha" -> TestFramework.Mocha
+        | "qunit" -> TestFramework.QUnit
+        | _ -> TestFramework.QUnit
     }
 
   let DownloadProviderDecoder: Decoder<PkgManager.DownloadProvider> =
@@ -433,6 +446,15 @@ module internal Encoders =
   let BrowserMode: Encoder<BrowserMode> =
     fun value -> Encode.string value.AsString
 
+  let TestFramework: Encoder<TestFramework> =
+    fun value ->
+      let str =
+        match value with
+        | TestFramework.Mocha -> "mocha"
+        | TestFramework.QUnit -> "qunit"
+
+      Encode.string str
+
   let DownloadProviderEncoder: Encoder<PkgManager.DownloadProvider> =
     fun value -> Encode.string(PkgManager.DownloadProvider.asString value)
 
@@ -458,6 +480,7 @@ let DefaultJsonOptions() =
   |> Codec.useDecoder DecodedTemplateConfigItemDecoder
   |> Codec.useCodec(Encoders.Browser, BrowserDecoder)
   |> Codec.useCodec(Encoders.BrowserMode, BrowserModeDecoder)
+  |> Codec.useCodec(Encoders.TestFramework, TestFrameworkDecoder)
   |> Codec.useCodec(Encoders.DownloadProviderEncoder, DownloadProviderDecoder)
   |> Codec.useCodec(Encoders.PkgDependencySetEncoder, PkgDependencySetDecoder)
   |> Codec.useCodec(PkgManager.ImportMap.Encoder, PkgManager.ImportMap.Decoder)
@@ -622,6 +645,10 @@ module PerlaConfig =
             headless = defaultArg testing.headless config.headless
             browserMode = defaultArg testing.browserMode config.browserMode
             fable = GetFable(config.fable, testing.fable)
+            testFramework =
+              defaultArg testing.testFramework config.testFramework
+            frameworkOptions =
+              defaultArg testing.frameworkOptions config.frameworkOptions
       }
     }
 

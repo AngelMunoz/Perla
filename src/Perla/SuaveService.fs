@@ -933,11 +933,7 @@ module PerlaHandlers =
         // No browser specified, do nothing
         ()
 
-      let mochaStyles: Dom.IElement = doc.CreateElement "link"
-      mochaStyles.SetAttribute("href", "https://unpkg.com/mocha/mocha.css")
-      mochaStyles.SetAttribute("rel", "stylesheet")
-      mochaStyles.SetAttribute("type", "text/css")
-      head.AppendChild mochaStyles |> ignore
+      let testingConfig = configA |> AVal.map _.testing
 
       let script: Dom.IElement = doc.CreateElement "script"
       script.SetAttribute("type", "importmap")
@@ -945,27 +941,65 @@ module PerlaHandlers =
       let mergedImportMap =
         fsManager.ResolveImportMap
         |> ImportMaps.withPathsA configA
+        |> AVal.map2
+          (fun (testingConfig: TestConfig) imap ->
+            match testingConfig.testFramework with
+            | Mocha -> {
+                imap with
+                    imports =
+                      imap.imports
+                      |> Map.add "mocha" "https://unpkg.com/mocha/mocha.js"
+                      |> Map.add
+                        "mocha/mocha.css"
+                        "https://unpkg.com/mocha/mocha.css"
+              }
+            | QUnit ->
+                {
+                  imap with
+                      imports =
+                        imap.imports
+                        |> Map.add
+                          "qunit"
+                          "https://unpkg.com/qunit/qunit/qunit.js"
+                        |> Map.add
+                          "qunit/qunit.css"
+                          "https://unpkg.com/qunit/qunit/qunit.css"
+                })
+          testingConfig
         |> AVal.force
 
       let config = configA |> AVal.force
 
-      script.TextContent <- Json.ToText(mergedImportMap)
+      script.TextContent <- Json.ToText mergedImportMap
       head.AppendChild script |> ignore
 
-      let mochaScript = doc.CreateElement "script"
-      mochaScript.SetAttribute("type", "application/javascript")
-      mochaScript.SetAttribute("src", "https://unpkg.com/mocha/mocha.js")
-      body.AppendChild mochaScript |> ignore
+      let testConfig = testingConfig |> AVal.force
 
-      let mochaDiv = doc.CreateElement "div"
-      mochaDiv.SetAttribute("id", "mocha")
-      body.AppendChild mochaDiv |> ignore
+      match testConfig.testFramework with
+      | Mocha ->
+        let mochaDiv = doc.CreateElement "div"
+        mochaDiv.SetAttribute("id", "mocha")
+        body.AppendChild mochaDiv |> ignore
+
+      | QUnit ->
+
+        let qunitDiv = doc.CreateElement "div"
+        qunitDiv.SetAttribute("id", "qunit")
+        body.AppendChild qunitDiv |> ignore
+
+        let qunitFixtureDiv = doc.CreateElement "div"
+        qunitFixtureDiv.SetAttribute("id", "qunit-fixture")
+        body.AppendChild qunitFixtureDiv |> ignore
 
       let runnerScript = doc.CreateElement "script"
       runnerScript.SetAttribute("type", "module")
 
       let! runnerContent =
-        fsManager.ResolveMochaRunnerScript() |> Async.AwaitCancellableTask
+        match testConfig.testFramework with
+        | Mocha ->
+          fsManager.ResolveMochaRunnerScript() |> Async.AwaitCancellableTask
+        | QUnit ->
+          fsManager.ResolveQunitRunnerScript() |> Async.AwaitCancellableTask
 
       runnerScript.TextContent <- runnerContent
       body.AppendChild runnerScript |> ignore
@@ -1088,8 +1122,10 @@ module TestingHandlers =
       return! (setMimeType "application/json" >=> OK(Json.ToText files)) ctx
     }
 
-  let testingEnvironment(testConfig: TestConfig) : WebPart =
+  let testingEnvironment(testConfig: TestConfig aval) : WebPart =
     fun ctx -> async {
+      let testConfig = AVal.force testConfig
+
       let result = {|
         testConfig with
             browsers =
@@ -1103,9 +1139,9 @@ module TestingHandlers =
       return! (setMimeType "application/json" >=> OK(Json.ToText result)) ctx
     }
 
-  let mochaSettings(mochaConfig: Map<string, obj> option) : WebPart =
+  let testFrameworkSettings(testConfig: TestConfig aval) : WebPart =
     fun ctx -> async {
-      let config = mochaConfig |> Option.defaultValue Map.empty
+      let config = testConfig |> AVal.map _.frameworkOptions |> AVal.force
       return! (setMimeType "application/json" >=> OK(Json.ToText config)) ctx
     }
 
@@ -1353,6 +1389,7 @@ module SuaveServer =
 
   let createTestingApp(suaveCtx: SuaveServerContext) =
     let config = AVal.force suaveCtx.Config
+    let testingA = suaveCtx.Config |> AVal.map _.testing
 
     let proxyWebparts =
       ProxyService.createProxyWebparts suaveCtx.Logger config.devServer.proxy
@@ -1379,16 +1416,13 @@ module SuaveServer =
       >=> choose [
         path "/~perla~/ping" >=> OK "pong"
         path "/~perla~/testing/files"
-        >=> TestingHandlers.testingFiles(
-          suaveCtx.Directories.Value,
-          suaveCtx.Config |> AVal.map _.testing
-        )
+        >=> TestingHandlers.testingFiles(suaveCtx.Directories.Value, testingA)
 
         path "/~perla~/testing/environment"
-        >=> TestingHandlers.testingEnvironment config.testing
+        >=> TestingHandlers.testingEnvironment testingA
 
-        path "/~perla~/testing/mocha-settings"
-        >=> TestingHandlers.mochaSettings None
+        path "/~perla~/testing/framework-options"
+        >=> TestingHandlers.testFrameworkSettings testingA
 
         POST
         >=> path "/~perla~/testing/events"

@@ -99,6 +99,11 @@ module Types =
     member AsString: string
     static member FromString: string -> BrowserMode
 
+  [<Struct>]
+  type TestFramework =
+    | Mocha
+    | QUnit
+
   type TestConfig = {
     browsers: Browser seq
     includes: string seq
@@ -107,6 +112,8 @@ module Types =
     headless: bool
     browserMode: BrowserMode
     fable: FableConfig option
+    testFramework: TestFramework
+    frameworkOptions: Map<string, obj>
   }
 
   type PerlaConfig = {

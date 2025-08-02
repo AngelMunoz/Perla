@@ -160,10 +160,10 @@ module TestingHandlers =
     directories: PerlaDirectories * testConfig: TestConfig aval -> WebPart
 
   /// Testing environment endpoint
-  val testingEnvironment: testConfig: TestConfig -> WebPart
+  val testingEnvironment: testConfig: TestConfig aval -> WebPart
 
-  /// Mocha settings endpoint
-  val mochaSettings: mochaConfig: Map<string, obj> option -> WebPart
+  /// Test Framework settings endpoint
+  val testFrameworkSettings: TestConfig aval -> WebPart
 
   /// Testing events POST endpoint
   val testingEvents:

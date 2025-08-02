@@ -77,6 +77,9 @@
     <None Include="mocha-runner.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Include="qunit-runner.js">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Include="offline-templates\**\*">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

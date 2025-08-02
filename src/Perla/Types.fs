@@ -94,6 +94,12 @@ module Types =
     | Parallel
     | Sequential
 
+
+  [<Struct>]
+  type TestFramework =
+    | Mocha
+    | QUnit
+
   type TestConfig = {
     browsers: Browser seq
     includes: string seq
@@ -102,6 +108,8 @@ module Types =
     headless: bool
     browserMode: BrowserMode
     fable: FableConfig option
+    testFramework: TestFramework
+    frameworkOptions: Map<string, obj>
   }
 
   type PerlaConfig = {
@@ -332,6 +340,8 @@ module Defaults =
     headless = true
     browserMode = BrowserMode.Parallel
     fable = None
+    testFramework = TestFramework.QUnit
+    frameworkOptions = Map.empty
   }
 
   let PerlaConfig = {
