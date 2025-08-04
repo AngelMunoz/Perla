@@ -798,6 +798,8 @@ let ``ConfigEncoders.TestConfig should encode correctly``() =
     headless = false
     browserMode = BrowserMode.Parallel
     fable = None
+    testFramework = TestFramework.QUnit
+    frameworkOptions = Map.empty
   }
 
   let encoded = Json.ToText(testConfig)
@@ -811,6 +813,9 @@ let ``ConfigEncoders.TestConfig should encode correctly``() =
   Assert.True(jsonString.Contains("watch"))
   Assert.True(jsonString.Contains("headless"))
   Assert.True(jsonString.Contains("browserMode"))
+  Assert.True(jsonString.Contains("testFramework"))
+  Assert.True(jsonString.Contains("frameworkOptions"))
+
 
 [<Fact>]
 let ``ConfigDecoders.PerlaDecoder should decode complete config correctly``() =
