@@ -27,7 +27,7 @@ let libraries = [
 let NugetApiKey = EnvVar.getOrFail "NUGET_DEPLOY_KEY"
 
 [<Literal>]
-let PackageVersion = "1.0.0-beta-032"
+let PackageVersion = "1.0.0-beta-034"
 
 let fsSources =
   Glob.create "*.fsx"
@@ -111,7 +111,7 @@ module Steps =
     let! ctx = Step.context
     Console.info "Generating NuGet Package" |> ctx.Console.WriteLine
 
-    for packable in projects @ libraries do
+    for packable in libraries do
       do!
         Operations.dotnet
           $"pack src/{packable}/{packable}.fsproj -p:Version={PackageVersion} -o {outDir}"
@@ -175,10 +175,17 @@ module Steps =
 
   let pushNugets = Step.create "nuget" {
     let! apiKey = NugetApiKey
+    let! ctx = Step.context
 
     for library in projects @ libraries do
       let nupkName = $"./dist/{library}.{PackageVersion}.nupkg"
-      do! Operations.nugetPush(nupkName, apiKey)
+
+      if nupkName = $"./dist/Perla.{PackageVersion}.nupkg" then
+        Console.warn
+          $"Not pushing {nupkName} as we're working on a solution for the dotnet tool"
+        |> ctx.Console.WriteLine
+      else
+        do! Operations.nugetPush(nupkName, apiKey)
   }
 
 module Pipelines =
