@@ -192,7 +192,7 @@
           "enum": ["mocha", "qunit"],
           "default": "qunit"
         },
-        "testFrameworkOptions": {
+        "frameworkOptions": {
           "description": "key-value object to pass to the test framework",
           "type": "object"
         }
