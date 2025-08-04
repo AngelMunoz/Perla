@@ -947,23 +947,29 @@ module PerlaHandlers =
             | Mocha -> {
                 imap with
                     imports =
-                      imap.imports
-                      |> Map.add "mocha" "https://unpkg.com/mocha/mocha.js"
-                      |> Map.add
-                        "mocha/mocha.css"
-                        "https://unpkg.com/mocha/mocha.css"
+                      if imap.imports |> Map.containsKey "mocha" then
+                        imap.imports
+                      else
+                        imap.imports
+                        |> Map.add "mocha" "https://unpkg.com/mocha/mocha.js"
+                        |> Map.add
+                          "mocha/mocha.css"
+                          "https://unpkg.com/mocha/mocha.css"
               }
             | QUnit ->
                 {
                   imap with
                       imports =
-                        imap.imports
-                        |> Map.add
-                          "qunit"
-                          "https://unpkg.com/qunit/qunit/qunit.js"
-                        |> Map.add
-                          "qunit/qunit.css"
-                          "https://unpkg.com/qunit/qunit/qunit.css"
+                        if imap.imports |> Map.containsKey "qunit" then
+                          imap.imports
+                        else
+                          imap.imports
+                          |> Map.add
+                            "qunit"
+                            "https://unpkg.com/qunit/qunit/qunit.js"
+                          |> Map.add
+                            "qunit/qunit.css"
+                            "https://unpkg.com/qunit/qunit/qunit.css"
                 })
           testingConfig
         |> AVal.force
