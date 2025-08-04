@@ -155,7 +155,10 @@ for (const file of files) {
 }
 
 QUnit.on("runEnd", function () {
-  postEvent(PERLA_TEST_RUN_FINISHED, { runId: perlaTestingEnv?.runId });
+  postEvent(PERLA_TEST_RUN_FINISHED, {
+    runId: perlaTestingEnv?.runId,
+    browser: perlaTestingEnv?.browser,
+  });
 });
 
 QUnit.start();

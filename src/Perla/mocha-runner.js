@@ -126,5 +126,8 @@ for (const file of files) {
 }
 
 mocha.run(() => {
-  postEvent(PERLA_TEST_RUN_FINISHED, { runId: perlaTestingEnv?.runId });
+  postEvent(PERLA_TEST_RUN_FINISHED, {
+    runId: perlaTestingEnv?.runId,
+    browser: perlaTestingEnv?.browser,
+  });
 });
