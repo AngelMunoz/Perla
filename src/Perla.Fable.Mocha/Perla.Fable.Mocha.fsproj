@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <PackageTags>fable-javascript</PackageTags>
+    <FablePackageType>binding</FablePackageType>
+    <IsPackable>true</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
