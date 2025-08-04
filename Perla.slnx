@@ -23,6 +23,8 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Perla.PkgManager/Perla.PkgManager.fsproj" />
+    <Project Path="src/Perla.Fable.Mocha/Perla.Fable.Mocha.fsproj" />
+    <Project Path="src/Perla.Fable.QUnit/Perla.Fable.QUnit.fsproj" />
     <Project Path="src/Perla.Logger/Perla.Logger.fsproj" />
     <Project Path="src/Perla.Plugins/Perla.Plugins.fsproj" />
     <Project Path="src/Perla/Perla.fsproj" />
