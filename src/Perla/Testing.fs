@@ -826,7 +826,6 @@ type RunTestOption =
   | Browser of Browser
   | BrowserMode of BrowserMode
   | Headless of bool
-  | FileGlobs of Fake.IO.Globbing.LazyGlobbingPattern
 
 [<Interface>]
 type TestingService =
@@ -860,20 +859,12 @@ module TestingService =
   let private gatherOptions(options: RunTestOption Set) =
     options
     |> Set.fold
-      (fun (browsers, mode, headless, files) option ->
+      (fun (browsers, mode, headless) option ->
         match option with
-        | Browser browser -> browser :: browsers, mode, headless, files
-        | BrowserMode m -> browsers, m, headless, files
-        | Headless h -> browsers, mode, h, files
-        | FileGlobs f ->
-          let files = [
-            for file in f do
-              file
-              yield! files
-          ]
-
-          browsers, mode, headless, files)
-      ([], BrowserMode.Parallel, true, [])
+        | Browser browser -> browser :: browsers, mode, headless
+        | BrowserMode m -> browsers, m, headless
+        | Headless h -> browsers, mode, h)
+      ([], BrowserMode.Parallel, true)
 
 
   let pingUntilPong(reqHandler: RequestHandler.RequestHandler, baseUrl) = asyncEx {
@@ -906,7 +897,7 @@ module TestingService =
           let! token = CancellableTask.getCancellationToken()
 
           // gather the testing options
-          let browsers, mode, headless, files = gatherOptions options
+          let browsers, mode, headless = gatherOptions options
           // prepare the server testing context
 
           let events = ResizeArray<TestEvent>()
@@ -967,7 +958,7 @@ module TestingService =
             // Local function to run tests for a single browser and collect the report
             let runTestsForBrowser browser = cancellableTask {
               // start the playwright browser
-              let! plBrowser =
+              use! plBrowser =
                 Testing.GetBrowser(browser, headless, args.Playwright)
               // create the executor for the browser
               let executor =
@@ -1004,8 +995,10 @@ module TestingService =
         }
 
         member _.RunWatch(options, cancellationToken) = taskSeq {
+          use cts =
+            CancellationTokenSource.CreateLinkedTokenSource cancellationToken
           // gather the testing options - extract single browser
-          let browsers, _, headless, _ = gatherOptions options
+          let browsers, _, headless = gatherOptions options
 
           let browser =
             browsers |> List.tryHead |> Option.defaultValue Browser.Chromium
@@ -1055,7 +1048,7 @@ module TestingService =
           }
 
           // Start server in background
-          Async.Start(serverTask, cancellationToken)
+          Async.Start(serverTask, cts.Token)
 
           let port, host =
             args.config
@@ -1075,8 +1068,18 @@ module TestingService =
           if not ready then
             failwith "Testing server did not start successfully."
 
-          let! plBrowser =
+          use! plBrowser =
             Testing.GetBrowser(browser, headless, args.Playwright)
+
+          use _ =
+            plBrowser.Disconnected
+            |> Observable.subscribe(fun _ ->
+              args.Logger.LogInformation(
+                "Browser {browser} disconnected, stopping test run",
+                browser.AsString
+              )
+
+              cts.Cancel())
 
           let url = $"{url}?browser={browser.AsString}"
 
@@ -1094,9 +1097,9 @@ module TestingService =
           // Continuously yield events from the channel as they arrive
           let reader = eventChannel.Reader
 
-          while not cancellationToken.IsCancellationRequested do
+          while not cts.IsCancellationRequested do
             try
-              let! hasEvent = reader.WaitToReadAsync cancellationToken
+              let! hasEvent = reader.WaitToReadAsync cts.Token
 
               if hasEvent then
                 match reader.TryRead() with

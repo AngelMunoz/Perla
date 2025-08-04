@@ -78,17 +78,41 @@ type QUnit =
   static member inline testOnly(name: string, callback: TestCallback) : unit =
     jsNative
 
+  [<Emit("QUnit.test.only($0, $1)")>]
+  static member inline testOnly
+    (name: string, callback: AsyncTestCallback)
+    : unit =
+    jsNative
+
   [<Emit("QUnit.test.skip($0, $1)")>]
   static member inline testSkip(name: string, ?callback: TestCallback) : unit =
+    jsNative
+
+  [<Emit("QUnit.test.skip($0, $1)")>]
+  static member inline testSkip
+    (name: string, ?callback: AsyncTestCallback)
+    : unit =
     jsNative
 
   [<Emit("QUnit.test.todo($0, $1)")>]
   static member inline testTodo(name: string, ?callback: TestCallback) : unit =
     jsNative
 
+  [<Emit("QUnit.test.todo($0, $1)")>]
+  static member inline testTodo
+    (name: string, ?callback: AsyncTestCallback)
+    : unit =
+    jsNative
+
   [<Emit("QUnit.test.if($0, $1, $2)")>]
   static member inline testIf
     (name: string, condition: bool, callback: TestCallback)
+    : unit =
+    jsNative
+
+  [<Emit("QUnit.test.if($0, $1, $2)")>]
+  static member inline testIf
+    (name: string, condition: bool, callback: AsyncTestCallback)
     : unit =
     jsNative
 
@@ -273,7 +297,16 @@ module Expect =
 
   let inline async(assert': Assert) = assert'.async()
 
-type Test = { name: string; test: Assert -> unit }
+type CallbackKind =
+  | Test of TestCallback
+  | AsyncTest of AsyncTestCallback
+
+  member inline this.Value<'T>() : 'T =
+    match this with
+    | Test f -> unbox<'T> f
+    | AsyncTest f -> unbox<'T> f
+
+type Test = { name: string; test: CallbackKind }
 
 type TestList = Test list
 
@@ -295,12 +328,17 @@ module TestConfig =
 module Tests =
   let inline test (name: string) (f: Assert -> unit) : Test = {
     name = name
-    test = f
+    test = Test f
   }
 
-  let inline testAsync (name: string) (f: Assert -> Promise<unit>) : Test = {
+  let inline testPromise (name: string) (f: Assert -> Promise<unit>) : Test = {
     name = name
-    test = fun assert' -> f assert' |> ignore
+    test = AsyncTest(fun assert' -> f assert')
+  }
+
+  let inline testAsync (name: string) (f: Assert -> Async<unit>) : Test = {
+    name = name
+    test = AsyncTest(fun assert' -> f assert' |> Async.StartAsPromise)
   }
 
   let inline testOnly (name: string) (f: Assert -> unit) : unit =
@@ -312,6 +350,33 @@ module Tests =
   let inline testTodo (name: string) (f: Assert -> unit) : unit =
     QUnit.testTodo(name, f)
 
+  let inline testOnlyAsync (name: string) (f: Assert -> Async<unit>) : unit =
+    QUnit.testOnly(name, f >> Async.StartAsPromise)
+
+  let inline testOnlyPromise
+    (name: string)
+    (f: Assert -> Promise<unit>)
+    : unit =
+    QUnit.testOnly(name, f)
+
+  let inline testSkipPromise
+    (name: string)
+    (f: Assert -> Promise<unit>)
+    : unit =
+    QUnit.testSkip(name, f)
+
+  let inline testSkipAsync (name: string) (f: Assert -> Async<unit>) : unit =
+    QUnit.testSkip(name, f >> Async.StartAsPromise)
+
+  let inline testTodoPromise
+    (name: string)
+    (f: Assert -> Promise<unit>)
+    : unit =
+    QUnit.testTodo(name, f)
+
+  let inline testTodoAsync (name: string) (f: Assert -> Async<unit>) : unit =
+    QUnit.testTodo(name, f >> Async.StartAsPromise)
+
   let inline testIf
     (name: string)
     (condition: bool)
@@ -319,10 +384,29 @@ module Tests =
     : unit =
     QUnit.testIf(name, condition, f)
 
+  let inline testIfPromise
+    (name: string)
+    (condition: bool)
+    (f: Assert -> Promise<unit>)
+    : unit =
+    QUnit.testIf(name, condition, f)
+
+  let inline testIfAsync
+    (name: string)
+    (condition: bool)
+    (f: Assert -> Async<unit>)
+    : unit =
+    QUnit.testIf(name, condition, f >> Async.StartAsPromise)
+
   let inline testList (name: string) (tests: TestList) : unit =
     QUnit.module'(
       name,
-      fun hooks -> tests |> List.iter(fun t -> QUnit.test(t.name, t.test))
+      fun hooks ->
+        tests
+        |> List.iter(fun (t: Test) ->
+          match t.test with
+          | Test f -> QUnit.test(t.name, f)
+          | AsyncTest f -> QUnit.test(t.name, f))
     )
 
   let inline testListWithConfig
@@ -337,14 +421,27 @@ module Tests =
         config.beforeEach |> Option.iter hooks.beforeEach
         config.afterEach |> Option.iter hooks.afterEach
         config.after |> Option.iter hooks.after
-        tests |> List.iter(fun t -> QUnit.test(t.name, t.test))
+
+        tests
+        |> List.iter(fun t ->
+          match t.test with
+          | Test f -> QUnit.test(t.name, f)
+          | AsyncTest f -> QUnit.test(t.name, f))
     )
 
   let inline testSequenced(tests: TestList) : unit =
-    tests |> List.iter(fun t -> QUnit.test(t.name, t.test))
+    tests
+    |> List.iter(fun t ->
+      match t.test with
+      | Test f -> QUnit.test(t.name, f)
+      | AsyncTest f -> QUnit.test(t.name, f))
 
   let inline run(tests: TestList) : unit =
-    tests |> List.iter(fun t -> QUnit.test(t.name, t.test))
+    tests
+    |> List.iter(fun t ->
+      match t.test with
+      | Test f -> QUnit.test(t.name, f)
+      | AsyncTest f -> QUnit.test(t.name, f))
 
   // Hook helpers
   let inline before(f: Assert -> unit) : TestConfig = {
