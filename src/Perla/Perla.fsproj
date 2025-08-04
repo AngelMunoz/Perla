@@ -6,7 +6,6 @@
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>perla</ToolCommandName>
-    <PlaywrightPlatform>none</PlaywrightPlatform>
     <Description>
         A SPA Dev Server that focuses on removing the node toolchain for frontend developers where possible,
         Perla uses esbuild, import maps, ESModules, and other modern well supported by browser features to enable A
@@ -49,9 +48,9 @@
     <Compile Include="Scaffolding.fs" />
     <Compile Include="Library.fsi" />
     <Compile Include="Library.fs" />
-    <Compile Include="Testing.fs" />
     <Compile Include="SuaveService.fsi" />
     <Compile Include="SuaveService.fs" />
+    <Compile Include="Testing.fs" />
     <Compile Include="Configuration.fsi" />
     <Compile Include="Configuration.fs" />
     <Compile Include="Orchestration.fsi" />
@@ -76,6 +75,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Include="mocha-runner.js">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="qunit-runner.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Include="offline-templates\**\*">

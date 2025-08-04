@@ -161,7 +161,11 @@ let ``Json.TestEventFromJson should decode SessionStart correctly``() =
   let result = Json.TestEventFromJson(json)
 
   match result with
-  | Ok(SessionStart(id, stats, totalTests)) ->
+  | Ok(SessionStart {
+                      RunId = id
+                      Stats = stats
+                      TotalTests = totalTests
+                    }) ->
     Assert.Equal(runId, id)
     Assert.Equal(5, stats.suites)
     Assert.Equal(20, stats.tests)
@@ -206,7 +210,11 @@ let ``Json.TestEventFromJson should decode TestPass correctly``() =
   let result = Json.TestEventFromJson(json)
 
   match result with
-  | Ok(TestPass(id, stats, test)) ->
+  | Ok(TestPass {
+                  RunId = id
+                  Stats = stats
+                  Test = test
+                }) ->
     Assert.Equal(runId, id)
     Assert.Equal(1, stats.passes)
     Assert.Equal("test body", test.body)
@@ -254,7 +262,13 @@ let ``Json.TestEventFromJson should decode TestFailed correctly``() =
   let result = Json.TestEventFromJson(json)
 
   match result with
-  | Ok(TestFailed(id, stats, test, message, stack)) ->
+  | Ok(TestFailed {
+                    RunId = id
+                    Stats = stats
+                    Test = test
+                    Message = message
+                    Stack = stack
+                  }) ->
     Assert.Equal(runId, id)
     Assert.Equal(1, stats.failures)
     Assert.Equal("test-1", test.id)
@@ -295,7 +309,11 @@ let ``Json.TestEventFromJson should decode SuiteStart correctly``() =
   let result = Json.TestEventFromJson(json)
 
   match result with
-  | Ok(SuiteStart(id, stats, suite)) ->
+  | Ok(SuiteStart {
+                    RunId = id
+                    Stats = stats
+                    Suite = suite
+                  }) ->
     Assert.Equal(runId, id)
     Assert.Equal(1, stats.suites)
     Assert.Equal("suite-1", suite.id)
@@ -331,7 +349,7 @@ let ``Json.TestEventFromJson should decode SessionEnd correctly``() =
   let result = Json.TestEventFromJson(json)
 
   match result with
-  | Ok(SessionEnd(id, stats)) ->
+  | Ok(SessionEnd { RunId = id; Stats = stats }) ->
     Assert.Equal(runId, id)
     Assert.Equal(5, stats.suites)
     Assert.Equal(20, stats.tests)
@@ -358,7 +376,11 @@ let ``Json.TestEventFromJson should decode TestImportFailed correctly``() =
   let result = Json.TestEventFromJson(json)
 
   match result with
-  | Ok(TestImportFailed(id, message, stack)) ->
+  | Ok(TestImportFailed {
+                          RunId = id
+                          Message = message
+                          Stack = stack
+                        }) ->
     Assert.Equal(runId, id)
     Assert.Equal("Failed to import test file", message)
     Assert.Contains("Error: Failed to import", stack)
@@ -380,7 +402,7 @@ let ``Json.TestEventFromJson should decode TestRunFinished correctly``() =
   let result = Json.TestEventFromJson(json)
 
   match result with
-  | Ok(TestRunFinished id) -> Assert.Equal(runId, id)
+  | Ok(TestRunFinished { RunId = id }) -> Assert.Equal(runId, id)
   | Ok other -> Assert.True(false, $"Expected TestRunFinished but got {other}")
   | Error error -> Assert.True(false, $"Expected Ok but got Error: {error}")
 
@@ -776,6 +798,8 @@ let ``ConfigEncoders.TestConfig should encode correctly``() =
     headless = false
     browserMode = BrowserMode.Parallel
     fable = None
+    testFramework = TestFramework.QUnit
+    frameworkOptions = Map.empty
   }
 
   let encoded = Json.ToText(testConfig)
@@ -789,6 +813,9 @@ let ``ConfigEncoders.TestConfig should encode correctly``() =
   Assert.True(jsonString.Contains("watch"))
   Assert.True(jsonString.Contains("headless"))
   Assert.True(jsonString.Contains("browserMode"))
+  Assert.True(jsonString.Contains("testFramework"))
+  Assert.True(jsonString.Contains("frameworkOptions"))
+
 
 [<Fact>]
 let ``ConfigDecoders.PerlaDecoder should decode complete config correctly``() =

@@ -1,5 +1,4 @@
-﻿import { expect } from "@esm-bundle/chai";
-import {
+﻿import {
   matchTranslationLanguage,
   getTranslationValue,
   T,
@@ -43,24 +42,32 @@ class CustomObservable {
   }
 }
 
-describe("Translations", () => {
-  it("matchTranslationLanguage with None should not bring anything", () => {
-    const actual = matchTranslationLanguage(null, Language.FromString("es-mx"));
-    expect(actual).to.not.exist;
-  });
+QUnit.module("Translations", function () {
+  QUnit.test(
+    "matchTranslationLanguage with None should not bring anything",
+    function (assert) {
+      const actual = matchTranslationLanguage(
+        null,
+        Language.FromString("es-mx")
+      );
+      assert.notOk(actual);
+    }
+  );
 
-  it("getTranslationValue to not find anything in a None map", () => {
-    const actual = getTranslationValue("I don't exist", null);
-    expect(actual).to.not.exist;
-  });
+  QUnit.test(
+    "getTranslationValue to not find anything in a None map",
+    function (assert) {
+      const actual = getTranslationValue("I don't exist", null);
+      assert.notOk(actual);
+    }
+  );
 
-  it("T can give default values", () => {
+  QUnit.test("T can give default values", function (assert) {
     const obs = new CustomObservable();
     const stream = T(obs, "lastName", "Vorname");
-    const values = new Set();
     const sub = stream.Subscribe({
       OnNext(value) {
-        values.add(value);
+        assert.step(value);
       },
       OnCompleted() {},
       OnError(err) {},
@@ -79,12 +86,7 @@ describe("Translations", () => {
         { "en-us": { lastName: "Last Name" } },
         Language.FromString("en-us"),
       ]);
-
     sub.Dispose();
-    expect(values).to.include("Vorname");
-    expect(values).to.include("Last Name");
-    expect(values).to.include("Apellido");
-    expect(values).to.include("Nom de famille");
-    obs.Complete();
+    assert.verifySteps(["Apellido", "Vorname", "Nom de famille", "Last Name"]);
   });
 });

@@ -18,6 +18,8 @@ type RequestHandler =
     user: string * repository: string<Repository> * branch: string<Branch> ->
       CancellableTask<Stream>
 
+  abstract PingTestServer: url: string -> CancellableTask<bool>
+
 type RequestHandlerArgs = {
   Logger: ILogger
   PlatformOps: PlatformOps
@@ -96,4 +98,15 @@ module RequestHandler =
 
         member _.DownloadTemplate(user, repository, branch) =
           downloadTemplate user repository branch
+
+        member _.PingTestServer url = cancellableTask {
+          let! token = CancellableTask.getCancellationToken()
+
+          let! res =
+            get $"{url}/~perla~/ping"
+            |> Config.cancellationToken token
+            |> Request.sendTAsync
+
+          return res.statusCode = System.Net.HttpStatusCode.OK
+        }
     }

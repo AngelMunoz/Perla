@@ -185,6 +185,16 @@
         },
         "fable": {
           "$ref": "#/$defs/fable"
+        },
+        "testFramework": {
+          "description": "The test framework to use, this is used to generate the test runner",
+          "type": "string",
+          "enum": ["mocha", "qunit"],
+          "default": "qunit"
+        },
+        "frameworkOptions": {
+          "description": "key-value object to pass to the test framework",
+          "type": "object"
         }
       }
     },

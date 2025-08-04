@@ -62,6 +62,7 @@ type PerlaFsManager =
   abstract ResolveWorkerScript: unit -> CancellableTask<string>
   abstract ResolveTestingHelpersScript: unit -> CancellableTask<string>
   abstract ResolveMochaRunnerScript: unit -> CancellableTask<string>
+  abstract ResolveQunitRunnerScript: unit -> CancellableTask<string>
 
   abstract SaveImportMap: map: PkgManager.ImportMap -> CancellableTask<unit>
 
@@ -79,7 +80,8 @@ type PerlaFsManager =
     user: string * repository: string<Repository> * branch: string<Branch> ->
       CancellableTask<(string<SystemPath> * DecodedTemplateConfiguration) option>
 
-  abstract CopyGlobs: buildConfig: BuildConfig * tempDir: string<SystemPath> -> unit
+  abstract CopyGlobs:
+    buildConfig: BuildConfig * tempDir: string<SystemPath> -> unit
 
   abstract EmitEnvFile:
     config: PerlaConfig * ?tmpPath: string<SystemPath> -> unit
@@ -321,6 +323,18 @@ module FileSystem =
           return content
         }
 
+        member _.ResolveQunitRunnerScript() = cancellableTask {
+          let! token = CancellableTask.getCancellationToken()
+
+          let! content =
+            File.ReadAllTextAsync(
+              UMX.untag args.PerlaDirectories.AssemblyRoot / "qunit-runner.js",
+              token
+            )
+
+          return content
+        }
+
         member _.ResolveTestingHelpersScript() = cancellableTask {
           let! token = CancellableTask.getCancellationToken()
 
@@ -534,7 +548,9 @@ module FileSystem =
             return None
         }
 
-        member _.CopyGlobs(buildConfig: BuildConfig, tempDir: string<SystemPath>) =
+        member _.CopyGlobs
+          (buildConfig: BuildConfig, tempDir: string<SystemPath>)
+          =
           let outDir = UMX.untag buildConfig.outDir |> Path.GetFullPath
           let cwd = args.PerlaDirectories.CurrentWorkingDirectory |> UMX.untag
 
@@ -627,8 +643,7 @@ module FileSystem =
                   vfsGlob |> Seq.length |> float
                 )
 
-              let copyLocal =
-                copyAndIncrement cwd lfsTask
+              let copyLocal = copyAndIncrement cwd lfsTask
 
               let copyVirtual = copyAndIncrement (UMX.untag tempDir) vfsTask
 

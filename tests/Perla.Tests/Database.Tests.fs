@@ -59,6 +59,12 @@ module TestHelpers =
       member _.PerlaConfigPath = tempPath
       member _.OriginalCwd = tempPath
       member _.CurrentWorkingDirectory = tempPath
+
+      member _.PlaywrightArtifactsRoot =
+        UMX.tag<SystemPath>(
+          Path.Combine(UMX.untag tempPath, "playwright-artifacts")
+        )
+
       member _.SetCwdToProject(?fromPath) = ()
 
   let createFakeDirectories() =

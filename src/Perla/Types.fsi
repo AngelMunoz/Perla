@@ -99,6 +99,11 @@ module Types =
     member AsString: string
     static member FromString: string -> BrowserMode
 
+  [<Struct>]
+  type TestFramework =
+    | Mocha
+    | QUnit
+
   type TestConfig = {
     browsers: Browser seq
     includes: string seq
@@ -107,6 +112,8 @@ module Types =
     headless: bool
     browserMode: BrowserMode
     fable: FableConfig option
+    testFramework: TestFramework
+    frameworkOptions: Map<string, obj>
   }
 
   type PerlaConfig = {
@@ -158,20 +165,63 @@ module Types =
     ``end``: DateTime option
   }
 
+  type SessionStartEvent = {
+    RunId: Guid
+    Browser: Browser option
+    Stats: TestStats
+    TotalTests: int
+  }
+
+  type SessionEndEvent = {
+    RunId: Guid
+    Browser: Browser option
+    Stats: TestStats
+  }
+
+  type SuiteEvent = {
+    RunId: Guid
+    Browser: Browser option
+    Stats: TestStats
+    Suite: Suite
+  }
+
+  type TestPassEvent = {
+    RunId: Guid
+    Browser: Browser option
+    Stats: TestStats
+    Test: Test
+  }
+
+  type TestFailedEvent = {
+    RunId: Guid
+    Browser: Browser option
+    Stats: TestStats
+    Test: Test
+    Message: string
+    Stack: string
+  }
+
+  type TestImportFailedEvent = {
+    RunId: Guid
+    Browser: Browser option
+    Message: string
+    Stack: string
+  }
+
+  type TestRunFinishedEvent = { RunId: Guid; Browser: Browser option }
+
   type TestEvent =
-    | SessionStart of runId: Guid * stats: TestStats * totalTests: int
-    | SessionEnd of runId: Guid * stats: TestStats
-    | SuiteStart of runId: Guid * stats: TestStats * suite: Suite
-    | SuiteEnd of runId: Guid * stats: TestStats * suite: Suite
-    | TestPass of runId: Guid * stats: TestStats * test: Test
-    | TestFailed of
-      runId: Guid *
-      stats: TestStats *
-      test: Test *
-      message: string *
-      stack: string
-    | TestImportFailed of runId: Guid * message: string * stack: string
-    | TestRunFinished of runId: Guid
+    | SessionStart of SessionStartEvent
+    | SessionEnd of SessionEndEvent
+    | SuiteStart of SuiteEvent
+    | SuiteEnd of SuiteEvent
+    | TestPass of TestPassEvent
+    | TestFailed of TestFailedEvent
+    | TestImportFailed of TestImportFailedEvent
+    | TestRunFinished of TestRunFinishedEvent
+
+    member RunId: Guid
+    member Browser: Browser option
 
   exception CommandNotParsedException of string
   exception HelpRequestedException

@@ -16,7 +16,13 @@ let runtimes = [|
 
 let projects = [ "Perla" ]
 
-let libraries = [ "Perla.PkgManager"; "Perla.Plugins"; "Perla.Logger" ]
+let libraries = [
+  "Perla.PkgManager"
+  "Perla.Plugins"
+  "Perla.Logger"
+  "Perla.Fable.QUnit"
+  "Perla.Fable.Mocha"
+]
 
 let NugetApiKey = EnvVar.getOrFail "NUGET_DEPLOY_KEY"
 

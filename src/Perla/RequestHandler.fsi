@@ -15,6 +15,8 @@ type RequestHandler =
     user: string * repository: string<Repository> * branch: string<Branch> ->
       CancellableTask<Stream>
 
+  abstract PingTestServer: url: string -> CancellableTask<bool>
+
 type RequestHandlerArgs = {
   Logger: ILogger
   PlatformOps: PlatformOps

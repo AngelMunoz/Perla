@@ -4,13 +4,11 @@ open System
 open System.Collections.Generic
 
 open Fable.Core
-open Tests.TestingUtils
+open Tests.QUnit
 
 open Translations
 
 open Types
-
-open type Testing
 
 [<AttachMembers>]
 type CustomObservable() =
@@ -44,60 +42,62 @@ type CustomObservable() =
               observers.Remove(observer) |> ignore
       }
 
-Describe(
-  "Translations",
-  (fun () ->
-    It(
-      "matchTranslationLanguage with None should not bring anything",
-      fun () ->
-        let actual =
-          matchTranslationLanguage(None, Language.FromString("es-mx"))
+let tests = [
+  Tests.test
+    "matchTranslationLanguage with None should not bring anything"
+    (fun assert' ->
+      let actual = matchTranslationLanguage(None, Language.FromString("es-mx"))
+      Expect.equal actual None "should return None" assert')
 
-        expect(actual).``to``.``not``.exist |> ignore
-    )
+  Tests.test
+    "getTranslationValue to not find anything in a None map"
+    (fun assert' ->
+      let actual = getTranslationValue "I don't exist" None
+      Expect.equal actual None "should return None" assert')
 
-    It(
-      "getTranslationValue to not find anything in a None map",
-      fun () ->
-        let actual = getTranslationValue "I don't exist" None
+  Tests.test "T can give default values" (fun assert' ->
+    let obs = CustomObservable()
+    let values = HashSet<_>()
 
-        expect(actual).``to``.``not``.exist |> ignore
-    )
+    let stream = T obs ("lastName", "Vorname")
 
-    It(
-      "T can give default values",
-      fun () ->
-        let obs = CustomObservable()
-        let values = HashSet<_>()
+    let sub =
+      stream |> Observable.subscribe(fun next -> values.Add(next) |> ignore)
 
-        let stream = T obs ("lastName", "Vorname")
+    let mx = {|
+      ``es-mx`` = {| lastName = "Apellido" |}
+    |}
 
-        let sub =
-          stream
-          |> Observable.subscribe(fun next -> values.Add(next) |> ignore)
+    let fr = {|
+      ``fr-fr`` = {| lastName = "Nom de famille" |}
+    |}
 
-        let mx = {|
-          ``es-mx`` = {| lastName = "Apellido" |}
-        |}
+    let us = {|
+      ``en-us`` = {| lastName = "Last Name" |}
+    |}
 
-        let fr = {|
-          ``fr-fr`` = {| lastName = "Nom de famille" |}
-        |}
+    obs.Broadcast(None, DeDe)
+    obs.Broadcast(Some(mx |> box |> unbox), EsMx)
+    obs.Broadcast(Some(fr |> box |> unbox), Unknown "fr-fr")
+    obs.Broadcast(Some(us |> box |> unbox), EnUs)
 
-        let us = {|
-          ``en-us`` = {| lastName = "Last Name" |}
-        |}
+    sub.Dispose()
+    Expect.isTrue (values.Contains("Vorname")) "should contain Vorname" assert'
 
-        obs.Broadcast(None, DeDe)
-        obs.Broadcast(Some(mx |> box |> unbox), EsMx)
-        obs.Broadcast(Some(fr |> box |> unbox), Unknown "fr-fr")
-        obs.Broadcast(Some(us |> box |> unbox), EnUs)
+    Expect.isTrue
+      (values.Contains("Last Name"))
+      "should contain Last Name"
+      assert'
 
-        sub.Dispose()
-        expect(values).``to``.``include``("Vorname")
-        expect(values).``to``.``include``("Last Name")
-        expect(values).``to``.``include``("Apellido")
-        expect(values).``to``.``include``("Nom de famille")
-        obs.Complete()
-    ))
-)
+    Expect.isTrue
+      (values.Contains("Apellido"))
+      "should contain Apellido"
+      assert'
+
+    Expect.isTrue
+      (values.Contains("Nom de famille"))
+      "should contain Nom de famille"
+      assert')
+]
+
+Tests.testList "F# Test File Translations" tests

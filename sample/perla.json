@@ -14,8 +14,14 @@
   "build": {
     "includes": ["assets/favicon.ico", "assets/manifest.webmanifest"]
   },
-  "testing": { "fable": { "project": "./tests/App.Tests.fsproj" } },
+  "testing": {
+    "fable": {
+      "project": "./tests/App.Tests.fsproj"
+    },
+    "testFramework": "qunit"
+  },
   "dependencies": {
+    "@esm-bundle/chai": "4.3.4-fix.0",
     "chai": "4.3.4",
     "fsharp-components": "0.0.4",
     "lit": "2.4.0",

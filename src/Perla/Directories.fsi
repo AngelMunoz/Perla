@@ -13,7 +13,8 @@ type PerlaDirectories =
   abstract PerlaConfigPath: string<SystemPath> with get
   abstract OriginalCwd: string<SystemPath> with get
   abstract CurrentWorkingDirectory: string<SystemPath> with get
+  abstract PlaywrightArtifactsRoot: string<SystemPath> with get
   abstract SetCwdToProject: ?fromPath: string<SystemPath> -> unit
 
 module PerlaDirectories =
-  val Create: unit -> PerlaDirectories
+  val Create: ops: PlatformOps -> PerlaDirectories

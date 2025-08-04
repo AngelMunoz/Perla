@@ -17,6 +17,7 @@ type PerlaDirectories =
   abstract PerlaConfigPath: string<SystemPath> with get
   abstract OriginalCwd: string<SystemPath> with get
   abstract CurrentWorkingDirectory: string<SystemPath> with get
+  abstract PlaywrightArtifactsRoot: string<SystemPath> with get
   abstract SetCwdToProject: ?fromPath: string<SystemPath> -> unit
 
 [<AutoOpen>]
@@ -41,7 +42,7 @@ module PerlaDirectories =
       | Some found -> Some found
       | None -> findConfig filename directory.Parent
 
-  let Create() : PerlaDirectories =
+  let Create(ops: PlatformOps) : PerlaDirectories =
 
     let findPerlaConfig = findConfig "perla.json"
 
@@ -77,6 +78,40 @@ module PerlaDirectories =
           |> UMX.tag<SystemPath>
 
         member _.OriginalCwd = originalcwd
+
+        member this.PlaywrightArtifactsRoot =
+          match
+            Environment.GetEnvironmentVariable "PLAYWRIGHT_BROWSERS_PATH"
+          with
+          | null ->
+            match ops.PlatformString() with
+            | "win32" ->
+              // check %USERPROFILE%\AppData\Local\ms-playwright
+              Environment.GetFolderPath
+                Environment.SpecialFolder.LocalApplicationData
+              / "ms-playwright"
+              |> UMX.tag<SystemPath>
+            | "darwin" ->
+              // check $HOME/Library/Caches/ms-playwright
+              Environment.GetFolderPath
+                Environment.SpecialFolder.LocalApplicationData
+              / "ms-playwright"
+              |> UMX.tag<SystemPath>
+            | "linux" ->
+              // check $HOME/.cache/ms-playwright
+              Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+              / ".cache/ms-playwright"
+              |> UMX.tag<SystemPath>
+            | _ -> failwith "Unsupported platform for Playwright artifacts root"
+          | "0" -> // lol...
+            this.CurrentWorkingDirectory
+            |/ "node_modules"
+            |/ "playwright-core"
+            |/ ".local-browsers"
+          | path ->
+            // Use the environment variable directly
+            path |> UMX.tag<SystemPath>
+
 
         member this.SetCwdToProject(?fromPath) =
           let path =

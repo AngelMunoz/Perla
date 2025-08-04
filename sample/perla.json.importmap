@@ -1,5 +1,6 @@
 {
   "imports": {
+    "@esm-bundle/chai": "https://ga.jspm.io/npm:@esm-bundle/chai@4.3.4-fix.0/esm/chai.js",
     "chai": "https://ga.jspm.io/npm:chai@4.3.4/index.mjs",
     "fsharp-components": "https://ga.jspm.io/npm:fsharp-components@0.0.4/dist/fs-components.es.js",
     "lit": "https://ga.jspm.io/npm:lit@2.4.0/index.js",

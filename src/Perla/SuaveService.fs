@@ -210,7 +210,6 @@ type SuaveContext = {
   VirtualFileSystem: VirtualFileSystem
   Config: PerlaConfig aval
   FsManager: PerlaFsManager
-  FileChangedEvents: IObservable<FileChangedEvent>
 }
 
 type SuaveTestingContext = {
@@ -218,8 +217,8 @@ type SuaveTestingContext = {
   VirtualFileSystem: VirtualFileSystem
   Config: PerlaConfig aval
   FsManager: PerlaFsManager
-  FileChangedEvents: IObservable<FileChangedEvent>
-  TestEvents: ISubject<TestEvent>
+  Directories: PerlaDirectories
+  NotifyTestEvent: Result<TestEvent, JDeck.DecodeError> -> unit
 }
 
 type SuaveServerContext =
@@ -246,15 +245,15 @@ type SuaveServerContext =
     | SuaveContext ctx -> ctx.FsManager
     | SuaveTestingContext ctx -> ctx.FsManager
 
-  member this.FileChangedEvents =
-    match this with
-    | SuaveContext ctx -> ctx.FileChangedEvents
-    | SuaveTestingContext ctx -> ctx.FileChangedEvents
-
-  member this.TestEvents =
+  member this.Directories =
     match this with
     | SuaveContext _ -> None
-    | SuaveTestingContext ctx -> Some ctx.TestEvents
+    | SuaveTestingContext ctx -> Some ctx.Directories
+
+  member this.NotifyTestEvent =
+    match this with
+    | SuaveContext _ -> None
+    | SuaveTestingContext ctx -> Some ctx.NotifyTestEvent
 
 // ============================================================================
 // MIME Type Detection
@@ -471,7 +470,9 @@ module ProxyService =
 
         // Set Content-Type on content headers if present
         match ctx.request.headers?("Content-Type"), request.Content with
-        | Some x, NonNull c -> c.Headers.ContentType <- System.Net.Http.Headers.MediaTypeHeaderValue.Parse(x)
+        | Some x, NonNull c ->
+          c.Headers.ContentType <-
+            System.Net.Http.Headers.MediaTypeHeaderValue.Parse(x)
         | _ -> ()
 
         // Only add Content-Length if not chunked and content exists
@@ -806,16 +807,13 @@ module LiveReload =
           do! send out msg :> Task
     }
 
-  let sseHandler
-    (vfs: VirtualFileSystem)
-    (fileChangedEvents: IObservable<FileChangedEvent>)
-    : WebPart =
+  let sseHandler(vfs: VirtualFileSystem) : WebPart =
 
     fun ctx -> async {
       let! token = Async.CancellationToken
 
       let fileChangedEvents =
-        fileChangedEvents |> Observable.toCancellableAsyncEnumerable token
+        vfs.FileChanges |> Observable.toCancellableAsyncEnumerable token
 
       return!
         handShake
@@ -905,6 +903,7 @@ module PerlaHandlers =
     =
     fun ctx -> async {
       let content = fsManager.ResolveIndex |> AVal.force
+      let browser = ctx.request.queryParamOpt("browser")
 
       use context = BrowsingContext.New(Configuration.Default)
       let parser = context.GetService<IHtmlParser>() |> nonNull
@@ -922,11 +921,19 @@ module PerlaHandlers =
 
       let body = Build.EnsureBody doc
       let head = Build.EnsureHead doc
-      let mochaStyles: Dom.IElement = doc.CreateElement "link"
-      mochaStyles.SetAttribute("href", "https://unpkg.com/mocha/mocha.css")
-      mochaStyles.SetAttribute("rel", "stylesheet")
-      mochaStyles.SetAttribute("type", "text/css")
-      head.AppendChild mochaStyles |> ignore
+
+      match browser with
+      | Some(_, Some browser) ->
+        let meta = doc.CreateElement "meta"
+        meta.SetAttribute("perla-browser", "true")
+        meta.SetAttribute("browser", browser)
+        head.AppendChild meta |> ignore
+      | Some(_, None)
+      | None ->
+        // No browser specified, do nothing
+        ()
+
+      let testingConfig = configA |> AVal.map _.testing
 
       let script: Dom.IElement = doc.CreateElement "script"
       script.SetAttribute("type", "importmap")
@@ -934,27 +941,65 @@ module PerlaHandlers =
       let mergedImportMap =
         fsManager.ResolveImportMap
         |> ImportMaps.withPathsA configA
+        |> AVal.map2
+          (fun (testingConfig: TestConfig) imap ->
+            match testingConfig.testFramework with
+            | Mocha -> {
+                imap with
+                    imports =
+                      imap.imports
+                      |> Map.add "mocha" "https://unpkg.com/mocha/mocha.js"
+                      |> Map.add
+                        "mocha/mocha.css"
+                        "https://unpkg.com/mocha/mocha.css"
+              }
+            | QUnit ->
+                {
+                  imap with
+                      imports =
+                        imap.imports
+                        |> Map.add
+                          "qunit"
+                          "https://unpkg.com/qunit/qunit/qunit.js"
+                        |> Map.add
+                          "qunit/qunit.css"
+                          "https://unpkg.com/qunit/qunit/qunit.css"
+                })
+          testingConfig
         |> AVal.force
 
       let config = configA |> AVal.force
 
-      script.TextContent <- Json.ToText(mergedImportMap)
+      script.TextContent <- Json.ToText mergedImportMap
       head.AppendChild script |> ignore
 
-      let mochaScript = doc.CreateElement "script"
-      mochaScript.SetAttribute("type", "application/javascript")
-      mochaScript.SetAttribute("src", "https://unpkg.com/mocha/mocha.js")
-      body.AppendChild mochaScript |> ignore
+      let testConfig = testingConfig |> AVal.force
 
-      let mochaDiv = doc.CreateElement "div"
-      mochaDiv.SetAttribute("id", "mocha")
-      body.AppendChild mochaDiv |> ignore
+      match testConfig.testFramework with
+      | Mocha ->
+        let mochaDiv = doc.CreateElement "div"
+        mochaDiv.SetAttribute("id", "mocha")
+        body.AppendChild mochaDiv |> ignore
+
+      | QUnit ->
+
+        let qunitDiv = doc.CreateElement "div"
+        qunitDiv.SetAttribute("id", "qunit")
+        body.AppendChild qunitDiv |> ignore
+
+        let qunitFixtureDiv = doc.CreateElement "div"
+        qunitFixtureDiv.SetAttribute("id", "qunit-fixture")
+        body.AppendChild qunitFixtureDiv |> ignore
 
       let runnerScript = doc.CreateElement "script"
       runnerScript.SetAttribute("type", "module")
 
       let! runnerContent =
-        fsManager.ResolveMochaRunnerScript() |> Async.AwaitCancellableTask
+        match testConfig.testFramework with
+        | Mocha ->
+          fsManager.ResolveMochaRunnerScript() |> Async.AwaitCancellableTask
+        | QUnit ->
+          fsManager.ResolveQunitRunnerScript() |> Async.AwaitCancellableTask
 
       runnerScript.TextContent <- runnerContent
       body.AppendChild runnerScript |> ignore
@@ -1026,6 +1071,25 @@ module SpaFallback =
         return! PerlaHandlers.indexHandler (configA, fsManager) ctx
     }
 
+  let testSpaFallback
+    (configA: PerlaConfig aval)
+    (fsManager: PerlaFsManager)
+    : WebPart =
+    fun ctx -> async {
+      let path = ctx.request.url.AbsolutePath
+
+      // Skip if it's an API call, Perla internal path, or has file extension
+      if
+        path.StartsWith "/api/"
+        || path.StartsWith "/~perla~/"
+        || Path.HasExtension path
+      then
+        return None
+      else
+        // Serve index.html directly (do not redirect)
+        return! PerlaHandlers.testingIndexHandler (configA, fsManager) ctx
+    }
+
 // ============================================================================
 // Testing Handlers
 // ============================================================================
@@ -1034,26 +1098,16 @@ module TestingHandlers =
   open Fake.IO
 
   let testingFiles
-    (fileGlobs: string seq option, testConfig: TestConfig)
+    (directories: PerlaDirectories, testConfig: TestConfig aval)
     : WebPart =
     fun ctx -> async {
+      let testConfig = AVal.force testConfig
+
       let glob: Globbing.LazyGlobbingPattern = {
-        BaseDirectory = "./tests"
-        Excludes = [
-          "**/bin/**"
-          "**/obj/**"
-          "**/*.fs"
-          "**/*.fsproj"
-          yield! testConfig.excludes
-        ]
-        Includes =
-          match fileGlobs with
-          | Some files ->
-            if files |> Seq.isEmpty then
-              [ "**/*.test.js"; "**/*.spec.js" ]
-            else
-              files |> Seq.toList
-          | None -> [ "**/*.test.js"; "**/*.spec.js" ]
+        BaseDirectory =
+          Path.Combine(UMX.untag directories.CurrentWorkingDirectory, "tests")
+        Excludes = testConfig.excludes |> List.ofSeq
+        Includes = testConfig.includes |> List.ofSeq
       }
 
       let files = [|
@@ -1068,12 +1122,15 @@ module TestingHandlers =
       return! (setMimeType "application/json" >=> OK(Json.ToText files)) ctx
     }
 
-  let testingEnvironment(testConfig: TestConfig) : WebPart =
+  let testingEnvironment(testConfig: TestConfig aval) : WebPart =
     fun ctx -> async {
+      let testConfig = AVal.force testConfig
+
       let result = {|
         testConfig with
             browsers =
-              (testConfig.browsers |> Seq.map Encoders.Browser).ToString()
+              (testConfig.browsers
+               |> Seq.map(fun browser -> Encoders.Browser(browser).ToString()))
             browserMode =
               (testConfig.browserMode |> Encoders.BrowserMode).ToString()
             runId = Guid.NewGuid()
@@ -1082,14 +1139,14 @@ module TestingHandlers =
       return! (setMimeType "application/json" >=> OK(Json.ToText result)) ctx
     }
 
-  let mochaSettings(mochaConfig: Map<string, obj> option) : WebPart =
+  let testFrameworkSettings(testConfig: TestConfig aval) : WebPart =
     fun ctx -> async {
-      let config = mochaConfig |> Option.defaultValue Map.empty
+      let config = testConfig |> AVal.map _.frameworkOptions |> AVal.force
       return! (setMimeType "application/json" >=> OK(Json.ToText config)) ctx
     }
 
   let testingEvents
-    (logger: ILogger, testEvents: ISubject<TestEvent>)
+    (notifyTestEvent: Result<TestEvent, JDeck.DecodeError> -> unit)
     : WebPart =
     fun ctx -> async {
 
@@ -1097,10 +1154,10 @@ module TestingHandlers =
 
       match Json.TestEventFromJson content with
       | Result.Ok testEvent ->
-        testEvents.OnNext testEvent
+        notifyTestEvent(Ok testEvent)
         return! OK "Event processed" ctx
       | Result.Error err ->
-        logger.LogError("Failed to parse test event: {Error}", err)
+        notifyTestEvent(Result.Error err)
         return! BAD_REQUEST "Invalid test event format" ctx
     }
 
@@ -1127,9 +1184,8 @@ module ClientLog =
 
   let tryExtractModuleResolutionError(msg: string) : string option =
     let pattern =
-      System.Text.RegularExpressions.Regex(
+      System.Text.RegularExpressions.Regex
         @"Failed to resolve module specifier ""([^\""]+)"""
-      )
 
     let m = pattern.Match(msg)
 
@@ -1333,16 +1389,14 @@ module SuaveServer =
 
   let createTestingApp(suaveCtx: SuaveServerContext) =
     let config = AVal.force suaveCtx.Config
+    let testingA = suaveCtx.Config |> AVal.map _.testing
 
     let proxyWebparts =
       ProxyService.createProxyWebparts suaveCtx.Logger config.devServer.proxy
 
     choose [
       // Perla internal endpoints
-      path "/~perla~/sse"
-      >=> LiveReload.sseHandler
-        suaveCtx.VirtualFileSystem
-        suaveCtx.FileChangedEvents
+      path "/~perla~/sse" >=> LiveReload.sseHandler suaveCtx.VirtualFileSystem
 
       ClientLog.clientLogHandler suaveCtx.Logger
       PerlaHandlers.liveReloadScript suaveCtx.FsManager
@@ -1355,26 +1409,24 @@ module SuaveServer =
 
       // Serve index.html for root
       path "/"
-      >=> PerlaHandlers.indexHandler(suaveCtx.Config, suaveCtx.FsManager)
+      >=> PerlaHandlers.testingIndexHandler(suaveCtx.Config, suaveCtx.FsManager)
 
       // Testing endpoints
       pathStarts "/~perla~/testing/"
       >=> choose [
+        path "/~perla~/ping" >=> OK "pong"
         path "/~perla~/testing/files"
-        >=> TestingHandlers.testingFiles(None, config.testing)
+        >=> TestingHandlers.testingFiles(suaveCtx.Directories.Value, testingA)
 
         path "/~perla~/testing/environment"
-        >=> TestingHandlers.testingEnvironment config.testing
+        >=> TestingHandlers.testingEnvironment testingA
 
-        path "/~perla~/testing/mocha-settings"
-        >=> TestingHandlers.mochaSettings None
+        path "/~perla~/testing/framework-options"
+        >=> TestingHandlers.testFrameworkSettings testingA
 
         POST
         >=> path "/~perla~/testing/events"
-        >=> TestingHandlers.testingEvents(
-          suaveCtx.Logger,
-          suaveCtx.TestEvents.Value
-        )
+        >=> TestingHandlers.testingEvents suaveCtx.NotifyTestEvent.Value
       ]
 
       // Environment variables endpoint (if enabled)
@@ -1388,7 +1440,7 @@ module SuaveServer =
       proxyWebparts
 
       // SPA fallback for extensionless paths
-      SpaFallback.spaFallback suaveCtx.Config suaveCtx.FsManager
+      SpaFallback.testSpaFallback suaveCtx.Config suaveCtx.FsManager
 
       // Final fallback
       NOT_FOUND "Resource not found"
@@ -1402,10 +1454,7 @@ module SuaveServer =
 
     choose [
       // Perla internal endpoints
-      path "/~perla~/sse"
-      >=> LiveReload.sseHandler
-        suaveCtx.VirtualFileSystem
-        suaveCtx.FileChangedEvents
+      path "/~perla~/sse" >=> LiveReload.sseHandler suaveCtx.VirtualFileSystem
 
       ClientLog.clientLogHandler suaveCtx.Logger
       PerlaHandlers.liveReloadScript suaveCtx.FsManager

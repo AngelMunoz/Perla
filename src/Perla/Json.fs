@@ -83,6 +83,8 @@ type DecodedTesting = {
   headless: bool option
   browserMode: BrowserMode option
   fable: DecodedFableConfig option
+  testFramework: TestFramework option
+  frameworkOptions: Map<string, obj> option
 }
 
 type DecodedPerlaConfig = {
@@ -126,6 +128,17 @@ module internal Decoders =
     fun element -> decode {
       let! str = Required.string element
       return BrowserMode.FromString str
+    }
+
+  let TestFrameworkDecoder: Decoder<TestFramework> =
+    fun element -> decode {
+      let! str = Required.string element
+
+      return
+        match str.ToLowerInvariant() with
+        | "mocha" -> TestFramework.Mocha
+        | "qunit" -> TestFramework.QUnit
+        | _ -> TestFramework.QUnit
     }
 
   let DownloadProviderDecoder: Decoder<PkgManager.DownloadProvider> =
@@ -234,10 +247,20 @@ module internal Decoders =
       let! runId = Required.Property.get ("runId", Required.guid) element
       let! stats = Required.Property.get ("stats", TestStatsDecoder) element
 
+      let! browser =
+        Optional.Property.get ("browser", Optional.string) element
+        |> Result.map(Option.flatten >> Option.map Browser.FromString)
+
       let! totalTests =
         Required.Property.get ("totalTests", Required.int) element
 
-      return SessionStart(runId, stats, totalTests)
+      return
+        SessionStart {
+          RunId = runId
+          Browser = browser
+          Stats = stats
+          TotalTests = totalTests
+        }
     }
 
 
@@ -245,7 +268,17 @@ module internal Decoders =
     fun element -> decode {
       let! runId = Required.Property.get ("runId", Required.guid) element
       let! stats = Required.Property.get ("stats", TestStatsDecoder) element
-      return SessionEnd(runId, stats)
+
+      let! browser =
+        Optional.Property.get ("browser", Optional.string) element
+        |> Result.map(Option.flatten >> Option.map Browser.FromString)
+
+      return
+        SessionEnd {
+          RunId = runId
+          Browser = browser
+          Stats = stats
+        }
     }
 
 
@@ -254,7 +287,18 @@ module internal Decoders =
       let! runId = Required.Property.get ("runId", Required.guid) element
       let! stats = Required.Property.get ("stats", TestStatsDecoder) element
       let! test = Required.Property.get ("test", TestDecoder) element
-      return TestEvent.TestPass(runId, stats, test)
+
+      let! browser =
+        Optional.Property.get ("browser", Optional.string) element
+        |> Result.map(Option.flatten >> Option.map Browser.FromString)
+
+      return
+        TestEvent.TestPass {
+          RunId = runId
+          Browser = browser
+          Stats = stats
+          Test = test
+        }
     }
 
   let TestFailed: Decoder<TestEvent> =
@@ -264,7 +308,20 @@ module internal Decoders =
       let! test = Required.Property.get ("test", TestDecoder) element
       let! message = Required.Property.get ("message", Required.string) element
       let! stack = Required.Property.get ("stack", Required.string) element
-      return TestFailed(runId, stats, test, message, stack)
+
+      let! browser =
+        Optional.Property.get ("browser", Optional.string) element
+        |> Result.map(Option.flatten >> Option.map Browser.FromString)
+
+      return
+        TestFailed {
+          RunId = runId
+          Browser = browser
+          Stats = stats
+          Test = test
+          Message = message
+          Stack = stack
+        }
     }
 
   let ImportFailed: Decoder<TestEvent> =
@@ -272,15 +329,36 @@ module internal Decoders =
       let! runId = Required.Property.get ("runId", Required.guid) element
       let! message = Required.Property.get ("message", Required.string) element
       let! stack = Required.Property.get ("stack", Required.string) element
-      return TestImportFailed(runId, message, stack)
+
+      let! browser =
+        Optional.Property.get ("browser", Optional.string) element
+        |> Result.map(Option.flatten >> Option.map Browser.FromString)
+
+      return
+        TestImportFailed {
+          RunId = runId
+          Browser = browser
+          Message = message
+          Stack = stack
+        }
     }
 
-  let SuiteEventArgs: Decoder<Guid * TestStats * Suite> =
+  let SuiteEventArgs: Decoder<SuiteEvent> =
     fun element -> decode {
       let! runId = Required.Property.get ("runId", Required.guid) element
       let! stats = Required.Property.get ("stats", TestStatsDecoder) element
       let! suite = Required.Property.get ("suite", SuiteDecoder) element
-      return runId, stats, suite
+
+      let! browser =
+        Optional.Property.get ("browser", Optional.string) element
+        |> Result.map(Option.flatten >> Option.map Browser.FromString)
+
+      return {
+        RunId = runId
+        Stats = stats
+        Suite = suite
+        Browser = browser
+      }
     }
 
   let TestEventDecoder: Decoder<TestEvent> =
@@ -298,10 +376,12 @@ module internal Decoders =
       | "__perla-session-end" -> return! SessionEnd element
       | "__perla-test-import-failed" -> return! ImportFailed element
       | "__perla-test-run-finished" ->
-        return!
-          Required.Property.get
-            ("runId", Required.guid >> Result.map TestRunFinished)
-            element
+        let! browser =
+          Optional.Property.get ("browser", Optional.string) element
+          |> Result.map(Option.flatten >> Option.map Browser.FromString)
+
+        let! runId = Required.Property.get ("runId", Required.guid) element
+        return TestRunFinished { RunId = runId; Browser = browser }
       | value ->
         return!
           DecodeError.ofError(element.Clone(), $"{value} is not a known event")
@@ -366,6 +446,15 @@ module internal Encoders =
   let BrowserMode: Encoder<BrowserMode> =
     fun value -> Encode.string value.AsString
 
+  let TestFramework: Encoder<TestFramework> =
+    fun value ->
+      let str =
+        match value with
+        | TestFramework.Mocha -> "mocha"
+        | TestFramework.QUnit -> "qunit"
+
+      Encode.string str
+
   let DownloadProviderEncoder: Encoder<PkgManager.DownloadProvider> =
     fun value -> Encode.string(PkgManager.DownloadProvider.asString value)
 
@@ -391,6 +480,7 @@ let DefaultJsonOptions() =
   |> Codec.useDecoder DecodedTemplateConfigItemDecoder
   |> Codec.useCodec(Encoders.Browser, BrowserDecoder)
   |> Codec.useCodec(Encoders.BrowserMode, BrowserModeDecoder)
+  |> Codec.useCodec(Encoders.TestFramework, TestFrameworkDecoder)
   |> Codec.useCodec(Encoders.DownloadProviderEncoder, DownloadProviderDecoder)
   |> Codec.useCodec(Encoders.PkgDependencySetEncoder, PkgDependencySetDecoder)
   |> Codec.useCodec(PkgManager.ImportMap.Encoder, PkgManager.ImportMap.Decoder)
@@ -555,6 +645,10 @@ module PerlaConfig =
             headless = defaultArg testing.headless config.headless
             browserMode = defaultArg testing.browserMode config.browserMode
             fable = GetFable(config.fable, testing.fable)
+            testFramework =
+              defaultArg testing.testFramework config.testFramework
+            frameworkOptions =
+              defaultArg testing.frameworkOptions config.frameworkOptions
       }
     }
 
