@@ -28,6 +28,8 @@ If you prefer to use the dotnet (global | local) tool, you can install it using 
 dotnet tool install --global Perla
 ```
 
+> **Note**: From `v1.0.0-beta-033` onwards, the dotnet tool won't be available as the playwright support makes it harder to upload to nuget, but a solution is in the works. The install scripts and manual download from the releases page still work unchanged.
+
 Once you're done with the installation, you can run `perla --help` to verify that the installation was successful.
 
 ```

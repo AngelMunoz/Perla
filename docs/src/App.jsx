@@ -159,12 +159,20 @@ function BetaNotice() {
       <strong>Perla V1.0.0 betas are out!</strong>
       <p>
         Hello there, the next Perla version is in the works as well as the
-        documentation website, please keep in mind that some of the docs (even
-        those in the v1 section) are still out of date, we're updating them as
-        soon as we can.
-        <br /> Feeling Adventurous? Get the latest bits:
+        documentation website.
+        <br /> Feeling Adventurous?:
         <br />
-        <strong>dotnet tool install --global Perla --prerelease</strong>
+        <a href="#content/install">
+          Get the latest bits from the installation guide
+        </a>
+        <br />
+        <small>
+          <em>
+            Note: From v1.0.0-beta-033 onwards, the dotnet tool won't be
+            available we're working on it. The install scripts and download from
+            the releases page remain unchanged.
+          </em>
+        </small>
       </p>
     </sl-alert>
   );
