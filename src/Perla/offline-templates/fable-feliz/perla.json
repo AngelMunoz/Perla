@@ -5,6 +5,12 @@
     "project": "./src/App.fsproj",
     "sourceMaps": true
   },
+  "testing": {
+    "fable": {
+      "project": "./tests/App.Tests.fsproj",
+      "sourceMaps": true
+    }
+  },
   "dependencies": {
     "date-fns": "2.29.3",
     "react": "19.1.0",

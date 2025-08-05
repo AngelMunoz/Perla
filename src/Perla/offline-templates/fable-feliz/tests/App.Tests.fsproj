@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+    </PropertyGroup>
+    <ItemGroup>
+        <Compile Include="Components.Test.fs" />
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Fable.Browser.Dom" Version="2.20.0" />
+        <PackageReference Include="Fable.Core" Version="4.5.0" />
+        <PackageReference Include="Perla.Fable.QUnit" Version="1.0.0-beta-034" />
+    </ItemGroup>
+    <ItemGroup>
+      <ProjectReference Include="..\src\App.fsproj" />
+    </ItemGroup>
+</Project>

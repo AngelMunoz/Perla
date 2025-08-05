@@ -1,5 +1,13 @@
 import { render } from "preact";
 
+export function multiply(a, b) {
+  return a * b;
+}
+
+export function createGreeting(name) {
+  return `Hello, ${name}!`;
+}
+
 function App() {
   return (
     <div>
