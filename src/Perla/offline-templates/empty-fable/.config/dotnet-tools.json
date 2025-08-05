@@ -2,11 +2,6 @@
   "version": 1,
   "isRoot": true,
   "tools": {
-    "perla": {
-      "version": "1.0.0-beta-028",
-      "commands": ["perla"],
-      "rollForward": false
-    },
     "fable": {
       "version": "4.25.0",
       "commands": ["fable"],

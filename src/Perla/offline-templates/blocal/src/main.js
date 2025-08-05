@@ -1,5 +1,13 @@
 console.log("Welcome to Perla!");
 
+export function createMessage(title, description) {
+  return `${title}: ${description}`;
+}
+
+export function add(a, b) {
+  return a + b;
+}
+
 const appRoot = document.querySelector("app-root");
 const element = document.createElement("section");
 element.innerHTML = `

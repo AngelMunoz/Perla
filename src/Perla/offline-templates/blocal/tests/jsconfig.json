@@ -1,0 +1,8 @@
+{
+  "extends": "../jsconfig.json",
+  "include": ["../src/**/*.js", "./**/*.js"],
+  "typeAcquisition": {
+    "enable": true,
+    "include": ["qunit"]
+  }
+}
