@@ -46,6 +46,7 @@ type EsbuildService =
 
 [<RequireQualifiedAccess>]
 module Esbuild =
+  open FsToolkit.ErrorHandling
 
   let singleFileCmd
     (
@@ -82,6 +83,45 @@ module Esbuild =
     }
 
   let Create(serviceArgs: EsbuildServiceArgs) =
+    let extractedAliasedPaths =
+        serviceArgs.PerlaFsManager.PerlaConfiguration |> AVal.map (fun cfg ->
+          let customPaths =
+            cfg.paths |> Map.toSeq |> Seq.choose(fun (key: string<BareImport>, value: string<ResolutionUrl>) ->
+              result {
+                let key = UMX.untag key
+                let value = UMX.untag value
+                do!
+                    (System.IO.Path.IsPathRooted value || System.IO.Path.IsPathFullyQualified value)
+                    |> Result.requireFalse
+                      $"Path '{value}' must not be absolute or fully qualified."
+                do! (value.StartsWith "./" || value.StartsWith "../")
+                      |> Result.requireTrue
+                      $"Path '{value}' must be relative (starting with './' or '../')."
+
+                let key =
+                  if key.EndsWith "/" then $"{key}*" else key
+
+                let value = if value.EndsWith "/" then [$"{value}*"] else [value]
+
+                return key, value
+
+              }
+              |> Result.toOption
+            )
+          customPaths
+        )
+    let getOrBuildTsConfig paths =
+      serviceArgs.PerlaFsManager.ResolveTsConfig
+      |> AVal.map2
+          (fun paths tsconfig ->
+            match tsconfig with
+            | None ->
+              let paths = paths |> Map.ofSeq
+              if paths |> Map.isEmpty then None else
+                {| compilerOptions = {| paths = paths |} |} |> Json.Json.ToText |> Some
+            | Some config -> Some config)
+        paths
+
     { new EsbuildService with
         member this.GetPlugin(config: EsbuildConfig) : PluginInfo =
           let shouldTransform: FilePredicate =
@@ -101,8 +141,7 @@ module Esbuild =
                 | ".js" -> None
                 | _ -> None
 
-              let tsConfig =
-                serviceArgs.PerlaFsManager.ResolveTsConfig |> AVal.force
+              let tsConfig = getOrBuildTsConfig extractedAliasedPaths |> AVal.force
 
               let! result =
                 singleFileCmd(
@@ -152,6 +191,7 @@ module Esbuild =
           : CancellableTask<unit> =
           cancellableTask {
             let esbuildPath = serviceArgs.PerlaFsManager.ResolveEsbuildPath()
+            let tsConfig = getOrBuildTsConfig extractedAliasedPaths |> AVal.force
 
             do!
               serviceArgs.PlatformOps.RunEsbuildJs(
@@ -159,6 +199,7 @@ module Esbuild =
                 sourcesPath,
                 UMX.untag entrypoint,
                 UMX.untag outdir,
+                tsConfig,
                 config
               )
 

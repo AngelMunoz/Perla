@@ -79,6 +79,7 @@ type PlatformOps =
     workingDir: string<SystemPath> *
     entrypoint: string *
     outdir: string *
+    tsconfig: string option *
     config: EsbuildConfig ->
       CancellableTask<unit>
 
@@ -407,7 +408,7 @@ module PlatformOps =
           }
 
         member _.RunEsbuildJs
-          (esbuildPath, workingDir, entrypoint, outdir, config)
+          (esbuildPath, workingDir, entrypoint, outdir,tsconfig, config)
           =
           cancellableTask {
             let! token = CancellableTask.getCancellationToken()
@@ -420,6 +421,10 @@ module PlatformOps =
             )
 
             let output = Path.Combine(outdir, entrypoint)
+            let addTsConfig (args: Builders.ArgumentsBuilder) =
+              match tsconfig with
+              | Some tsConfig -> args.Add($"--tsconfig-raw={tsConfig}")
+              | None -> args
 
             let command =
               Cli
@@ -434,6 +439,7 @@ module PlatformOps =
                   |> buildEsbuildConfig config
                   |> _.Add($"--outfile={output}")
                   |> _.Add("--preserve-symlinks")
+                  |> addTsConfig
                   |> buildEsbuildFileLoaders config.fileLoaders
                   |> ignore)
                 .WithValidation

@@ -71,6 +71,7 @@ type PlatformOps =
     workingDir: string<SystemPath> *
     entrypoint: string *
     outdir: string *
+    tsconfig: string option *
     config: EsbuildConfig ->
       CancellableTask<unit>
 

@@ -341,23 +341,14 @@ module BuildService =
               ex.Message
             )
 
-        member _.LoadPlugins(config, vfsOutputDir) =
-          let config = config |> AVal.force
+        member _.LoadPlugins(configA, vfsOutputDir) =
+          let config = configA |> AVal.force
           let plugins = args.FsManager.ResolvePluginPaths()
 
           let isEsbuildPluginPresent =
             config.plugins |> List.contains Constants.PerlaEsbuildPluginName
 
-          let isPathsReplacerPresent =
-            config.plugins
-            |> List.contains Constants.PerlaPathsReplacerPluginName
-
           let defaultPlugins = seq {
-            if isPathsReplacerPresent || not(Map.isEmpty config.paths) then
-              ImportMaps.createPathsReplacerPlugin
-                (AVal.constant config.paths)
-                vfsOutputDir
-
             if isEsbuildPluginPresent then
               args.EsbuildService.GetPlugin config.esbuild
           }

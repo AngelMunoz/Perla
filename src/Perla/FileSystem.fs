@@ -235,10 +235,21 @@ module FileSystem =
         }
 
         member _.ResolveTsConfig = adaptive {
-          let path =
+          let tsConfigPath =
             args.PerlaDirectories.CurrentWorkingDirectory |/ "tsconfig.json"
 
-          let! content = AdaptiveFile.TryReadAllText(UMX.untag path)
+          let jsConfigPath =
+            args.PerlaDirectories.CurrentWorkingDirectory |/ "jsconfig.json"
+
+          let! content = adaptive {
+            let! tsconfig = AdaptiveFile.TryReadAllText(UMX.untag tsConfigPath)
+            match tsconfig with
+            | Some tsconfig -> return Some tsconfig
+            | None ->
+              let! jsconfig = AdaptiveFile.TryReadAllText(UMX.untag jsConfigPath)
+              return jsconfig
+
+          }
           return content
         }
 
