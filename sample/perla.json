@@ -6,6 +6,10 @@
     "extension": ".js",
     "outDir": "./fable_output"
   },
+  "plugins": ["perla-esbuild-plugin"],
+  "paths": {
+    "@nested/": "./src/nested1/nested2/"
+  },
   "mountDirectories": {
     "/src": "./src",
     "/fable_output": "./fable_output",
@@ -17,15 +21,15 @@
   "testing": {
     "fable": {
       "project": "./tests/App.Tests.fsproj"
-    },
-    "testFramework": "qunit"
+    }
   },
   "dependencies": {
-    "@esm-bundle/chai": "4.3.4-fix.0",
-    "chai": "4.3.4",
+    "@lit/reactive-element": "1.6.3",
     "fsharp-components": "0.0.4",
     "lit": "2.4.0",
-    "rxjs": "7.5.7"
+    "lit-element": "3.3.3",
+    "lit-element/lit-element.js": "3.3.3",
+    "lit-html": "2.8.0"
   },
-  "useLocalPkgs": false
+  "useLocalPkgs": true
 }

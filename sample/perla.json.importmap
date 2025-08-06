@@ -1,24 +1,16 @@
 {
   "imports": {
-    "@esm-bundle/chai": "https://ga.jspm.io/npm:@esm-bundle/chai@4.3.4-fix.0/esm/chai.js",
-    "chai": "https://ga.jspm.io/npm:chai@4.3.4/index.mjs",
-    "fsharp-components": "https://ga.jspm.io/npm:fsharp-components@0.0.4/dist/fs-components.es.js",
-    "lit": "https://ga.jspm.io/npm:lit@2.4.0/index.js",
-    "rxjs": "https://ga.jspm.io/npm:rxjs@7.5.7/dist/esm5/index.js"
+    "@lit/reactive-element": "/node_modules/@lit/reactive-element/reactive-element.js",
+    "fsharp-components": "/node_modules/fsharp-components/dist/fs-components.es.js",
+    "lit": "/node_modules/lit/index.js",
+    "lit-element": "/node_modules/lit-element/index.js",
+    "lit-element/lit-element.js": "/node_modules/lit-element/lit-element.js",
+    "lit-html": "/node_modules/lit-html/lit-html.js"
   },
   "scopes": {
-    "https://ga.jspm.io/": {
-      "@lit/reactive-element": "https://ga.jspm.io/npm:@lit/reactive-element@1.6.3/reactive-element.js",
-      "assertion-error": "https://ga.jspm.io/npm:assertion-error@1.1.0/index.js",
-      "check-error": "https://ga.jspm.io/npm:check-error@1.0.3/index.js",
-      "deep-eql": "https://ga.jspm.io/npm:deep-eql@3.0.1/index.js",
-      "get-func-name": "https://ga.jspm.io/npm:get-func-name@2.0.2/index.js",
-      "lit-element/lit-element.js": "https://ga.jspm.io/npm:lit-element@3.3.3/lit-element.js",
-      "lit-html": "https://ga.jspm.io/npm:lit-html@2.8.0/lit-html.js",
-      "lit-html/is-server.js": "https://ga.jspm.io/npm:lit-html@2.8.0/is-server.js",
-      "pathval": "https://ga.jspm.io/npm:pathval@1.1.1/index.js",
-      "tslib": "https://ga.jspm.io/npm:tslib@2.8.1/tslib.es6.mjs",
-      "type-detect": "https://ga.jspm.io/npm:type-detect@4.1.0/type-detect.js"
+    "/node_modules/": {
+      "@lit/reactive-element/decorators/": "/node_modules/.perla/@lit/reactive-element@1.6.3/decorators/",
+      "lit-html/is-server.js": "/node_modules/.perla/lit-html@2.8.0/is-server.js"
     }
   }
 }
