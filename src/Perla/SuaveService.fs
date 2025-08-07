@@ -344,43 +344,53 @@ module ProxyService =
            && response.Headers.GetValues("Transfer-Encoding")
               |> Seq.exists(fun v -> v.Contains("chunked"))
 
-      let writeHeaders(conn: Connection) : SocketOp<_> = taskResult {
-        // Write all response headers
-        for (key, value) in headers do
-          // Skip Content-Length for chunked responses
-          if
-            not(
-              isChunked
-              && String.Equals(
-                key,
-                "Content-Length",
-                StringComparison.InvariantCultureIgnoreCase
+      let writeHeaders(conn: Connection) : SocketOp<_> =
+        asyncResult {
+          // Write all response headers
+          for key, value in headers do
+            // Skip Content-Length for chunked responses
+            if
+              not(
+                isChunked
+                && String.Equals(
+                  key,
+                  "Content-Length",
+                  StringComparison.InvariantCultureIgnoreCase
+                )
               )
-            )
-          then
-            do! conn.asyncWriteLn(sprintf "%s: %s" key value)
-
-        // Write content headers if they exist
-        for KeyValue(key, value) in response.Content.Headers do
-          // Skip Content-Length for chunked responses
-          if
-            not(
-              isChunked
-              && String.Equals(
-                key,
-                "Content-Length",
-                StringComparison.InvariantCultureIgnoreCase
+            then
+              do! conn.asyncWriteLn(sprintf "%s: %s" key value)
+              ()
+            else
+              ()
+          // Write content headers if they exist
+          for KeyValue(key, value) in response.Content.Headers do
+            // Skip Content-Length for chunked responses
+            if
+              not(
+                isChunked
+                && String.Equals(
+                  key,
+                  "Content-Length",
+                  StringComparison.InvariantCultureIgnoreCase
+                )
               )
-            )
-          then
-            do!
-              conn.asyncWriteLn(sprintf "%s: %s" key (String.concat ";" value))
+            then
+              do!
+                conn.asyncWriteLn(
+                  sprintf "%s: %s" key (String.concat ";" value)
+                )
 
+              ()
+            else
+              ()
 
-        // Write empty line to end headers
-        do! conn.asyncWriteLn ""
-        do! conn.flush()
-      }
+          // Write empty line to end headers
+          do! conn.asyncWriteLn ""
+          do! conn.flush()
+          return ()
+        }
+        |> Async.StartAsTask
 
       {
         ctx with

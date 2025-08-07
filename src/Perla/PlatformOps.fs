@@ -373,6 +373,7 @@ module PlatformOps =
                     tsconfig
                     loader
                     args
+                  |> _.Add("--log-level=warning")
                   |> ignore)
                 .WithValidation(CommandResultValidation.None)
 
@@ -397,6 +398,7 @@ module PlatformOps =
                 .WithStandardErrorPipe(PipeTarget.ToDelegate logger.LogError)
                 .WithArguments(fun argsBuilder ->
                   argsBuilder.Add(entrypoint).Add("--bundle")
+                  |> _.Add("--log-level=warning")
                   |> (if minify then _.Add("--minify") else id)
                   |> _.Add($"--outfile={output}")
                   |> _.Add("--preserve-symlinks")
@@ -408,7 +410,7 @@ module PlatformOps =
           }
 
         member _.RunEsbuildJs
-          (esbuildPath, workingDir, entrypoint, outdir,tsconfig, config)
+          (esbuildPath, workingDir, entrypoint, outdir, tsconfig, config)
           =
           cancellableTask {
             let! token = CancellableTask.getCancellationToken()
@@ -421,7 +423,8 @@ module PlatformOps =
             )
 
             let output = Path.Combine(outdir, entrypoint)
-            let addTsConfig (args: Builders.ArgumentsBuilder) =
+
+            let addTsConfig(args: Builders.ArgumentsBuilder) =
               match tsconfig with
               | Some tsConfig -> args.Add($"--tsconfig-raw={tsConfig}")
               | None -> args
@@ -437,13 +440,12 @@ module PlatformOps =
                 .WithArguments(fun argsBuilder ->
                   argsBuilder.Add entrypoint
                   |> buildEsbuildConfig config
+                  |> _.Add("--log-level=warning")
                   |> _.Add($"--outfile={output}")
                   |> _.Add("--preserve-symlinks")
                   |> addTsConfig
                   |> buildEsbuildFileLoaders config.fileLoaders
                   |> ignore)
-                .WithValidation
-                CommandResultValidation.None
 
             logger.LogTrace(
               "Executing Esbuild command: {Command} {Arguments}",

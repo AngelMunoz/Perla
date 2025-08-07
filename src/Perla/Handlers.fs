@@ -639,64 +639,75 @@ module Handlers =
         Build.EntryPoints document
 
       // Step 9: Run esbuild or move/copy output
-      let! esbuildOutput =
-        container.BuildService.RunEsbuild(
-          config,
-          tempDir,
-          cssPaths,
-          [ yield! jsBundleEntrypoints; yield! jsStandalonePaths ],
-          externals |> Seq.map UMX.untag |> Seq.toList
-        )
+      let! esbuildOutput = cancellableTask {
+        try
+          let! outputdir =
+            container.BuildService.RunEsbuild(
+              config,
+              tempDir,
+              cssPaths,
+              [ yield! jsBundleEntrypoints; yield! jsStandalonePaths ],
+              externals |> Seq.map UMX.untag |> Seq.toList
+            )
 
-      container.BuildService.MoveOrCopyOutput(
-        config,
-        tempDir,
-        esbuildOutput.outputDir
-      )
-
-      // Step 10: Write index.html
-      let jsPaths = seq {
-        yield! jsStandalonePaths
-        yield! jsBundleEntrypoints
+          return Some outputdir
+        with :? CliWrap.Exceptions.CommandExecutionException ->
+          return None
       }
 
-      do!
-        container.BuildService.WriteIndex(
+      match esbuildOutput with
+      | None -> return 1
+      | Some esbuildOutput ->
+
+        container.BuildService.MoveOrCopyOutput(
           config,
-          document,
-          map,
-          jsPaths,
-          cssPaths,
-          esbuildOutput.cssFiles
+          tempDir,
+          esbuildOutput.outputDir
         )
 
-      // // cleanup temporary directory
-      try
-        Directory.Delete(UMX.untag ".tmp/perla", true) |> ignore
-      with ex ->
-        container.Logger.LogWarning(
-          "Failed to delete temporary directory {dir}: {error}",
-          UMX.untag ".tmp/perla",
-          ex.Message
-        )
+        // Step 10: Write index.html
+        let jsPaths = seq {
+          yield! jsStandalonePaths
+          yield! jsBundleEntrypoints
+        }
 
-      // Step 11: Start preview server if requested
-      if options.enablePreview then
-        container.Logger.LogInformation
-          "Starting a preview server for the build"
+        do!
+          container.BuildService.WriteIndex(
+            config,
+            document,
+            map,
+            jsPaths,
+            cssPaths,
+            esbuildOutput.cssFiles
+          )
 
-        SuaveServer.startStaticServer
-          {
-            Logger = container.Logger
-            VirtualFileSystem = container.VirtualFileSystem
-            Config = config
-            FsManager = container.FsManager
-          }
-          token
+        // // cleanup temporary directory
+        try
+          Directory.Delete(UMX.untag ".tmp/perla", true) |> ignore
+        with ex ->
+          container.Logger.LogWarning(
+            "Failed to delete temporary directory {dir}: {error}",
+            UMX.untag ".tmp/perla",
+            ex.Message
+          )
 
-        return 0
-      else
-        return 0
+        // Step 11: Start preview server if requested
+        if options.enablePreview then
+          container.Logger.LogInformation
+            "Starting a preview server for the build"
+
+          SuaveServer.startStaticServer
+            {
+              Logger = container.Logger
+              VirtualFileSystem = container.VirtualFileSystem
+              Config = config
+              FsManager = container.FsManager
+            }
+            token
+
+          return 0
+        else
+          return 0
   }
 
   let runServe (container: AppContainer) (options: ServeOptions) = cancellableTask {
@@ -1073,13 +1084,15 @@ module Handlers =
                 updatedPkgs)
         initialPackages
 
-    // Log the packages being added
-    for basePkg, fullImport, version in packageInfos do
+    packageInfos
+    |> Set.iter(fun (_, fullImport, version) ->
+      let versionStr = defaultArg version "latest"
+
       logger.LogInformation(
         "Adding package '{name}' with version '{version}'",
         fullImport,
-        version
-      )
+        versionStr
+      ))
 
     let provider =
       match config.provider with
@@ -1115,61 +1128,60 @@ module Handlers =
       logger.LogError("Unable to install packages: {error}", err.error)
       return 1
     | GeneratorResponseKind.Success installResponse ->
+      let packageUpdates =
+        // extract the dependencies before we save the offline map
+        installResponse.map.ExtractDependencies()
+        |> Set.map(fun (name, version) ->
+          let dep: PkgDependency = {
+            package = name
+            // dependencies from a GeneratorResponse have embedded versions even if they are not specified
+            version = version.Value |> UMX.tag<Semver>
+          }
 
-    let packageUpdates =
-      // extract the dependencies before we save the offline map
-      installResponse.map.ExtractDependencies()
-      |> Set.map(fun (name, version) ->
-        let dep: PkgDependency = {
-          package = name
-          // dependencies from a GeneratorResponse have embedded versions even if they are not specified
-          version = version.Value |> UMX.tag<Semver>
+          dep)
+        |> PerlaConfig.PerlaWritableField.Dependencies
+
+      let configUpdates = ResizeArray()
+      configUpdates.Add packageUpdates
+
+      if config.useLocalPkgs then
+        let! result = cancellableTask {
+          try
+            return!
+              logger.Spinner(
+                "Downloading Sources...",
+                pkgManager.GoOffline(
+                  installResponse.map,
+                  [ Provider config.provider; Exclude(set [ Unused ]) ],
+                  token
+                )
+              )
+          with ex ->
+            logger.LogWarning(
+              "Failed to download sources: {error}, retrying...",
+              ex.Message
+            )
+
+            return!
+              logger.Spinner(
+                "Downloading Sources...",
+                pkgManager.GoOffline(
+                  installResponse.map,
+                  [ Provider config.provider ],
+                  token
+                )
+              )
         }
 
-        dep)
-      |> PerlaConfig.PerlaWritableField.Dependencies
+        do! container.FsManager.SaveImportMap result
+      else
+        do! container.FsManager.SaveImportMap installResponse.map
 
-    let configUpdates = ResizeArray()
-    configUpdates.Add packageUpdates
+      do! container.FsManager.SavePerlaConfig configUpdates
 
-    if config.useLocalPkgs then
-      let! result = cancellableTask {
-        try
-          return!
-            logger.Spinner(
-              "Downloading Sources...",
-              pkgManager.GoOffline(
-                installResponse.map,
-                [ Provider config.provider; Exclude(set [ Unused ]) ],
-                token
-              )
-            )
-        with ex ->
-          logger.LogWarning(
-            "Failed to download sources: {error}, retrying...",
-            ex.Message
-          )
+      logger.LogInformation("Packages added successfully.")
 
-          return!
-            logger.Spinner(
-              "Downloading Sources...",
-              pkgManager.GoOffline(
-                installResponse.map,
-                [ Provider config.provider ],
-                token
-              )
-            )
-      }
-
-      do! container.FsManager.SaveImportMap result
-    else
-      do! container.FsManager.SaveImportMap installResponse.map
-
-    do! container.FsManager.SavePerlaConfig configUpdates
-
-    logger.LogInformation("Packages added successfully.")
-
-    return 0
+      return 0
   }
 
   let runRemovePackage (container: AppContainer) (options: DependencyOptions) = cancellableTask {
