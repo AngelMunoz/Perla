@@ -36,7 +36,7 @@ type PerlaOptions =
     option<Browser Set> "--browsers"
     |> alias "-b"
     |> desc "Version of the package to install"
-    |> arity ArgumentArity.ZeroOrMore
+    |> arity ZeroOrMore
     |> allowMultipleArgumentsPerToken
     |> acceptOnlyFromAmong [ "chromium"; "firefox"; "webkit"; "edge"; "chrome" ]
     |> defaultValue Set.empty
@@ -64,7 +64,7 @@ type PerlaArguments =
   static member Properties =
     argument<string array> "properties"
     |> desc "A property, properties or json path-like string names to describe"
-    |> arity ArgumentArity.ZeroOrMore
+    |> arity ZeroOrMore
     |> customParser(fun result ->
       result.Tokens |> Seq.map _.Value |> Seq.distinct |> Seq.toArray)
 
