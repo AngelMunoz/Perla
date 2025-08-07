@@ -111,7 +111,7 @@ module Steps =
     let! ctx = Step.context
     Console.info "Generating NuGet Package" |> ctx.Console.WriteLine
 
-    for packable in libraries do
+    for packable in projects @ libraries do
       do!
         Operations.dotnet
           $"pack src/{packable}/{packable}.fsproj -p:Version={PackageVersion} -o {outDir}"
