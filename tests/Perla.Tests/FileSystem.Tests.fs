@@ -93,7 +93,7 @@ type FakePlatformOps
     }
 
     member _.RunEsbuildCss(_, _, _, _, _, _) = cancellableTask { return () }
-    member _.RunEsbuildJs(_, _, _, _, _) = cancellableTask { return () }
+    member _.RunEsbuildJs(_, _, _, _,_, _) = cancellableTask { return () }
 
 type FakePerlaDirectories
   (
