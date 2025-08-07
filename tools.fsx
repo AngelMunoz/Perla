@@ -27,7 +27,7 @@ let libraries = [
 let NugetApiKey = EnvVar.getOrFail "NUGET_DEPLOY_KEY"
 
 [<Literal>]
-let PackageVersion = "1.0.0-beta-034"
+let PackageVersion = "1.0.0-rc-001"
 
 let fsSources =
   Glob.create "*.fsx"
