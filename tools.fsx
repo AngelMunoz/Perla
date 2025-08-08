@@ -40,8 +40,7 @@ let fsSources =
   )
 
 let GatherNupkgs() =
-  Glob.createWithRootDir "dist" "**/*.nupkg"
-  |> Glob.toPaths
+  Glob.createWithRootDir "dist" "**/*.nupkg" |> Glob.toPaths
 
 let outDir = Path.GetFullPath("./dist")
 
@@ -111,10 +110,9 @@ module Steps =
   let packNugets = Step.create "Pack Nugets" {
     let! ctx = Step.context
     Console.info "Generating NuGet Package" |> ctx.Console.WriteLine
+
     for packable in tools @ libraries do
-      do!
-        Operations.dotnet
-          $"pack src/{packable}/{packable}.fsproj -o {outDir}"
+      do! Operations.dotnet $"pack src/{packable}/{packable}.fsproj -o {outDir}"
   }
 
   let zip = Step.create "Zip binaries" {
@@ -175,6 +173,7 @@ module Steps =
 
   let pushNugets = Step.create "nuget" {
     let! apiKey = NugetApiKey
+
     for nuget in GatherNupkgs() do
       do! Operations.nugetPush(nuget, apiKey)
   }
