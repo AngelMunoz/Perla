@@ -470,37 +470,60 @@ module ProxyService =
         | Some x -> request.Headers.Host <- x
         | None -> ()
 
+        // Check if request is multipart/form-data by examining Content-Type header
+        let isMultipartFormData =
+          ctx.request.headers?("Content-Type")
+          |> Option.map(fun contentType ->
+            contentType.StartsWith(
+              "multipart/form-data",
+              StringComparison.InvariantCultureIgnoreCase
+            ))
+          |> Option.defaultValue false
+
         // Prepare content if needed
         let hasBody =
           [ HttpMethod.POST; HttpMethod.PUT; HttpMethod.PATCH ]
           |> Seq.contains ctx.request.method
 
         if hasBody then
-          request.Content <- new ByteArrayContent(ctx.request.rawForm)
+          if isMultipartFormData then
+            use multipartContent = new MultipartFormDataContent()
 
-        // Set Content-Type on content headers if present
+            // Add regular form fields first
+            for key, valueOpt in ctx.request.form do
+              match valueOpt with
+              | Some value ->
+                let stringContent = new System.Net.Http.StringContent(value)
+                multipartContent.Add(stringContent, key)
+              | None -> () // Skip fields with no value
+
+            // Add each file to the multipart content
+            for file in ctx.request.files do
+              let fileContent =
+                new StreamContent(File.OpenRead file.tempFilePath)
+
+              fileContent.Headers.ContentType <-
+                Headers.MediaTypeHeaderValue.Parse file.mimeType
+
+              if String.IsNullOrWhiteSpace file.fileName then
+                multipartContent.Add(fileContent, file.fieldName)
+              else
+                multipartContent.Add(fileContent, file.fieldName, file.fileName)
+
+            request.Content <- multipartContent
+          else
+            request.Content <- new ByteArrayContent(ctx.request.rawForm)
+
         match ctx.request.headers?("Content-Type"), request.Content with
-        | Some x, NonNull c ->
-          c.Headers.ContentType <-
-            System.Net.Http.Headers.MediaTypeHeaderValue.Parse(x)
+        | Some x, NonNull c when not isMultipartFormData ->
+          c.Headers.ContentType <- Headers.MediaTypeHeaderValue.Parse(x)
         | _ -> ()
 
-        // Only add Content-Length if not chunked and content exists
-        if not isChunkedRequest then
-          match ctx.request.headers?("Content-Length"), request.Content with
-          | Some x, NonNull c ->
-            match Parse.int64 x with
-            | Choice1Of2 v -> c.Headers.ContentLength <- Nullable v
-            | _ -> ()
-          | _ -> ()
-
-        // Forward Transfer-Encoding header if present
         match ctx.request.headers?("Transfer-Encoding") with
         | Some x ->
           request.Headers.TransferEncodingChunked <- x.Contains("chunked")
         | None -> ()
 
-        // Forward additional headers that might be important for chunked responses
         match ctx.request.headers?("Connection") with
         | Some x -> request.Headers.Connection.ParseAdd x
         | None -> ()
