@@ -194,18 +194,60 @@ if [ ! -d "$extraction_dir_path" ]; then
     mkdir -p "$extraction_dir_path"
 fi
 
-log_info "Extracting $zip_file_path to $extraction_dir_path..."
-if unzip -qo "$zip_file_path" -d "$extraction_dir_path"; then # -q for quiet, -o for overwrite
-    log_info "Successfully extracted to $extraction_dir_path"
+temp_suffix=$(date +%s)-$RANDOM
+temp_extraction_dir_path="${effective_install_dir}/${EXTRACTION_SUBDIR}.tmp.${temp_suffix}"
+mkdir -p "$temp_extraction_dir_path"
+
+log_info "Extracting $zip_file_path to $temp_extraction_dir_path..."
+if unzip -qo "$zip_file_path" -d "$temp_extraction_dir_path"; then # -q for quiet, -o for overwrite
+    log_info "Successfully extracted to $temp_extraction_dir_path"
 else
     log_error "Failed to extract $zip_file_path."
-    # Attempt to clean up partial extraction or zip file
     rm -f "$zip_file_path"
-    # Consider removing extraction_dir_path if it was created by this script and is empty
+    rm -rf "$temp_extraction_dir_path"
     exit 1
 fi
 
-rm "$zip_file_path"
+# Atomically swap directories to avoid stale files
+backup_dir_path="${extraction_dir_path}.bak.$(date +%s)"
+if [ -d "$extraction_dir_path" ]; then
+    if mv "$extraction_dir_path" "$backup_dir_path" 2>/dev/null; then
+        log_info "Moved existing install to backup: $backup_dir_path"
+    else
+        log_error "Failed to move existing install. Attempting to remove it. Is Perla running?"
+        if rm -rf "$extraction_dir_path"; then
+            log_info "Removed existing install directory."
+        else
+            log_error "Failed to remove existing install directory. Aborting."
+            rm -rf "$temp_extraction_dir_path"
+            rm -f "$zip_file_path"
+            exit 1
+        fi
+    fi
+fi
+
+if mv "$temp_extraction_dir_path" "$extraction_dir_path"; then
+    log_info "Installed new version into: $extraction_dir_path"
+    # Cleanup backup
+    if [ -d "$backup_dir_path" ]; then
+        if rm -rf "$backup_dir_path"; then
+            log_info "Removed backup directory: $backup_dir_path"
+        else
+            log_info "Could not remove backup directory: $backup_dir_path. You may remove it manually."
+        fi
+    fi
+else
+    log_error "Failed to move new install into place."
+    # Try to restore backup
+    if [ -d "$backup_dir_path" ]; then
+        mv "$backup_dir_path" "$extraction_dir_path" 2>/dev/null || true
+    fi
+    rm -rf "$temp_extraction_dir_path"
+    rm -f "$zip_file_path"
+    exit 1
+fi
+
+rm -f "$zip_file_path"
 log_info "Removed $zip_file_path"
 
 # --- Create Proxy/Shim Script ---
@@ -281,16 +323,15 @@ if [ "$ADD_TO_PROFILE" = true ]; then
         fi
 
         if [ -f "$profile_file" ]; then
-            # Check if the directory is already in a line that modifies PATH
-            # This grep is a basic check; more sophisticated checks might be needed for complex PATH setups
-            if grep -q "export PATH=.*${path_to_add}" "$profile_file" && grep -q "export MIGRONDI_HOME=.*${path_to_add}" "$profile_file"; then
-                log_info "'$path_to_add' appears to be already configured in the PATH and MIGRONDI_HOME is set in $profile_file."
+            # Check if PATH already contains the target or PERLA_HOME is already set
+            if grep -q "PERLA_HOME=.*${path_to_add}" "$profile_file" || grep -q "PATH=.*${path_to_add}" "$profile_file"; then
+                log_info "'$path_to_add' appears to be already configured in $profile_file. Skipping profile update."
             else
-                comment="# Added by migrondi_install.sh to include Perla CLI"
-                migrondi_home_command="export MIGRONDI_HOME=\"${path_to_add}\""
-                path_add_command="export PATH=\"${path_to_add}:\$PATH\"" # Original PATH modification
-                # If you want to use the MIGRONDI_HOME in PATH:
-                # path_add_command="export PATH=\"$MIGRONDI_HOME:\$PATH\""
+                comment="# Added by perla_install.sh to include Perla CLI"
+                perla_home_command="export PERLA_HOME=\"${path_to_add}\""
+                path_add_command="export PATH=\"\$PERLA_HOME:\$PATH\"" # Use PERLA_HOME in PATH
+                # If you want to use the PERLA_HOME in PATH:
+                # path_add_command="export PATH=\"$PERLA_HOME:\$PATH\""
 
                 # Add a newline before the comment if the file is not empty and doesn't end with a newline
                 if [ -s "$profile_file" ] && [ "$(tail -c1 "$profile_file"; echo x)" != $'\nx' ]; then
@@ -299,9 +340,9 @@ if [ "$ADD_TO_PROFILE" = true ]; then
 
                 echo "" >> "$profile_file" # Ensure separation
                 echo "$comment" >> "$profile_file"
-                echo "$migrondi_home_command" >> "$profile_file"
+                echo "$perla_home_command" >> "$profile_file"
                 echo "$path_add_command" >> "$profile_file"
-                log_info "Successfully added '$path_to_add' to PATH and set MIGRONDI_HOME in $profile_file."
+                log_info "Successfully added '$path_to_add' to PATH and set PERLA_HOME in $profile_file."
                 log_info "Please restart your shell session or run 'source $profile_file' to apply the changes."
             fi
         fi
