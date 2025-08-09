@@ -325,6 +325,7 @@ module ProxyService =
     let private httpWebResponseToHttpContext
       (ctx: HttpContext)
       (response: HttpResponseMessage)
+      token
       =
       let status =
         match HttpCode.tryParse(int response.StatusCode) with
@@ -344,53 +345,49 @@ module ProxyService =
            && response.Headers.GetValues("Transfer-Encoding")
               |> Seq.exists(fun v -> v.Contains("chunked"))
 
-      let writeHeaders(conn: Connection) : SocketOp<_> =
-        asyncResult {
-          // Write all response headers
-          for key, value in headers do
-            // Skip Content-Length for chunked responses
-            if
-              not(
-                isChunked
-                && String.Equals(
-                  key,
-                  "Content-Length",
-                  StringComparison.InvariantCultureIgnoreCase
-                )
+      let writeHeaders(conn: Connection) = asyncResult {
+        // Write all response headers
+        for key, value in headers do
+          // Skip Content-Length for chunked responses
+          if
+            not(
+              isChunked
+              && String.Equals(
+                key,
+                "Content-Length",
+                StringComparison.InvariantCultureIgnoreCase
               )
-            then
-              do! conn.asyncWriteLn(sprintf "%s: %s" key value)
-              ()
-            else
-              ()
-          // Write content headers if they exist
-          for KeyValue(key, value) in response.Content.Headers do
-            // Skip Content-Length for chunked responses
-            if
-              not(
-                isChunked
-                && String.Equals(
-                  key,
-                  "Content-Length",
-                  StringComparison.InvariantCultureIgnoreCase
-                )
+            )
+          then
+            do! conn.asyncWriteLn(sprintf "%s: %s" key value)
+            ()
+          else
+            ()
+        // Write content headers if they exist
+        for KeyValue(key, value) in response.Content.Headers do
+          // Skip Content-Length for chunked responses
+          if
+            not(
+              isChunked
+              && String.Equals(
+                key,
+                "Content-Length",
+                StringComparison.InvariantCultureIgnoreCase
               )
-            then
-              do!
-                conn.asyncWriteLn(
-                  sprintf "%s: %s" key (String.concat ";" value)
-                )
+            )
+          then
+            do!
+              conn.asyncWriteLn(sprintf "%s: %s" key (String.concat ";" value))
 
-              ()
-            else
-              ()
+            ()
+          else
+            ()
 
-          // Write empty line to end headers
-          do! conn.asyncWriteLn ""
-          do! conn.flush()
-          return ()
-        }
-        |> Async.StartAsTask
+        // Write empty line to end headers
+        do! conn.asyncWriteLn ""
+        do! conn.flush()
+        return ()
+      }
 
       {
         ctx with
@@ -399,15 +396,41 @@ module ProxyService =
                   status = status
                   headers = headers
                   content =
-                    SocketTask(fun (conn, _) -> taskResult {
-                      do! writeHeaders conn
-                      use! stream = response.Content.ReadAsStreamAsync()
+                    SocketTask(fun (conn, res) -> taskResult {
+                      try
+                        do!
+                          Async.StartAsTask(
+                            writeHeaders conn,
+                            cancellationToken = token
+                          )
+                      with
+                      | :? Sockets.SocketException
+                      | :? IOException
+                      | :? OperationCanceledException -> return ()
 
-                      if isChunked then
-                        // For chunked responses, transfer the stream directly
-                        do! transferStreamChunked conn stream
+                      if
+                        ctx.request.rawMethod.Equals(
+                          "HEAD",
+                          StringComparison.OrdinalIgnoreCase
+                        )
+                      then
+                        return ()
                       else
-                        do! transferStream conn stream
+                        use! stream =
+                          response.Content.ReadAsStreamAsync(
+                            cancellationToken = token
+                          )
+
+                        try
+                          if isChunked then
+                            // For chunked responses, transfer the stream directly
+                            do! transferStreamChunked conn stream
+                          else
+                            do! transferStream conn stream
+                        with
+                        | :? Sockets.SocketException
+                        | :? IOException
+                        | :? OperationCanceledException -> return ()
                     })
             }
       }
@@ -533,11 +556,17 @@ module ProxyService =
         | None -> ()
 
         request.Headers.Add("X-Forwarded-For", ctx.request.host)
+        let! token = Async.CancellationToken
 
         try
-          let! response = client.SendAsync request
+          let! response =
+            client.SendAsync(
+              request,
+              HttpCompletionOption.ResponseHeadersRead,
+              token
+            )
 
-          return httpWebResponseToHttpContext ctx response |> Some
+          return httpWebResponseToHttpContext ctx response token |> Some
         with exn ->
           return!
             (OK $"Unable to proxy the request: {exn.Message}"
