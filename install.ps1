@@ -96,16 +96,57 @@ try {
     Invoke-WebRequest -Uri $downloadUrl -OutFile $ZipFilePath -ErrorAction Stop
     Write-Host "Successfully downloaded to $ZipFilePath"
 
-    # $extractPath = Join-Path -Path $PSScriptRoot -ChildPath "perla" # Old logic
-    if (-not (Test-Path $ExtractionDirPath)) {
-        New-Item -ItemType Directory -Path $ExtractionDirPath | Out-Null
+    # Extract to a temporary directory first to avoid stale files on update
+    $TempSuffix = [System.IO.Path]::GetRandomFileName()
+    $TempExtractionDirPath = Join-Path -Path $EffectiveDownloadDir -ChildPath (${ExtractionDirName} + ".tmp.$TempSuffix")
+    New-Item -ItemType Directory -Path $TempExtractionDirPath -Force | Out-Null
+
+    Write-Host "Extracting $ZipFilePath to $TempExtractionDirPath..."
+    Expand-Archive -Path $ZipFilePath -DestinationPath $TempExtractionDirPath -Force -ErrorAction Stop
+    Write-Host "Successfully extracted to $TempExtractionDirPath"
+
+    # Swap directories atomically where possible
+    $BackupDirPath = "$ExtractionDirPath.bak.$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
+    if (Test-Path $ExtractionDirPath) {
+        try {
+            Write-Host "Renaming existing install '$ExtractionDirPath' to '$BackupDirPath'..."
+            Move-Item -Path $ExtractionDirPath -Destination $BackupDirPath -Force -ErrorAction Stop
+        } catch {
+            Write-Warning "Failed to rename existing install. Attempting to remove it instead: $_"
+            try {
+                Remove-Item -Path $ExtractionDirPath -Recurse -Force -ErrorAction Stop
+            } catch {
+                Write-Error "Failed to remove existing install directory. Is Perla running? Please close it and try again. Error: $_"
+                # Cleanup temp and zip before exiting
+                if (Test-Path $TempExtractionDirPath) { Remove-Item -Path $TempExtractionDirPath -Recurse -Force -ErrorAction SilentlyContinue }
+                if (Test-Path $ZipFilePath) { Remove-Item -Path $ZipFilePath -Force -ErrorAction SilentlyContinue }
+                exit 1
+            }
+        }
     }
 
-    Write-Host "Extracting $ZipFilePath to $ExtractionDirPath..."
-    Expand-Archive -Path $ZipFilePath -DestinationPath $ExtractionDirPath -Force -ErrorAction Stop
-    Write-Host "Successfully extracted to $ExtractionDirPath"
+    try {
+        Write-Host "Moving new install from '$TempExtractionDirPath' to '$ExtractionDirPath'..."
+        Move-Item -Path $TempExtractionDirPath -Destination $ExtractionDirPath -Force -ErrorAction Stop
+    } catch {
+        Write-Error "Failed to place new install into target directory: $_"
+        # Try to restore backup if it exists
+        if (Test-Path $BackupDirPath) {
+            Write-Warning "Attempting to restore previous install from backup..."
+            try { Move-Item -Path $BackupDirPath -Destination $ExtractionDirPath -Force -ErrorAction Stop } catch { Write-Warning "Restore failed: $_" }
+        }
+        if (Test-Path $TempExtractionDirPath) { Remove-Item -Path $TempExtractionDirPath -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $ZipFilePath) { Remove-Item -Path $ZipFilePath -Force -ErrorAction SilentlyContinue }
+        exit 1
+    }
 
-    Remove-Item -Path $ZipFilePath
+    # Best-effort: remove backup now that new install is in place
+    if (Test-Path $BackupDirPath) {
+        try { Remove-Item -Path $BackupDirPath -Recurse -Force -ErrorAction Stop } catch { Write-Warning "Could not remove backup '$BackupDirPath': $_" }
+    }
+
+    # Cleanup zip
+    if (Test-Path $ZipFilePath) { Remove-Item -Path $ZipFilePath -Force -ErrorAction SilentlyContinue }
     Write-Host "Removed $ZipFilePath"
 
     # Create proxy script
@@ -176,12 +217,12 @@ param(
                     Write-Host "'$PathStringForProfileFile' appears to be already configured in the PATH in $PROFILE."
                 } else {
                     $PathSeparator = [System.IO.Path]::PathSeparator
-                    $Comment = "# Added by migrondi_install.ps1 to include Perla CLI"
-                    $MigrondiHomeEnvVarCommand = "`$env:MIGRONDI_HOME = '$PathStringForProfileFile'"
-                    $PathAddCommand = "`$env:PATH += '$PathSeparator`$env:MIGRONDI_HOME'" # Use MIGRONDI_HOME var
+                    $Comment = "# Added by perla_install.ps1 to include Perla CLI"
+                    $MigrondiHomeEnvVarCommand = "`$env:PERLA_HOME = '$PathStringForProfileFile'"
+                    $PathAddCommand = "`$env:PATH += '$PathSeparator`$env:PERLA_HOME'" # Use PERLA_HOME var
 
                     $FinalCommandToAdd = ""
-                    # Add MIGRONDI_HOME first, then modify PATH
+                    # Add PERLA_HOME first, then modify PATH
                     $BaseContentToAdd = "`n$Comment`n$MigrondiHomeEnvVarCommand`n$PathAddCommand"
 
                     if (-not [string]::IsNullOrEmpty($ProfileContent) -and $ProfileContent[-1] -ne "`n" -and $ProfileContent[-1] -ne "`r") {
