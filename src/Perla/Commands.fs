@@ -499,13 +499,14 @@ module Commands =
       Handlers.runRemovePackage container options ctx.CancellationToken
 
     command "remove" {
+      addAlias "rm"
       description "Removes a package from the project dependencies"
 
       inputs(context, PackageInputs.packages)
       setAction handleCommand
     }
 
-  let Install(container: AppContainer) =
+  let Restore(container: AppContainer) =
     let handleCommand
       (
         ctx: ActionContext,
@@ -514,10 +515,11 @@ module Commands =
       ) =
       let options = { offline = offline; source = source }
 
-      Handlers.runInstall container options ctx.CancellationToken
+      Handlers.runRestore container options ctx.CancellationToken
 
-    command "install" {
-      description "Installs the project dependencies from the perla.json file"
+    command "restore" {
+      addAlias "r"
+      description "Restores the project dependencies from the perla.json file"
       inputs(context, PackageInputs.offline, SharedInputs.source)
       setAction handleCommand
     }
@@ -530,6 +532,7 @@ module Commands =
       Handlers.runAddPackage container options ctx.CancellationToken
 
     command "add" {
+      addAliases [ "install"; "i"; "a" ]
       description "Adds a package to the project dependencies"
 
       inputs(context, PackageInputs.packages)
@@ -661,8 +664,6 @@ module Commands =
       }
 
     let template = command "templates" {
-      addAlias "t"
-
       description
         "Handles Template Repository operations such as list, add, update, and remove templates"
 
@@ -859,6 +860,7 @@ module Commands =
       }
 
     let cmd = command "test" {
+      addAlias "t"
       description "Runs client side tests in a headless browser"
 
       inputs(

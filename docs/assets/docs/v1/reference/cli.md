@@ -47,11 +47,11 @@ Removes a package from the project dependencies.
 
 - `packages`: One or more package names to remove (required)
 
-### Install - `perla install`
+### Restore - `perla restore`
 
-Installs the project dependencies from the perla.json file.
+Restores the project dependencies from the perla.json file.
 
-- `-o`, `--offline`: Install packages without network access
+- `-o`, `--offline`: Restore packages without network access
 - `-s`, `--source <provider>`: The source to download packages from (jspm.io, unpkg, jsdelivr)
 
 ### List - `perla list`

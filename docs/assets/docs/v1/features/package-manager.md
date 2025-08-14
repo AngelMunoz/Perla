@@ -112,12 +112,12 @@ When removing a package, Perla will:
 
 Note that when using `useLocalPkgs: true`, Perla will regenerate the import map with the remaining packages to ensure consistency between your `perla.json` and the local `node_modules` directory.
 
-## Install Packages
+## Restore Packages
 
-To install or reinstall all dependencies listed in your `perla.json` file, run:
+To restore or reinstall all dependencies listed in your `perla.json` file, run:
 
 ```bash
-perla install
+perla restore
 ```
 
 This command will:
@@ -126,18 +126,18 @@ This command will:
 2. Generate an import map for all dependencies
 3. If `useLocalPkgs` is `true`, download all package files and create a local `node_modules` structure
 
-### Installation Options
+### Restore Options
 
-You can modify the installation behavior with these flags however, to make them permanent you have to update the perla.json configuration file:
+You can modify the restore behavior with these flags however, to make them permanent you have to update the perla.json configuration file:
 
 ```bash
-# Change the provider for this installation
-perla install --source jspm     # Use JSPM (default)
-perla install --source unpkg    # Use Unpkg
-perla install --source jsdelivr # Use JsDelivr
+# Change the provider for this restore
+perla restore --source jspm     # Use JSPM (default)
+perla restore --source unpkg    # Use Unpkg
+perla restore --source jsdelivr # Use JsDelivr
 
 # Control offline mode
-perla install --offline         # Enable local packages mode
+perla restore --offline         # Enable local packages mode
 ```
 
 These options can also be configured in your `perla.json` file:

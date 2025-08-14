@@ -304,11 +304,10 @@ module PkgManager =
           | CreatingFlatSymlink -> "flat symlink creation"
 
         logger.LogError(
-          err.Error,
           "[Error] Failed during {operation} for package: {package}\n{error}",
           opStr,
           err.Package,
-          err.Error.Message
+          err.Error
         )
 
       return ()
