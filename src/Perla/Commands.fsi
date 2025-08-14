@@ -10,7 +10,9 @@ open Perla.Types
 
 [<Class; Sealed>]
 type PerlaOptions =
-  static member PackageSource: ActionInput<Perla.PkgManager.DownloadProvider voption>
+  static member PackageSource:
+    ActionInput<Perla.PkgManager.DownloadProvider voption>
+
   static member Browsers: ActionInput<Browser Set>
   static member DisplayMode: ActionInput<ListFormat>
 
@@ -77,7 +79,7 @@ module Commands =
   val Build: container: AppContainer -> Command
   val Serve: container: AppContainer -> Command
   val RemovePackage: container: AppContainer -> Command
-  val Install: container: AppContainer -> Command
+  val Restore: container: AppContainer -> Command
   val AddPackage: container: AppContainer -> Command
   val ListPackages: container: AppContainer -> Command
   val Template: container: AppContainer -> Command

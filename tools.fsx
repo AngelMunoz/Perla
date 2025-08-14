@@ -14,7 +14,7 @@ let runtimes = [|
   "win-arm64"
 |]
 
-let projects = [ "Perla" ]
+let tools = [ "Perla" ]
 
 let libraries = [
   "Perla.PkgManager"
@@ -25,9 +25,6 @@ let libraries = [
 ]
 
 let NugetApiKey = EnvVar.getOrFail "NUGET_DEPLOY_KEY"
-
-[<Literal>]
-let PackageVersion = "1.0.0-rc-001"
 
 let fsSources =
   Glob.create "*.fsx"
@@ -41,6 +38,9 @@ let fsSources =
     |> Glob.exclude "**/obj/**/*.fs"
     |> Glob.toPaths
   )
+
+let GatherNupkgs() =
+  Glob.createWithRootDir "dist" "**/*.nupkg" |> Glob.toPaths
 
 let outDir = Path.GetFullPath("./dist")
 
@@ -92,9 +92,9 @@ module Operations =
 
   let buildBinaries (project: string) (runtime: string) =
     let cmd =
-      let framework = "net9.0"
+      let framework = "net10.0"
       let outdir = $"{outDir}/{runtime}"
-      $"publish {project} -c Release -f {framework} -r {runtime} --self-contained -p:Version={PackageVersion} -o {outdir}"
+      $"publish {project} -c Release -f {framework} -r {runtime} --self-contained -o {outdir}"
 
     dotnet cmd
 
@@ -111,10 +111,8 @@ module Steps =
     let! ctx = Step.context
     Console.info "Generating NuGet Package" |> ctx.Console.WriteLine
 
-    for packable in projects @ libraries do
-      do!
-        Operations.dotnet
-          $"pack src/{packable}/{packable}.fsproj -p:Version={PackageVersion} -o {outDir}"
+    for packable in tools @ libraries do
+      do! Operations.dotnet $"pack src/{packable}/{packable}.fsproj -o {outDir}"
   }
 
   let zip = Step.create "Zip binaries" {
@@ -140,7 +138,7 @@ module Steps =
     for runtime in runtimes do
       Console.info $"Starting [{runtime}]" |> ctx.Console.WriteLine
 
-      for project in projects do
+      for project in tools do
         do! Operations.buildBinaries $"src/{project}/{project}.fsproj" runtime
   }
 
@@ -151,7 +149,7 @@ module Steps =
     | Some runtime ->
       Console.info $"Starting [{runtime}]" |> ctx.Console.WriteLine
 
-      for project in projects do
+      for project in tools do
         do! Operations.buildBinaries $"src/{project}/{project}.fsproj" runtime
     | None ->
       [
@@ -175,17 +173,9 @@ module Steps =
 
   let pushNugets = Step.create "nuget" {
     let! apiKey = NugetApiKey
-    let! ctx = Step.context
 
-    for library in projects @ libraries do
-      let nupkName = $"./dist/{library}.{PackageVersion}.nupkg"
-
-      if nupkName = $"./dist/Perla.{PackageVersion}.nupkg" then
-        Console.warn
-          $"Not pushing {nupkName} as we're working on a solution for the dotnet tool"
-        |> ctx.Console.WriteLine
-      else
-        do! Operations.nugetPush(nupkName, apiKey)
+    for nuget in GatherNupkgs() do
+      do! Operations.nugetPush(nuget, apiKey)
   }
 
 module Pipelines =

@@ -14,6 +14,7 @@ open AngleSharp.Html.Parser
 open FSharp.Control
 open FSharp.Data.Adaptive
 open IcedTasks
+open FsToolkit.ErrorHandling
 
 open System.Collections.Generic
 open Perla
@@ -322,9 +323,117 @@ module ProxyService =
         String.Equals(k, name, StringComparison.InvariantCultureIgnoreCase))
       |> Option.map snd
 
+    let writeHeaders
+      (headers: (string * string) list)
+      (response: HttpResponseMessage)
+      (conn: Connection)
+      =
+      cancellableTaskResult {
+        for key, value in headers do
+          do! conn.asyncWriteLn(sprintf "%s: %s" key value)
+
+        // Write content headers
+        for KeyValue(key, value) in response.Content.Headers do
+          do! conn.asyncWriteLn(sprintf "%s: %s" key (String.concat ";" value))
+
+        do! conn.asyncWriteLn ""
+        do! conn.flush()
+        return ()
+      }
+
+    let transferChunkedPipe (conn: Connection) (src: Stream) = cancellableTaskResult {
+      let pipe = conn.pipe
+
+      let producer = cancellableTaskResult {
+        let! token = CancellableTaskResult.getCancellationToken()
+
+        use writerStr = pipe.Writer.AsStream()
+        do! src.CopyToAsync(writerStr, 81920, token)
+
+        do! pipe.Writer.CompleteAsync()
+        return ()
+      }
+
+      let consumer = cancellableTaskResult {
+        let! token = CancellableTaskResult.getCancellationToken()
+
+        let mutable keepReading = true
+
+        while keepReading do
+          let! readResult = pipe.Reader.ReadAsync token
+
+
+          if readResult.Buffer.Length > 0 then
+
+            let bufferBytes = [|
+              for byte in readResult.Buffer -> byte.ToArray()
+            |]
+
+            for buffer in bufferBytes do
+              if buffer.Length > 0 then
+                do! conn.writeChunk buffer
+
+          pipe.Reader.AdvanceTo readResult.Buffer.End
+
+          if readResult.IsCompleted then
+            keepReading <- false
+
+        do! pipe.Reader.CompleteAsync()
+        return ()
+      }
+
+      let! _ = CancellableTaskResult.parallelZip producer consumer
+
+      do! conn.asyncWrite "0\r\n\r\n"
+      do! conn.flush()
+      return ()
+    }
+
+    let transferPlainPipe (conn: Connection) (src: Stream) = cancellableTaskResult {
+      let pipe = conn.pipe
+
+      let producer = cancellableTaskResult {
+        let! token = CancellableTaskResult.getCancellationToken()
+
+        let writerStr = pipe.Writer.AsStream()
+
+        do! src.CopyToAsync(writerStr, 4092, token)
+        do! pipe.Writer.CompleteAsync()
+        return ()
+      }
+
+      let consumer = cancellableTaskResult {
+        let! token = CancellableTaskResult.getCancellationToken()
+        let mutable keepReading = true
+
+        while keepReading do
+          let! readResult = pipe.Reader.ReadAsync token
+
+          if readResult.Buffer.Length > 0 then
+            do!
+              conn.asyncWriteBufferedArrayBytes [|
+                for segment in readResult.Buffer -> segment.ToArray()
+              |]
+
+          pipe.Reader.AdvanceTo readResult.Buffer.End
+
+          if readResult.IsCompleted then
+            keepReading <- false
+
+        do! pipe.Reader.CompleteAsync()
+        return ()
+      }
+
+      let! _ = CancellableTaskResult.parallelZip producer consumer
+
+      do! conn.flush()
+      return ()
+    }
+
     let private httpWebResponseToHttpContext
       (ctx: HttpContext)
       (response: HttpResponseMessage)
+      token
       =
       let status =
         match HttpCode.tryParse(int response.StatusCode) with
@@ -336,61 +445,15 @@ module ProxyService =
         |> Seq.map(fun (KeyValue(k, v)) -> k, v |> String.concat ";")
         |> Seq.toList
 
-      // Check if response is chunked
       let isChunked =
-        response.Headers.TransferEncodingChunked.HasValue
-        && response.Headers.TransferEncodingChunked.Value
-        || response.Headers.Contains("Transfer-Encoding")
-           && response.Headers.GetValues("Transfer-Encoding")
-              |> Seq.exists(fun v -> v.Contains("chunked"))
-
-      let writeHeaders(conn: Connection) : SocketOp<_> =
-        asyncResult {
-          // Write all response headers
-          for key, value in headers do
-            // Skip Content-Length for chunked responses
-            if
-              not(
-                isChunked
-                && String.Equals(
-                  key,
-                  "Content-Length",
-                  StringComparison.InvariantCultureIgnoreCase
-                )
-              )
-            then
-              do! conn.asyncWriteLn(sprintf "%s: %s" key value)
-              ()
-            else
-              ()
-          // Write content headers if they exist
-          for KeyValue(key, value) in response.Content.Headers do
-            // Skip Content-Length for chunked responses
-            if
-              not(
-                isChunked
-                && String.Equals(
-                  key,
-                  "Content-Length",
-                  StringComparison.InvariantCultureIgnoreCase
-                )
-              )
-            then
-              do!
-                conn.asyncWriteLn(
-                  sprintf "%s: %s" key (String.concat ";" value)
-                )
-
-              ()
-            else
-              ()
-
-          // Write empty line to end headers
-          do! conn.asyncWriteLn ""
-          do! conn.flush()
-          return ()
-        }
-        |> Async.StartAsTask
+        headers
+        |> List.exists(fun (key, value) ->
+          String.Equals(
+            key,
+            "Transfer-Encoding",
+            StringComparison.InvariantCultureIgnoreCase
+          )
+          && value.Contains("chunked", StringComparison.OrdinalIgnoreCase))
 
       {
         ctx with
@@ -400,14 +463,25 @@ module ProxyService =
                   headers = headers
                   content =
                     SocketTask(fun (conn, _) -> taskResult {
-                      do! writeHeaders conn
-                      use! stream = response.Content.ReadAsStreamAsync()
+                      do! writeHeaders headers response conn token
 
-                      if isChunked then
-                        // For chunked responses, transfer the stream directly
-                        do! transferStreamChunked conn stream
+                      if
+                        ctx.request.rawMethod.Equals(
+                          "HEAD",
+                          StringComparison.OrdinalIgnoreCase
+                        )
+                      then
+                        return ()
                       else
-                        do! transferStream conn stream
+                        use! stream =
+                          response.Content.ReadAsStreamAsync(
+                            cancellationToken = token
+                          )
+
+                        if isChunked then
+                          do! transferChunkedPipe conn stream token
+                        else
+                          do! transferPlainPipe conn stream token
                     })
             }
       }
@@ -431,25 +505,10 @@ module ProxyService =
               ctx.request.path
               ctx.request.rawQuery
 
-        // Configure client to not buffer responses for proper chunked handling
-        // Enable automatic decompression while preserving chunked responses
         let client = client.Value
         use request = new HttpRequestMessage()
         request.RequestUri <- Uri remappedAddress
-        request.Method <- HttpMethod(ctx.request.rawMethod)
-
-        // Check if request is chunked
-        let isChunkedRequest =
-          ctx.request.headers
-          |> List.tryFind(fun (key, _) ->
-            String.Equals(
-              key,
-              "Transfer-Encoding",
-              StringComparison.InvariantCultureIgnoreCase
-            ))
-          |> Option.map snd
-          |> Option.map(fun v -> v.Contains("chunked"))
-          |> Option.defaultValue false
+        request.Method <- HttpMethod ctx.request.rawMethod
 
         match ctx.request.headers?("User-Agent") with
         | Some x -> request.Headers.UserAgent.ParseAdd x
@@ -470,37 +529,56 @@ module ProxyService =
         | Some x -> request.Headers.Host <- x
         | None -> ()
 
-        // Prepare content if needed
+        let isMultipartFormData =
+          ctx.request.headers?("Content-Type")
+          |> Option.map(fun contentType ->
+            contentType.StartsWith(
+              "multipart/form-data",
+              StringComparison.InvariantCultureIgnoreCase
+            ))
+          |> Option.defaultValue false
+
         let hasBody =
           [ HttpMethod.POST; HttpMethod.PUT; HttpMethod.PATCH ]
           |> Seq.contains ctx.request.method
 
         if hasBody then
-          request.Content <- new ByteArrayContent(ctx.request.rawForm)
+          if isMultipartFormData then
+            use multipartContent = new MultipartFormDataContent()
 
-        // Set Content-Type on content headers if present
+            for key, valueOpt in ctx.request.form do
+              match valueOpt with
+              | Some value ->
+                let stringContent = new System.Net.Http.StringContent(value)
+                multipartContent.Add(stringContent, key)
+              | None -> () // Skip fields with no value
+
+            for file in ctx.request.files do
+              let fileContent =
+                new StreamContent(File.OpenRead file.tempFilePath)
+
+              fileContent.Headers.ContentType <-
+                Headers.MediaTypeHeaderValue.Parse file.mimeType
+
+              if String.IsNullOrWhiteSpace file.fileName then
+                multipartContent.Add(fileContent, file.fieldName)
+              else
+                multipartContent.Add(fileContent, file.fieldName, file.fileName)
+
+            request.Content <- multipartContent
+          else
+            request.Content <- new ByteArrayContent(ctx.request.rawForm)
+
         match ctx.request.headers?("Content-Type"), request.Content with
-        | Some x, NonNull c ->
-          c.Headers.ContentType <-
-            System.Net.Http.Headers.MediaTypeHeaderValue.Parse(x)
+        | Some x, NonNull c when not isMultipartFormData ->
+          c.Headers.ContentType <- Headers.MediaTypeHeaderValue.Parse(x)
         | _ -> ()
 
-        // Only add Content-Length if not chunked and content exists
-        if not isChunkedRequest then
-          match ctx.request.headers?("Content-Length"), request.Content with
-          | Some x, NonNull c ->
-            match Parse.int64 x with
-            | Choice1Of2 v -> c.Headers.ContentLength <- Nullable v
-            | _ -> ()
-          | _ -> ()
-
-        // Forward Transfer-Encoding header if present
         match ctx.request.headers?("Transfer-Encoding") with
         | Some x ->
           request.Headers.TransferEncodingChunked <- x.Contains("chunked")
         | None -> ()
 
-        // Forward additional headers that might be important for chunked responses
         match ctx.request.headers?("Connection") with
         | Some x -> request.Headers.Connection.ParseAdd x
         | None -> ()
@@ -511,10 +589,32 @@ module ProxyService =
 
         request.Headers.Add("X-Forwarded-For", ctx.request.host)
 
-        try
-          let! response = client.SendAsync request
+        for key, value in ctx.request.headers do
+          if
+            key = "Host"
+            || key = "User-Agent"
+            || key = "Accept"
+            || key = "Date"
+            || key = "Content-Type"
+            || key = "Transfer-Encoding"
+            || key = "Connection"
+            || key = "Keep-Alive"
+          then
+            ()
+          else
+            request.Headers.TryAddWithoutValidation(key, value) |> ignore
 
-          return httpWebResponseToHttpContext ctx response |> Some
+        let! token = Async.CancellationToken
+
+        try
+          let! response =
+            client.SendAsync(
+              request,
+              HttpCompletionOption.ResponseHeadersRead,
+              token
+            )
+
+          return httpWebResponseToHttpContext ctx response token |> Some
         with exn ->
           return!
             (OK $"Unable to proxy the request: {exn.Message}"

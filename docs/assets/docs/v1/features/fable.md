@@ -138,7 +138,7 @@ Your HTML file should look along these lines
 
 5. Install your dependencies. Example:
 
-   - `dotnet perla add react react-dom react-dom/client`
+   - `perla add react react-dom react-dom/client`
 
    To identify which dependencies are the ones you actually need, they are usually in the `dependencies` object inside your `package.json`
 

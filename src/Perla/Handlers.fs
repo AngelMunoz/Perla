@@ -1366,7 +1366,7 @@ module Handlers =
 
   }
 
-  let runInstall (container: AppContainer) (options: InstallOptions) = cancellableTask {
+  let runRestore (container: AppContainer) (options: InstallOptions) = cancellableTask {
     let! token = CancellableTask.getCancellationToken()
     let config = container.Configuration.PerlaConfig
     let logger = container.Logger

@@ -84,7 +84,7 @@ module Handlers =
   val runTesting:
     container: AppContainer -> options: TestingOptions -> CancellableTask<int>
 
-  val runInstall:
+  val runRestore:
     container: AppContainer -> options: InstallOptions -> CancellableTask<int>
 
   val runAddPackage:

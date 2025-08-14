@@ -285,7 +285,7 @@ type SpectreSink() =
 
       try
         AnsiConsole.MarkupLine
-          $"[[[grey]{timestamp}[/] [{levelColor}]{levelString}[/] {prefix}]]  {message}"
+          $"[[[grey]{timestamp}[/] [{levelColor}]{levelString}[/] {prefix}]]  {message.EscapeMarkup()}"
       with :? InvalidOperationException ->
         ()
 

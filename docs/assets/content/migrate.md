@@ -308,9 +308,9 @@ Options:
 
 Commands:
   create, generate, n, new <name>        Creates a new project based on the selected template if it exists
-  install                                Installs the project dependencies from the perla.json file
-  add <packages>                         Adds a package to the project dependencies
-  remove <packages>                      Removes a package from the project dependencies
+  r, restore                             Restores the project dependencies from the perla.json file
+  a, add, i, install <packages>          Adds a package to the project dependencies
+  remove, rm <packages>                  Removes a package from the project dependencies
   list, ls                               Lists the current dependencies in a table or an npm style json string
   s, serve, start                        Starts the development server and if fable projects are present it also takes
                                          care of it.
