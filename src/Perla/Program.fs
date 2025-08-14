@@ -81,7 +81,6 @@ module Interactive =
     | args ->
       let! result = rootCommand args {
         configure(fun cfg ->
-          // don't replace leading @ strings e.g. @lit-labs/task
           cfg.ResponseFileTokenReplacer <- null
           cfg.RootCommand.TreatUnmatchedTokensAsErrors <- false)
 
@@ -203,35 +202,33 @@ let main argv =
 
   Interactive.RunInteractive appContainer cts argv
 
-  let work =
-    Task.Run<int>(
-      fun () -> rootCommand argv {
-        description "The Perla Dev Server!"
+  let work() =
+    rootCommand argv {
+      description "The Perla Dev Server!"
 
-        configure(fun cfg ->
-          // don't replace leading @ strings e.g. @lit-labs/task
-          cfg.ResponseFileTokenReplacer <- null
-          cfg.RootCommand.TreatUnmatchedTokensAsErrors <- false)
+      configure(fun cfg ->
+        // don't replace leading @ strings e.g. @lit-labs/task
+        cfg.ResponseFileTokenReplacer <- null
+        cfg.RootCommand.TreatUnmatchedTokensAsErrors <- false)
 
-        inputs Input.context
-        helpActionAsync
+      inputs Input.context
+      helpActionAsync
 
-        addCommands [
-          Commands.NewProject appContainer
-          Commands.Restore appContainer
-          Commands.AddPackage appContainer
-          Commands.RemovePackage appContainer
-          Commands.ListPackages appContainer
-          Commands.Serve appContainer
-          Commands.Build appContainer
-          Commands.Test appContainer
-          Commands.Template appContainer
-          Commands.Describe appContainer
-        ]
-      }
-      , cancellationToken = cts.Token
-    )
+      addCommands [
+        Commands.NewProject appContainer
+        Commands.Restore appContainer
+        Commands.AddPackage appContainer
+        Commands.RemovePackage appContainer
+        Commands.ListPackages appContainer
+        Commands.Serve appContainer
+        Commands.Build appContainer
+        Commands.Test appContainer
+        Commands.Template appContainer
+        Commands.Describe appContainer
+      ]
+    }
+    |> Async.AwaitTask
 
-  let exit = work.GetAwaiter().GetResult()
+  let exit = Async.RunSynchronously(work(), cancellationToken = cts.Token)
   cts.Cancel()
   exit
