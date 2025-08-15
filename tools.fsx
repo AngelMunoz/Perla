@@ -5,14 +5,7 @@ open System
 open System.IO
 open System.IO.Compression
 
-let runtimes = [|
-  "linux-x64"
-  "linux-arm64"
-  "osx-x64"
-  "osx-arm64"
-  "win-x64"
-  "win-arm64"
-|]
+let runtimes = [| "linux-x64"; "osx-x64"; "osx-arm64"; "win-x64" |]
 
 let tools = [ "Perla" ]
 
