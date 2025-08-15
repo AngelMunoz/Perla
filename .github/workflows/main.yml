@@ -52,6 +52,6 @@ jobs:
       - name: Prepare Esbuild
         run: dotnet fsi esbuild-ci.fsx
       - name: Test .NET 8
-        run: dotnet fsi tools.fsx -- test -f=net8.0
+        run: dotnet fsi tools.fsx -- test -- -f=net8.0
       - name: Test .NET 10
-        run: dotnet fsi tools.fsx -- test -f=net10.0
+        run: dotnet fsi tools.fsx -- test -- -f=net10.0
