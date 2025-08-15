@@ -1,6 +1,7 @@
 [snowpack]: https://www.snowpack.dev/
 [vite]: https://vitejs.dev/
 [esbuild]: https://esbuild.github.io/
+[jspm]: https://jspm.org/
 
 # Alternatives
 
@@ -8,6 +9,7 @@ This project draws inspiration from:
 
 - [Snowpack]
 - [Vite]
+- [JSPM]
 
 These tools are well-established in the JavaScript ecosystem and offer a wide range of features, including support for JavaScript plugins. This enables them to handle assets like `sass`, `less`, `pug`, `vue files`, and more.
 

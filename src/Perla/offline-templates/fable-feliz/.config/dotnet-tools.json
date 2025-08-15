@@ -3,9 +3,9 @@
   "isRoot": true,
   "tools": {
     "perla": {
-      "version": "1.0.0-beta-028",
+      "version": "1.0.0-rc-002",
       "commands": ["perla"],
-      "rollForward": false
+      "rollForward": true
     },
     "fable": {
       "version": "4.25.0",

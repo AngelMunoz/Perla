@@ -168,9 +168,11 @@ function BetaNotice() {
         <br />
         <small>
           <em>
-            Note: From v1.0.0-beta-033 onwards, the dotnet tool won't be
-            available we're working on it. The install scripts and download from
-            the releases page remain unchanged.
+            Note: From v1.0.0-rc-002 onwards, the dotnet tool requires
+            <b>dotnet 10 preview 7 or above</b> to be installed.
+            <br />
+            The install scripts and download from the releases page remain
+            unchanged.
           </em>
         </small>
       </p>
