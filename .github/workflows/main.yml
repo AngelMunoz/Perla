@@ -37,18 +37,12 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        dotnet: [8.0.x, 9.0.x]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup .NET Core
         uses: actions/setup-dotnet@v4
-        id: stepid
         with:
-          dotnet-version: |
-            9.0.x
-            8.0.x
+          global-json-file: global.json
       - name: Install local tools
         run: dotnet tool restore
       - name: Restore Solution
@@ -57,5 +51,7 @@ jobs:
         run: dotnet fsi tools.fsx
       - name: Prepare Esbuild
         run: dotnet fsi esbuild-ci.fsx
-      - name: Test
-        run: dotnet fsi tools.fsx -- test
+      - name: Test .NET 8
+        run: dotnet fsi tools.fsx -- test -f=net8.0
+      - name: Test .NET 10
+        run: dotnet fsi tools.fsx -- test -f=net10.0

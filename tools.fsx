@@ -162,13 +162,23 @@ module Steps =
   }
 
   let build = Step.create "build" {
-    do! Operations.dotnet "build src/Perla/Perla.fsproj --no-restore"
+    do! Operations.dotnet $"build src/Perla/Perla.fsproj --no-restore"
   }
 
   let format = Step.create "format" { do! Operations.fantomas "format" }
 
   let test = Step.create "tests" {
-    do! Operations.dotnet "test tests/Perla.Tests --no-restore"
+    let! ctx = Step.context
+
+    let framework =
+      ctx.ExtraArgs
+      |> List.tryPick (function
+        | "-f=net8.0" -> Some "net8.0"
+        | "-f=net10.0" -> Some "net10.0"
+        | _ -> None)
+      |> Option.defaultValue "net10.0"
+
+    do! Operations.dotnet $"test tests/Perla.Tests --no-restore -f {framework}"
   }
 
   let pushNugets = Step.create "nuget" {
