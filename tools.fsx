@@ -5,14 +5,7 @@ open System
 open System.IO
 open System.IO.Compression
 
-let runtimes = [|
-  "linux-x64"
-  "linux-arm64"
-  "osx-x64"
-  "osx-arm64"
-  "win-x64"
-  "win-arm64"
-|]
+let runtimes = [| "linux-x64"; "osx-x64"; "osx-arm64"; "win-x64" |]
 
 let tools = [ "Perla" ]
 
@@ -40,7 +33,7 @@ let fsSources =
   )
 
 let GatherNupkgs() =
-  Glob.createWithRootDir "dist" "**/*.nupkg" |> Glob.toPaths
+  Glob.create "./dist/*.nupkg" |> Glob.toPaths
 
 let outDir = Path.GetFullPath("./dist")
 
@@ -183,8 +176,14 @@ module Steps =
 
   let pushNugets = Step.create "nuget" {
     let! apiKey = NugetApiKey
+    let! ctx = Step.context
+    let packages = GatherNupkgs() |> Seq.toArray
 
-    for nuget in GatherNupkgs() do
+    Console.info $"Pushing {packages.Length} NuGet packages"
+    |> ctx.Console.WriteLine
+
+    for nuget in packages do
+      Console.info $"Pushing NuGet package: {nuget}" |> ctx.Console.WriteLine
       do! Operations.nugetPush(nuget, apiKey)
   }
 
