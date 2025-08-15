@@ -43,7 +43,7 @@ jobs:
       - name: Build code
         run: dotnet build src/Perla -c Release
       - name: Install Dependencies
-        run: cd docs && dotnet run --project ../src/Perla -c Release -f net10.0 --no-build --no-restore --no-launch-profile -- install
+        run: cd docs && dotnet run --project ../src/Perla -c Release -f net10.0 --no-build --no-restore --no-launch-profile -- restore
       - name: Generate the documentation
         run: cd docs && dotnet run --project ../src/Perla -c Release -f net10.0 --no-build --no-restore --no-launch-profile -- build
       - name: Upload documentation
