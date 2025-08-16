@@ -1,6 +1,7 @@
 namespace Perla.Commands
 
 open System.CommandLine
+open System.Threading
 open FSharp.SystemCommandLine
 
 open Perla
@@ -76,13 +77,13 @@ module ServeInputs =
 
 [<RequireQualifiedAccess>]
 module Commands =
-  val Build: container: AppContainer -> Command
-  val Serve: container: AppContainer -> Command
-  val RemovePackage: container: AppContainer -> Command
-  val Restore: container: AppContainer -> Command
-  val AddPackage: container: AppContainer -> Command
-  val ListPackages: container: AppContainer -> Command
-  val Template: container: AppContainer -> Command
-  val NewProject: container: AppContainer -> Command
-  val Test: container: AppContainer -> Command
-  val Describe: container: AppContainer -> Command
+  val Build: CancellationToken * container: AppContainer -> Command
+  val Serve: CancellationToken * container: AppContainer -> Command
+  val RemovePackage: CancellationToken * container: AppContainer -> Command
+  val Restore: CancellationToken * container: AppContainer -> Command
+  val AddPackage: CancellationToken * container: AppContainer -> Command
+  val ListPackages: CancellationToken * container: AppContainer -> Command
+  val Template: CancellationToken * container: AppContainer -> Command
+  val NewProject: CancellationToken * container: AppContainer -> Command
+  val Test: CancellationToken * container: AppContainer -> Command
+  val Describe: CancellationToken * container: AppContainer -> Command

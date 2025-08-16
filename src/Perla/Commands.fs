@@ -350,11 +350,18 @@ module ServeInputs =
 
 [<RequireQualifiedAccess>]
 module Commands =
+  open System.Threading
 
-  let Build(container: AppContainer) =
+  let Build(cancellationToken: CancellationToken, container: AppContainer) =
 
     let handleCommand(context: ActionContext, enablePreview: bool option) = task {
       let globalOptions = GlobalOptions.bind context.ParseResult
+
+      use cts =
+        CancellationTokenSource.CreateLinkedTokenSource(
+          cancellationToken,
+          context.CancellationToken
+        )
 
       let proceed() = cancellableTask {
         let options = {
@@ -373,10 +380,10 @@ module Commands =
              container.FableService,
              container.Directories,
              [ Esbuild; Fable ])
-            context.CancellationToken
+            cts.Token
 
         match result with
-        | Continue -> return! proceed () context.CancellationToken
+        | Continue -> return! proceed () cts.Token
         | Recover value ->
           let recoverArgs: Recover.RecoverArgs = {
             config = container.Configuration.PerlaConfig
@@ -387,11 +394,10 @@ module Commands =
             ci = globalOptions.ci || System.Console.IsOutputRedirected
           }
 
-          let! canContinue =
-            Recover.From recoverArgs (Recover value) context.CancellationToken
+          let! canContinue = Recover.From recoverArgs (Recover value) cts.Token
 
           match canContinue with
-          | Ok() -> return! proceed () context.CancellationToken
+          | Ok() -> return! proceed () cts.Token
           | _ ->
             container.Logger.LogError(
               "Perla setup failed, please run `perla setup` to fix the issue."
@@ -406,7 +412,7 @@ module Commands =
           return 1
 
       else
-        return! proceed () context.CancellationToken
+        return! proceed () cts.Token
     }
 
 
@@ -419,7 +425,7 @@ module Commands =
       setAction handleCommand
     }
 
-  let Serve(container: AppContainer) =
+  let Serve(cancellationToken: CancellationToken, container: AppContainer) =
     let handleCommand
       (
         context: ActionContext,
@@ -430,9 +436,15 @@ module Commands =
       task {
         let globalOptions = GlobalOptions.bind context.ParseResult
 
+        use cts =
+          CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            context.CancellationToken
+          )
+
         let proceed() = cancellableTask {
           let options = { port = port; host = host; ssl = ssl }
-          return! Handlers.runServe container options context.CancellationToken
+          return! Handlers.runServe container options cts.Token
         }
 
         if globalOptions.setup then
@@ -444,10 +456,10 @@ module Commands =
                container.FableService,
                container.Directories,
                [ Fable; Esbuild ])
-              context.CancellationToken
+              cts.Token
 
           match result with
-          | Continue -> return! proceed () context.CancellationToken
+          | Continue -> return! proceed () cts.Token
           | Recover value ->
             let recoverArgs: Recover.RecoverArgs = {
               config = container.Configuration.PerlaConfig
@@ -459,10 +471,10 @@ module Commands =
             }
 
             let! canContinue =
-              Recover.From recoverArgs (Recover value) context.CancellationToken
+              Recover.From recoverArgs (Recover value) cts.Token
 
             match canContinue with
-            | Ok() -> return! proceed () context.CancellationToken
+            | Ok() -> return! proceed () cts.Token
             | _ ->
               container.Logger.LogError(
                 "Perla setup failed, please run `perla setup` to fix the issue."
@@ -477,7 +489,7 @@ module Commands =
             return 1
 
         else
-          return! proceed () context.CancellationToken
+          return! proceed () cts.Token
       }
 
     let desc =
@@ -492,11 +504,20 @@ module Commands =
       setAction handleCommand
     }
 
-  let RemovePackage(container: AppContainer) =
+  let RemovePackage
+    (cancellationToken: CancellationToken, container: AppContainer)
+    =
 
     let handleCommand(ctx: ActionContext, package: string Set) =
       let options = { packages = package }
-      Handlers.runRemovePackage container options ctx.CancellationToken
+
+      use cts =
+        CancellationTokenSource.CreateLinkedTokenSource(
+          cancellationToken,
+          ctx.CancellationToken
+        )
+
+      Handlers.runRemovePackage container options cts.Token
 
     command "remove" {
       addAlias "rm"
@@ -506,7 +527,7 @@ module Commands =
       setAction handleCommand
     }
 
-  let Restore(container: AppContainer) =
+  let Restore(cancellationToken: CancellationToken, container: AppContainer) =
     let handleCommand
       (
         ctx: ActionContext,
@@ -515,7 +536,13 @@ module Commands =
       ) =
       let options = { offline = offline; source = source }
 
-      Handlers.runRestore container options ctx.CancellationToken
+      use cts =
+        CancellationTokenSource.CreateLinkedTokenSource(
+          cancellationToken,
+          ctx.CancellationToken
+        )
+
+      Handlers.runRestore container options cts.Token
 
     command "restore" {
       addAlias "r"
@@ -524,12 +551,20 @@ module Commands =
       setAction handleCommand
     }
 
-  let AddPackage(container: AppContainer) =
+  let AddPackage
+    (cancellationToken: CancellationToken, container: AppContainer)
+    =
 
     let handleCommand(ctx: ActionContext, packages: string Set) =
       let options = { packages = packages }
 
-      Handlers.runAddPackage container options ctx.CancellationToken
+      use cts =
+        CancellationTokenSource.CreateLinkedTokenSource(
+          cancellationToken,
+          ctx.CancellationToken
+        )
+
+      Handlers.runAddPackage container options cts.Token
 
     command "add" {
       addAliases [ "install"; "i"; "a" ]
@@ -540,7 +575,9 @@ module Commands =
       setAction handleCommand
     }
 
-  let ListPackages(container: AppContainer) =
+  let ListPackages
+    (cancellationToken: CancellationToken, container: AppContainer)
+    =
 
     let handleCommand(ctx: ActionContext, asNpm: bool option) =
       let args = {
@@ -554,7 +591,13 @@ module Commands =
           |> Option.defaultValue ListFormat.HumanReadable
       }
 
-      Handlers.runListPackages container args ctx.CancellationToken
+      use cts =
+        CancellationTokenSource.CreateLinkedTokenSource(
+          cancellationToken,
+          ctx.CancellationToken
+        )
+
+      Handlers.runListPackages container args cts.Token
 
     command "list" {
       addAlias "ls"
@@ -566,7 +609,7 @@ module Commands =
       setAction handleCommand
     }
 
-  let Template(container: AppContainer) =
+  let Template(cancellationToken: CancellationToken, container: AppContainer) =
 
     let handleCommand
       (
@@ -579,6 +622,12 @@ module Commands =
       ) =
       task {
         let globalOptions = GlobalOptions.bind ctx.ParseResult
+
+        use cts =
+          CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            ctx.CancellationToken
+          )
 
         let proceed() = cancellableTask {
           let operation =
@@ -615,7 +664,7 @@ module Commands =
             operation = operation
           }
 
-          return! Handlers.runTemplate container options ctx.CancellationToken
+          return! Handlers.runTemplate container options cts.Token
         }
 
         if globalOptions.setup then
@@ -627,10 +676,10 @@ module Commands =
                container.FableService,
                container.Directories,
                [])
-              ctx.CancellationToken
+              cts.Token
 
           match result with
-          | Continue -> return! proceed () ctx.CancellationToken
+          | Continue -> return! proceed () cts.Token
           | Recover value ->
             let recoverArgs: Recover.RecoverArgs = {
               config = container.Configuration.PerlaConfig
@@ -642,10 +691,10 @@ module Commands =
             }
 
             let! canContinue =
-              Recover.From recoverArgs (Recover value) ctx.CancellationToken
+              Recover.From recoverArgs (Recover value) cts.Token
 
             match canContinue with
-            | Ok() -> return! proceed () ctx.CancellationToken
+            | Ok() -> return! proceed () cts.Token
             | _ ->
               container.Logger.LogError(
                 "Perla setup failed, please run `perla setup` to fix the issue."
@@ -660,7 +709,7 @@ module Commands =
             return 1
 
         else
-          return! proceed () ctx.CancellationToken
+          return! proceed () cts.Token
       }
 
     let template = command "templates" {
@@ -681,7 +730,9 @@ module Commands =
 
     template
 
-  let NewProject(container: AppContainer) =
+  let NewProject
+    (cancellationToken: CancellationToken, container: AppContainer)
+    =
 
     let handleCommand
       (
@@ -694,6 +745,12 @@ module Commands =
       task {
         let globalOptions = GlobalOptions.bind ctx.ParseResult
 
+        use cts =
+          CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            ctx.CancellationToken
+          )
+
         let proceed() = cancellableTask {
           let options = {
             projectName = name
@@ -702,7 +759,7 @@ module Commands =
             skipPrompts = skipPrompts
           }
 
-          return! Handlers.runNew container options ctx.CancellationToken
+          return! Handlers.runNew container options cts.Token
         }
 
         if globalOptions.setup then
@@ -714,10 +771,10 @@ module Commands =
                container.FableService,
                container.Directories,
                [ Esbuild; Fable ])
-              ctx.CancellationToken
+              cts.Token
 
           match result with
-          | Continue -> return! proceed () ctx.CancellationToken
+          | Continue -> return! proceed () cts.Token
           | Recover value ->
             let recoverArgs: Recover.RecoverArgs = {
               config = container.Configuration.PerlaConfig
@@ -729,10 +786,10 @@ module Commands =
             }
 
             let! canContinue =
-              Recover.From recoverArgs (Recover value) ctx.CancellationToken
+              Recover.From recoverArgs (Recover value) cts.Token
 
             match canContinue with
-            | Ok() -> return! proceed () ctx.CancellationToken
+            | Ok() -> return! proceed () cts.Token
             | _ ->
               container.Logger.LogError(
                 "Perla setup failed, please run `perla setup` to fix the issue."
@@ -747,7 +804,7 @@ module Commands =
             return 1
 
         else
-          return! proceed () ctx.CancellationToken
+          return! proceed () cts.Token
       }
 
     command "new" {
@@ -767,7 +824,7 @@ module Commands =
       setAction handleCommand
     }
 
-  let Test(container: AppContainer) =
+  let Test(cancellationToken: CancellationToken, container: AppContainer) =
 
 
     let handleCommand
@@ -783,6 +840,12 @@ module Commands =
       task {
         let globalOptions = GlobalOptions.bind ctx.ParseResult
 
+        use cts =
+          CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            ctx.CancellationToken
+          )
+
         let proceed() = cancellableTask {
           let options = {
             browsers = if Set.isEmpty browsers then None else Some browsers
@@ -797,7 +860,7 @@ module Commands =
               |> Option.flatten
           }
 
-          return! Handlers.runTesting container options ctx.CancellationToken
+          return! Handlers.runTesting container options cts.Token
         }
 
         if globalOptions.updatePlaywright then
@@ -824,10 +887,10 @@ module Commands =
                container.FableService,
                container.Directories,
                [ Fable; Esbuild; Playwright ])
-              ctx.CancellationToken
+              cts.Token
 
           match result with
-          | Continue -> return! proceed () ctx.CancellationToken
+          | Continue -> return! proceed () cts.Token
           | Recover value ->
             let recoverArgs: Recover.RecoverArgs = {
               config = container.Configuration.PerlaConfig
@@ -839,10 +902,10 @@ module Commands =
             }
 
             let! canContinue =
-              Recover.From recoverArgs (Recover value) ctx.CancellationToken
+              Recover.From recoverArgs (Recover value) cts.Token
 
             match canContinue with
-            | Ok() -> return! proceed () ctx.CancellationToken
+            | Ok() -> return! proceed () cts.Token
             | _ ->
               container.Logger.LogError(
                 "Perla setup failed, please run `perla setup` to fix the issue."
@@ -856,7 +919,7 @@ module Commands =
 
             return 1
         else
-          return! proceed () ctx.CancellationToken
+          return! proceed () cts.Token
       }
 
     let cmd = command "test" {
@@ -879,7 +942,7 @@ module Commands =
     cmd.Hidden <- true
     cmd
 
-  let Describe(container: AppContainer) =
+  let Describe(cancellationToken: CancellationToken, container: AppContainer) =
 
     let handleCommand(ctx: ActionContext, properties: string[], current: bool) =
       let args = {
@@ -887,7 +950,13 @@ module Commands =
         current = current
       }
 
-      Handlers.runDescribePerla container args ctx.CancellationToken
+      use cts =
+        CancellationTokenSource.CreateLinkedTokenSource(
+          cancellationToken,
+          ctx.CancellationToken
+        )
+
+      Handlers.runDescribePerla container args cts.Token
 
     command "describe" {
       addAlias "ds"

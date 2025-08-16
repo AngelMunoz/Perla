@@ -69,38 +69,43 @@ module Env =
 module Interactive =
   open System.CommandLine.Parsing
 
-  let runRoot (container: AppContainer) (line: string[]) = asyncEx {
-    match line with
-    | [| arg |] when
-      arg.Trim() = "exit"
-      || arg.Trim() = "quit"
-      || arg.Trim() = "q"
-      || arg.Trim() = ""
-      ->
-      return Ok "No command supplied"
-    | args ->
-      let! result = rootCommand args {
-        configure(fun cfg ->
-          cfg.ResponseFileTokenReplacer <- null
-          cfg.RootCommand.TreatUnmatchedTokensAsErrors <- false)
+  let runRoot
+    (token: CancellationToken, container: AppContainer)
+    (line: string[])
+    =
+    asyncEx {
+      match line with
+      | [| arg |] when
+        arg.Trim() = "exit"
+        || arg.Trim() = "quit"
+        || arg.Trim() = "q"
+        || arg.Trim() = ""
+        ->
+        return Ok "No command supplied"
+      | args ->
 
-        inputs Input.context
-        helpActionAsync
+        let! result = rootCommand args {
+          configure(fun cfg ->
+            cfg.ResponseFileTokenReplacer <- null
+            cfg.RootCommand.TreatUnmatchedTokensAsErrors <- false)
 
-        addCommands [
-          Commands.Restore container
-          Commands.AddPackage container
-          Commands.RemovePackage container
-          Commands.ListPackages container
-          Commands.Template container
-          Commands.Describe container
-        ]
-      }
+          inputs Input.context
+          helpActionAsync
 
-      match result with
-      | 0 -> return Ok "Command succeeded"
-      | _ -> return Error "Command failed"
-  }
+          addCommands [
+            Commands.Restore(token, container)
+            Commands.AddPackage(token, container)
+            Commands.RemovePackage(token, container)
+            Commands.ListPackages(token, container)
+            Commands.Template(token, container)
+            Commands.Describe(token, container)
+          ]
+        }
+
+        match result with
+        | 0 -> return Ok "Command succeeded"
+        | _ -> return Error "Command failed"
+    }
 
   let GetStdinLineMonitor (container: AppContainer) (ct: CancellationToken) = taskSeq {
     use stream = Console.OpenStandardInput()
@@ -114,11 +119,13 @@ module Interactive =
         if isNull line then
           // EOF
           ()
+        else if String.IsNullOrWhiteSpace line then
+          ()
         else
           let args =
             line.Trim() |> CommandLineParser.SplitCommandLine |> Array.ofSeq
 
-          let! result = runRoot container args
+          let! result = runRoot (ct, container) args
 
           yield args, result
     with
@@ -151,18 +158,20 @@ module Interactive =
         let monitor = GetStdinLineMonitor container token
 
         for line, evaluation in monitor do
+          let joinedLine = String.Join(' ', line)
+
           match evaluation with
           | Ok msg when msg <> "" ->
-            container.Logger.LogInformation(
+            container.Logger.LogDebug(
               "Command succeeded: {Line} - {Message}",
-              line,
+              joinedLine,
               msg
             )
           | Ok _ -> ()
           | Error msg ->
             container.Logger.LogError(
               "Command failed: {Line} - {Message}",
-              line,
+              joinedLine,
               msg
             )
 
@@ -170,7 +179,7 @@ module Interactive =
           | [| arg |] when
             arg.Trim() = "exit" || arg.Trim() = "quit" || arg.Trim() = "q"
             ->
-            container.Logger.LogInformation "Exiting interactive mode"
+            container.Logger.LogInformation "Thank you for using Perla!"
             cts.Cancel()
           | _ -> ()
 
@@ -215,16 +224,16 @@ let main argv =
       helpActionAsync
 
       addCommands [
-        Commands.NewProject appContainer
-        Commands.Restore appContainer
-        Commands.AddPackage appContainer
-        Commands.RemovePackage appContainer
-        Commands.ListPackages appContainer
-        Commands.Serve appContainer
-        Commands.Build appContainer
-        Commands.Test appContainer
-        Commands.Template appContainer
-        Commands.Describe appContainer
+        Commands.NewProject(cts.Token, appContainer)
+        Commands.Restore(cts.Token, appContainer)
+        Commands.AddPackage(cts.Token, appContainer)
+        Commands.RemovePackage(cts.Token, appContainer)
+        Commands.ListPackages(cts.Token, appContainer)
+        Commands.Serve(cts.Token, appContainer)
+        Commands.Build(cts.Token, appContainer)
+        Commands.Test(cts.Token, appContainer)
+        Commands.Template(cts.Token, appContainer)
+        Commands.Describe(cts.Token, appContainer)
       ]
     }
     |> Async.AwaitTask
