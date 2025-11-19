@@ -152,39 +152,10 @@ function DeprecationNotice() {
   );
 }
 
-function BetaNotice() {
-  return (
-    <sl-alert variant="primary" open closable>
-      <sl-icon slot="icon" name="info-circle"></sl-icon>
-      <strong>Perla V1.0.0 betas are out!</strong>
-      <p>
-        Hello there, the next Perla version is in the works as well as the
-        documentation website.
-        <br /> Feeling Adventurous?:
-        <br />
-        <a href="#content/install">
-          Get the latest bits from the installation guide
-        </a>
-        <br />
-        <small>
-          <em>
-            Note: From v1.0.0-rc-002 onwards, the dotnet tool requires
-            <b>dotnet 10 preview 7 or above</b> to be installed.
-            <br />
-            The install scripts and download from the releases page remain
-            unchanged.
-          </em>
-        </small>
-      </p>
-    </sl-alert>
-  );
-}
-
 function NoticesBanner() {
   const isV0 = computed(() => version.value === "v0");
   return (
     <>
-      <BetaNotice />
       <Show when={isV0} fallback={null}>
         <DeprecationNotice />
       </Show>
