@@ -66,6 +66,15 @@ module Env =
       RequestHandler = requestHandler
     }
 
+[<AutoOpen>]
+module Args =
+  /// `[log=...]`-style tokens are handled before parsing and are not part of
+  /// the CLI grammar, so they must not reach the command line parser.
+  let stripBracketTokens (args: string array) =
+    args
+    |> Array.filter(fun arg ->
+      not(arg.StartsWith "[" && arg.EndsWith "]"))
+
 module Interactive =
   open System.CommandLine.Parsing
 
@@ -84,10 +93,8 @@ module Interactive =
         return Ok "No command supplied"
       | args ->
 
-        let! result = rootCommand args {
-          configure(fun cfg ->
-            cfg.ResponseFileTokenReplacer <- null
-            cfg.RootCommand.TreatUnmatchedTokensAsErrors <- false)
+        let! result = rootCommand (stripBracketTokens args) {
+          configureParser(fun cfg -> cfg.ResponseFileTokenReplacer <- null)
 
           inputs Input.context
           helpActionAsync
@@ -212,13 +219,11 @@ let main argv =
   Interactive.RunInteractive appContainer cts argv
 
   let work() =
-    rootCommand argv {
+    rootCommand (stripBracketTokens argv) {
       description "The Perla Dev Server!"
 
-      configure(fun cfg ->
-        // don't replace leading @ strings e.g. @lit-labs/task
-        cfg.ResponseFileTokenReplacer <- null
-        cfg.RootCommand.TreatUnmatchedTokensAsErrors <- false)
+      // don't replace leading @ strings e.g. @lit-labs/task
+      configureParser(fun cfg -> cfg.ResponseFileTokenReplacer <- null)
 
       inputs Input.context
       helpActionAsync
