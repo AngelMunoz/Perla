@@ -16,5 +16,6 @@ type PerlaDirectories =
   abstract PlaywrightArtifactsRoot: string<SystemPath> with get
   abstract SetCwdToProject: ?fromPath: string<SystemPath> -> unit
 
+[<RequireQualifiedAccess>]
 module PerlaDirectories =
   val Create: ops: PlatformOps -> PerlaDirectories
