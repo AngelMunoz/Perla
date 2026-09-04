@@ -65,6 +65,7 @@ type TestingOptions = {
 type DescribeOptions = { properties: string[]; current: bool }
 
 
+[<RequireQualifiedAccess>]
 module Handlers =
 
   val runNew:

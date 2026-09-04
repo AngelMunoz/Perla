@@ -79,34 +79,33 @@ type GlobalOptions = {
 
 module GlobalOptions =
 
-  let setup: ActionInput<bool option> =
-    optionMaybe<bool> "--setup"
-    |> alias "-s"
+  let setup: ActionInput<bool> =
+    option<bool> "--setup"
     |> description
       "Run the setup command to install templates and other dependencies"
-    |> defaultValue(Some true)
+    |> defaultValue true
 
-  let ci: ActionInput<bool option> =
-    optionMaybe<bool> "--ci"
+  let ci: ActionInput<bool> =
+    option<bool> "--ci"
     |> description
       "Run the command in CI mode, which disables interactive prompts"
-    |> defaultValue None
+    |> defaultValue false
 
-  let updatePlaywright: ActionInput<bool option> =
-    optionMaybe<bool> "--update-playwright"
+  let updatePlaywright: ActionInput<bool> =
+    option<bool> "--update-playwright"
     |> description
       "Update Playwright browsers to the latest version, if available"
-    |> defaultValue None
+    |> defaultValue false
 
-  let skipPrompts: ActionInput<bool option> =
-    optionMaybe<bool> "--skip"
+  let skipPrompts: ActionInput<bool> =
+    option<bool> "--skip-prompts"
     |> description "Skip interactive prompts and use defaults"
-    |> defaultValue None
+    |> defaultValue false
 
-  let previewCommand: ActionInput<bool option> =
-    optionMaybe<bool> "--preview-command"
+  let previewCommand: ActionInput<bool> =
+    option<bool> "--preview-command"
     |> description "Allows running a command before its official release"
-    |> defaultValue None
+    |> defaultValue false
 
   let logLevel: ActionInput<LogLevel> =
     let inline parser(result: ArgumentResult) =
@@ -140,28 +139,23 @@ module GlobalOptions =
       )
     |> ofOption
 
-  let bind parseResult =
-    let ci = ci.GetValue parseResult |> Option.defaultValue false
+  let composite: ActionInput<GlobalOptions> = input {
+    let! ci = ci
+    and! skipPrompts = skipPrompts
+    and! previewCommand = previewCommand
+    and! setup = setup
+    and! updatePlaywright = updatePlaywright
+    and! logLevel = logLevel
 
-    let skipPrompts =
-      skipPrompts.GetValue parseResult |> Option.defaultValue false
-
-    let previewCommand =
-      previewCommand.GetValue parseResult |> Option.defaultValue false
-
-    let setup = setup.GetValue parseResult |> Option.defaultValue true
-
-    let updatePlaywright =
-      updatePlaywright.GetValue parseResult |> Option.defaultValue false
-
-    {
+    return {
       ci = ci
       skipPrompts = skipPrompts
       previewCommand = previewCommand
       setup = setup
-      logLevel = logLevel.GetValue parseResult
+      logLevel = logLevel
       updatePlaywright = updatePlaywright
     }
+  }
 
 
 
@@ -354,9 +348,10 @@ module Commands =
 
   let Build(cancellationToken: CancellationToken, container: AppContainer) =
 
-    let handleCommand(context: ActionContext, enablePreview: bool option) = task {
-      let globalOptions = GlobalOptions.bind context.ParseResult
-
+    let handleCommand
+      (context: ActionContext,
+       globalOptions: GlobalOptions,
+       enablePreview: bool option) = task {
       use cts =
         CancellationTokenSource.CreateLinkedTokenSource(
           cancellationToken,
@@ -420,7 +415,7 @@ module Commands =
       description "Builds the SPA application for distribution"
       addAlias "b"
 
-      inputs(context, BuildInputs.preview)
+      inputs(context, GlobalOptions.composite, BuildInputs.preview)
 
       setAction handleCommand
     }
@@ -429,13 +424,12 @@ module Commands =
     let handleCommand
       (
         context: ActionContext,
+        globalOptions: GlobalOptions,
         port: int option,
         host: string option,
         ssl: bool option
       ) =
       task {
-        let globalOptions = GlobalOptions.bind context.ParseResult
-
         use cts =
           CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
@@ -499,7 +493,13 @@ module Commands =
       description desc
       addAliases [ "s"; "start" ]
 
-      inputs(context, ServeInputs.port, ServeInputs.host, ServeInputs.ssl)
+      inputs(
+        context,
+        GlobalOptions.composite,
+        ServeInputs.port,
+        ServeInputs.host,
+        ServeInputs.ssl
+      )
 
       setAction handleCommand
     }
@@ -614,6 +614,7 @@ module Commands =
     let handleCommand
       (
         ctx: ActionContext,
+        globalOptions: GlobalOptions,
         name: string option,
         add: bool option,
         update: bool option,
@@ -621,8 +622,6 @@ module Commands =
         format: ListFormat
       ) =
       task {
-        let globalOptions = GlobalOptions.bind ctx.ParseResult
-
         use cts =
           CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
@@ -718,6 +717,7 @@ module Commands =
 
       inputs(
         context,
+        GlobalOptions.composite,
         TemplateInputs.repositoryName,
         TemplateInputs.addTemplate,
         TemplateInputs.updateTemplate,
@@ -737,14 +737,13 @@ module Commands =
     let handleCommand
       (
         ctx: ActionContext,
+        globalOptions: GlobalOptions,
         name: string,
         byId: string option,
         byShortName: string option,
         skipPrompts: bool
       ) =
       task {
-        let globalOptions = GlobalOptions.bind ctx.ParseResult
-
         use cts =
           CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
@@ -815,6 +814,7 @@ module Commands =
 
       inputs(
         context,
+        GlobalOptions.composite,
         ProjectInputs.projectName,
         ProjectInputs.byId,
         ProjectInputs.byShortName,
@@ -830,6 +830,7 @@ module Commands =
     let handleCommand
       (
         ctx: ActionContext,
+        globalOptions: GlobalOptions,
         browsers: Browser Set,
         files: string array,
         skips: string array,
@@ -838,8 +839,6 @@ module Commands =
         sequential: bool option
       ) =
       task {
-        let globalOptions = GlobalOptions.bind ctx.ParseResult
-
         use cts =
           CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
@@ -928,6 +927,7 @@ module Commands =
 
       inputs(
         context,
+        GlobalOptions.composite,
         TestingInputs.browsers,
         TestingInputs.files,
         TestingInputs.skips,

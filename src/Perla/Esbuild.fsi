@@ -42,5 +42,6 @@ type EsbuildService =
 
   abstract GetPlugin: config: EsbuildConfig -> PluginInfo
 
+[<RequireQualifiedAccess>]
 module Esbuild =
   val Create: serviceArgs: EsbuildServiceArgs -> EsbuildService
